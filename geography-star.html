@@ -233,16 +233,18 @@ const SMALL_CODES = Object.keys(SMALL_STATE_CENTROID);
 const ROUND_SIZE = 10;
 
 // ---------- regions & difficulty tiers (spec §6) ----------
-const REGION_ORDER = ["New England", "Mid-Atlantic", "Southeast", "Midwest", "Great Plains", "Southwest", "Mountain West", "Pacific", "Non-contiguous"];
+const REGION_ORDER = ["Southeast", "New England", "Mid-Atlantic", "Midwest", "Great Plains", "Southwest", "Mountain West", "Pacific", "Non-contiguous"];
 const TIERS = {
   k2:  { label: "K–2",      modes: ["find", "name"], regionScope: "single" },
-  g35: { label: "3rd–5th",  modes: ["find", "name", "capital", "abbr", "unabbr", "capitals", "nature"], regionScope: "progress" },
-  g6:  { label: "6th & up",      modes: ["find", "name", "capital", "abbr", "unabbr", "capitals", "population", "nature"], regionScope: "all" },
+  g35: { label: "3rd–5th",  modes: ["find", "name", "abbr", "unabbr", "capitals", "nature"], regionScope: "progress" },
+  g6:  { label: "6th & up",      modes: ["find", "name", "abbr", "unabbr", "capitals", "population", "nature"], regionScope: "all" },
 };
 // Columns shown on the parent dashboard's per-region mastery grid; keys
 // match MODE_TITLES below regardless of which tier currently unlocks them,
 // so a parent can see history left over from a since-changed tier.
-const MASTERY_MODE_COLUMNS = ["find", "name", "capital", "abbr", "unabbr", "capitals", "population", "nature"];
+// "capital" (Click the Capital) is omitted here while that mode is disabled
+// below — see the MODES entry for why.
+const MASTERY_MODE_COLUMNS = ["find", "name", "abbr", "unabbr", "capitals", "population", "nature"];
 
 // ---------- profiles / storage (mirrors Math Star & Spelling Star, spec §6) ----------
 const STORAGE_PREFIX = "geostar-";
@@ -529,7 +531,11 @@ function goHome() { if (!data) return renderPicker(); renderHome(); }
 const MODES = [
   { id: "find", title: "Find the State", icon: "&#128269;", desc: "We name a state — you click it on the map.", deck: "Map Deck", tiers: ["k2", "g35", "g6"] },
   { id: "name", title: "Name the State", icon: "&#127991;&#65039;", desc: "A state lights up — you pick its name.", deck: "Map Deck", tiers: ["k2", "g35", "g6"] },
-  { id: "capital", title: "Click the Capital", icon: "&#128205;", desc: "Click the dot for the right capital city.", deck: "Map Deck", tiers: ["g35", "g6"] },
+  // "capital" (Click the Capital) is disabled for now — buggy; tiers: []
+  // hides it from every home-screen deck. playCapital() and its dispatch
+  // branch are left in place so it's a one-line revert once fixed. The
+  // Facts Deck "capitals" mode below is unaffected and stays on.
+  { id: "capital", title: "Click the Capital", icon: "&#128205;", desc: "Click the dot for the right capital city.", deck: "Map Deck", tiers: [] },
   { id: "abbr", title: "State &rarr; Abbreviation", icon: "&#128288;", desc: "Kentucky &rarr; KY. Works with the map hidden.", deck: "Map Deck", tiers: ["g35", "g6"] },
   { id: "unabbr", title: "Abbreviation &rarr; State", icon: "&#128290;", desc: "KY &rarr; Kentucky. Works with the map hidden.", deck: "Map Deck", tiers: ["g35", "g6"] },
   { id: "capitals", title: "Capitals", icon: "&#127970;", desc: "State &harr; capital, either direction. Works with the map hidden.", deck: "Facts Deck", tiers: ["g35", "g6"] },

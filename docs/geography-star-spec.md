@@ -227,7 +227,7 @@ A 2nd grader sees two modes on screen, not nine. Tier is a parent setting; the e
 
 ### Region progression
 
-New England, Mid-Atlantic, Southeast, Midwest, Great Plains, Southwest, Mountain West,
+Southeast, New England, Mid-Atlantic, Midwest, Great Plains, Southwest, Mountain West,
 Pacific, Non-contiguous. Regions unlock in sequence at lower tiers, all available at 6+.
 
 ---
