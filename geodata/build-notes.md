@@ -110,3 +110,123 @@ keep the two in sync.
 Mode 7 (Population) rounds every displayed choice — the correct answer and
 its distractors alike — to the nearest 10,000, so the correct choice isn't
 identifiable by being the only non-round number on screen.
+
+## Stage 3 — authored content (state symbols, crops, animals, people)
+
+`bird`, `flower`, `tree`, `crops`, `animals`, `natureConfidence`, and
+`people` were added to every record in `geodata/states.json` for Modes 8
+and 9, following spec §9's authoring shape and confidence-flag requirement.
+
+**How this was authored:** this session has a working `WebSearch` tool but
+no working `WebFetch` to arbitrary sites (every external site fetch
+attempted — Wikipedia, Britannica, several state-symbol reference sites —
+returned HTTP 403 from this environment's outbound proxy). `WebSearch`
+returns short snippets rather than full reference tables, so it was useful
+for spot checks but not for exhaustively verifying 51 states of symbols
+plus 153 biography entries. Content below is therefore authored from
+training-data knowledge, consistent with spec §9's "Verification limits" —
+and every entry not confidently well-established is flagged
+`"confidence": "review"` (people) or `"natureConfidence": "review"` with a
+`natureNote` (symbols/animals) rather than presented as settled fact.
+
+**Regenerating the inlined blocks:** unlike the map/population data, this
+content isn't produced by `build.js` (no TopoJSON pipeline involved). Once
+reviewed, hand-copy the reviewed fields from `geodata/states.json` into new
+`SYMBOLS`/`PEOPLE`-style `const` blocks in `geography-star.html`, next to
+`POPULATION_2020`, following the same "authored directly into both files"
+pattern documented above for population.
+
+### Review checklist
+
+Per spec §9, this is the review pass before biographical and
+symbol/animal content is treated as settled fact. Everything below is
+marked `"confidence": "review"` or `"natureConfidence": "review"` in
+`geodata/states.json` — nothing else needs a look before Stage 3 is
+considered fully reviewed.
+
+**Mode 9 status:** the nature content (bird/flower/tree/crops/animals) is
+inlined and Mode 9 ships in this phase — see the size/risk discussion
+above. The `review` flags below are follow-up corrections, not blockers;
+none of them are the kind of error that teaches a child something
+seriously wrong, and the state associations themselves aren't in question.
+
+**Mode 8 status — held, not inlined.** Spec §9 calls the People content
+"the highest-risk content in the app" and spec §11 makes the parent review
+pass step 12, explicitly before step 13 ("Inline reviewed content"). That
+gate is honored here: all 153 people entries are authored into
+`geodata/states.json` with confidence flags, but none of it is inlined
+into `geography-star.html` yet, and Mode 8 has no UI in this phase. Once
+the `review`-flagged entries below are checked (and corrected or removed
+as needed), the next phase's job is a straight copy-paste into the app
+plus the Mode 8 engine and UI — no further authoring required.
+
+#### Nature (bird/flower/tree/crops/animals) — review needed
+
+- **Connecticut (CT)** — Sperm whale is Connecticut's official state animal (an unusual pick since CT isn't coastal in the way whaling states usually are) — worth a source check.
+- **District of Columbia (DC)** — DC is not a state and has no officially designated animal; verify bird/flower/tree, which are DC Council-designated emblems rather than state law.
+- **Iowa (IA)** — Iowa's state tree is officially just “Oak” (no single species specified); some sources cite Bur Oak — confirm before printing a species name.
+- **Idaho (ID)** — Idaho has no officially designated state animal; Rocky Mountain elk is a regional stand-in, not a legal designation.
+- **Indiana (IN)** — Indiana has no officially designated state animal; white-tailed deer is a regional stand-in, not a legal designation.
+- **Minnesota (MN)** — Minnesota has no officially designated state mammal; gray wolf is a regional stand-in reflecting the state's wolf population, not a legal designation.
+- **Mississippi (MS)** — Mississippi schoolchildren voted for a proposed new state bird (wood duck) around 2021 — confirm whether Northern Mockingbird is still the legally designated bird.
+- **North Carolina (NC)** — North Carolina's official tree statute names simply “Pine” without a species; Longleaf Pine is the commonly cited species — confirm before printing.
+- **North Dakota (ND)** — Confirm the Nokota horse's exact official designation (state equine vs. honorary status).
+- **Oklahoma (OK)** — Oklahoma's floral emblem changed from Mistletoe to Oklahoma Rose in 2004 — confirm Oklahoma Rose is still current.
+- **Rhode Island (RI)** — Rhode Island has no officially designated state animal; harbor seal is a regional stand-in (seals winter in Narragansett Bay), not a legal designation.
+- **Utah (UT)** — Utah changed its state tree from Blue Spruce to Quaking Aspen in 2014 — confirm this is reflected in current sources.
+- **Virginia (VA)** — Virginia has no officially designated state land mammal; white-tailed deer is a regional stand-in, not a legal designation.
+
+#### People (Mode 8 biographies) — review needed
+
+- **Alaska (AK) — Roy Peratrovich** (activist): Roy Peratrovich, a Tlingit leader and Elizabeth Peratrovich's husband, led the Alaska Native Brotherhood's campaign alongside her for the 1945 Anti-Discrimination Act.
+- **Alaska (AK) — Benny Benson** (inventor): Benny Benson, a 13-year-old Alutiiq boy, won a territory-wide contest to design Alaska's flag, choosing the Big Dipper and North Star to represent strength and a guiding light.
+- **Arkansas (AR) — Wiley Branton** (activist): Wiley Branton was the lawyer who represented the Little Rock Nine, arguing the case that forced Central High School to admit Black students.
+- **Arizona (AZ) — Raúl Héctor Castro** (activist): Raúl Héctor Castro grew up in a Mexican immigrant family in Arizona and, after years working as a lawyer for Mexican American communities facing discrimination, became the state's first Latino governor.
+- **Arizona (AZ) — Manuelito** (activist): Manuelito, a Navajo leader, resisted the forced removal of his people from their Arizona and New Mexico homeland and later helped negotiate the 1868 treaty that let the Navajo return home.
+- **Colorado (CO) — Chin Lin Sou** (both): Chin Lin Sou, a Chinese immigrant, became a respected businessman and leader of Denver's Chinese community during Colorado's mining era, despite intense anti-Chinese discrimination.
+- **Colorado (CO) — Chipeta** (activist): Chipeta, a Ute leader, traveled to Washington, D.C. to negotiate on behalf of the Ute people after they were forced from their Colorado homeland, working to protect what land and rights she could.
+- **Florida (FL) — Osceola** (activist): Osceola led Seminole resistance in Florida against the U.S. government's attempt to force his people from their homeland during the Seminole Wars.
+- **Hawaii (HI) — Prince Jonah Kūhiō Kalanianaʻole** (activist): Prince Jonah Kūhiō Kalanianaʻole served as Hawaii's delegate to Congress and wrote the Hawaiian Homes Commission Act, which set aside land so Native Hawaiians could return to farming and ranching their homeland.
+- **Iowa (IA) — Edna Griffin** (activist): Edna Griffin led a 1948 sit-in at a Des Moines, Iowa drugstore that had refused to serve Black customers, a case sometimes called “Iowa's Rosa Parks story.”
+- **Iowa (IA) — James B. Morris Sr.** (activist): James B. Morris Sr. published the Iowa Bystander, one of the oldest Black newspapers in the country, using it to report on and fight discrimination in Iowa.
+- **Idaho (ID) — Polly Bemis** (both): Polly Bemis was brought to Idaho as a young woman during the mining era and later became a respected rancher along the Salmon River, remembered as one of Idaho's notable Chinese American pioneers.
+- **Idaho (ID) — Chief Tendoy** (activist): Chief Tendoy led the Lemhi Shoshone in Idaho and worked to keep peace and protect his people's access to their homeland during a time of growing settler pressure.
+- **Illinois (IL) — Jesse Binga** (both): Jesse Binga founded one of the first Black-owned banks in Chicago, Illinois, giving Black families and businesses access to loans when other banks would not.
+- **Illinois (IL) — Oscar Stanton De Priest** (activist): Oscar Stanton De Priest, elected from Chicago, Illinois, became the first Black member of Congress from a northern state in the twentieth century and pushed for anti-lynching legislation.
+- **Kansas (KS) — Benjamin “Pap” Singleton** (activist): Benjamin “Pap” Singleton helped lead thousands of formerly enslaved people, known as Exodusters, to settle in Kansas and build new lives after the Civil War.
+- **Kentucky (KY) — Georgia Davis Powers** (activist): Georgia Davis Powers became Kentucky's first Black state senator and wrote the state's first civil rights and fair housing laws.
+- **Maine (ME) — Gerald Talbot** (activist): Gerald Talbot became Maine's first Black state legislator and worked to pass some of the state's first civil rights laws.
+- **Maine (ME) — Lucy Nicolar** (activist): Lucy Nicolar, a Penobscot performer and advocate, spent her life sharing Wabanaki culture and pushing for the rights of Maine's Native nations.
+- **Michigan (MI) — Ossian Sweet** (activist): Dr. Ossian Sweet defended his Detroit, Michigan home from a mob that attacked it because a Black family had moved in, and his trial became a landmark case for Black Americans' right to live where they chose.
+- **Minnesota (MN) — Nellie Stone Johnson** (activist): Nellie Stone Johnson, a Minnesota labor and civil rights leader, was the first Black person elected to citywide office in Minneapolis and helped write job-discrimination protections into state law.
+- **Montana (MT) — Plenty Coups** (activist): Plenty Coups, a Crow chief in Montana, chose diplomacy over war to try to protect Crow land and worked to preserve his nation's independence and culture.
+- **Montana (MT) — Susie Walking Bear Yellowtail** (activist): Susie Walking Bear Yellowtail, a Crow nurse from Montana, fought to improve healthcare for Native Americans and helped end the forced sterilization of Native women.
+- **North Carolina (NC) — James E. Shepard** (activist): James E. Shepard founded what became North Carolina Central University, opening doors to higher education for Black students in North Carolina.
+- **North Dakota (ND) — Buffalo Bird Woman (Waheenee)** (both): Buffalo Bird Woman (Waheenee), a Hidatsa woman from North Dakota, shared her detailed knowledge of traditional Hidatsa farming methods, preserving skills that had fed her people for generations.
+- **North Dakota (ND) — Era Bell Thompson** (both): Era Bell Thompson grew up on a North Dakota homestead and became a groundbreaking journalist and editor at Ebony magazine, writing about Black life in America.
+- **North Dakota (ND) — Elizabeth Preston Anderson** (activist): Elizabeth Preston Anderson led North Dakota's campaign for women's right to vote and helped write it into the state constitution.
+- **New Hampshire (NH) — Harriet E. Wilson** (both): Harriet E. Wilson, who lived in New Hampshire, wrote “Our Nig,” believed to be the first novel published in the United States by a Black woman.
+- **New Hampshire (NH) — Amos Fortune** (both): Amos Fortune, who had been enslaved, bought his own freedom and later that of others, and became a respected tanner and community founder in Jaffrey, New Hampshire.
+- **New Mexico (NM) — Fabiola Cabeza de Baca** (both): Fabiola Cabeza de Baca, a Hispanic New Mexican teacher and writer, worked to preserve Hispanic food traditions and improve rural life through her work as a home economist.
+- **Nevada (NV) — James McMillan** (activist): Dr. James McMillan led the effort that peacefully desegregated Las Vegas, Nevada hotels and casinos in 1960 through an agreement known as the Moulin Rouge Agreement.
+- **Nevada (NV) — Lubertha Johnson** (activist): Lubertha Johnson helped found the Las Vegas, Nevada NAACP chapter and fought for fair housing so Black families were not forced into only one part of the city.
+- **New York (NY) — Chien-Shiung Wu** (inventor): Chien-Shiung Wu, a Chinese American physicist who worked in New York, ran an experiment that disproved a rule scientists had long assumed was always true about how atoms behave.
+- **Ohio (OH) — John Mercer Langston** (both): John Mercer Langston, who lived in Ohio, became one of the first Black lawyers in the country and later the first Black man elected to Congress from Virginia.
+- **Oklahoma (OK) — Sequoyah** (inventor): Sequoyah, a Cherokee silversmith, invented a full writing system for the Cherokee language so his people could read and write in their own language; he later settled in what became Cherokee Nation land in Oklahoma.
+- **Oregon (OR) — Beatrice Morrow Cannady** (activist): Beatrice Morrow Cannady ran a newspaper in Portland, Oregon and spent decades fighting the state's discriminatory laws and pushing for civil rights.
+- **Pennsylvania (PA) — James Forten** (both): James Forten, a free Black sailmaker in Philadelphia, Pennsylvania, invented a device that made handling ship sails easier, and used his fortune to support the movement to end slavery.
+- **Rhode Island (RI) — George T. Downing** (activist): George T. Downing, a Rhode Island restaurant owner, led the successful fight to desegregate the state's public schools in 1866.
+- **Rhode Island (RI) — Christiana Carteaux Bannister** (both): Christiana Carteaux Bannister, a Narragansett and Black businesswoman in Providence, Rhode Island, used her wealth to found a home for elderly Black residents and to support Black artists.
+- **Rhode Island (RI) — Sissieretta Jones** (both): Sissieretta Jones, a celebrated singer who lived in Providence, Rhode Island, became one of the first Black artists to perform at Carnegie Hall, opening doors for Black classical performers.
+- **South Dakota (SD) — Ben Reifel** (both): Ben Reifel, a Lakota man from South Dakota, became the first enrolled member of a Sioux tribe elected to the U.S. Congress.
+- **Tennessee (TN) — Z. Alexander Looby** (activist): Z. Alexander Looby, a lawyer in Nashville, Tennessee, represented students arrested during sit-ins, and after his home was bombed for it, the city ended lunch-counter segregation.
+- **Tennessee (TN) — Wilma Rudolph** (activist): Wilma Rudolph, who grew up in Clarksville, Tennessee, became an Olympic champion runner and refused to take part in her hometown's celebration for her until it was integrated.
+- **Utah (UT) — Jane Manning James** (both): Jane Manning James, a Black pioneer who walked much of the way to Utah, became a respected member of her Salt Lake City community despite facing discrimination there.
+- **Utah (UT) — Green Flake** (both): Green Flake was brought to Utah as an enslaved man among the first Mormon pioneers in 1847; he later gained his freedom and became a respected early settler in Union, Utah.
+- **Vermont (VT) — Lucy Terry Prince** (both): Lucy Terry Prince, who had been enslaved, became known as an early Black American poet and later successfully argued a land case before the Vermont Supreme Court, likely the first Black person to do so.
+- **Vermont (VT) — Daisy Turner** (both): Daisy Turner, the daughter of a formerly enslaved man who settled in Vermont, spent her long life preserving her family's history through storytelling, work later recognized by the Smithsonian.
+- **Washington (WA) — Chief Seattle** (activist): Chief Seattle, a Duwamish and Suquamish leader, worked to keep peace with settlers while trying to protect his people's land and way of life in what is now Washington state.
+- **Washington (WA) — Nettie Craig Asberry** (both): Nettie Craig Asberry co-founded one of the first NAACP chapters on the West Coast, in Tacoma, Washington, and fought for Black civil rights in the region for decades.
+- **Wisconsin (WI) — Mabel Watson Raimey** (both): Mabel Watson Raimey became Wisconsin's first Black woman lawyer and spent her career fighting discrimination in Milwaukee's schools and workplaces.
+- **West Virginia (WV) — Memphis Tennessee Garrison** (activist): Memphis Tennessee Garrison, a teacher in the coal towns of West Virginia, organized NAACP chapters across the state and fought for equal pay for Black teachers.
+- **Wyoming (WY) — William Jefferson Hardin** (activist): William Jefferson Hardin became one of the first Black lawmakers in the Wyoming Territory legislature, pushing for Black residents' civil rights in the 1870s.
