@@ -36,7 +36,8 @@
         "blurb": "Benny Benson, a 13-year-old Alutiiq boy, won a territory-wide contest to design Alaska's flag, choosing the Big Dipper and North Star to represent strength and a guiding light.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Last Frontier"
   },
   "AL": {
     "code": "AL",
@@ -79,7 +80,8 @@
         "blurb": "Coretta Scott King, born in Marion, Alabama, worked alongside her husband Martin Luther King Jr. in the civil rights movement and continued that work for decades after his death.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Yellowhammer State"
   },
   "AR": {
     "code": "AR",
@@ -122,7 +124,8 @@
         "blurb": "John H. Johnson grew up in Arkansas City, Arkansas, and founded Ebony and Jet magazines, building one of the largest Black-owned publishing companies in the country.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Natural State"
   },
   "AZ": {
     "code": "AZ",
@@ -148,9 +151,9 @@
     "natureConfidence": "high",
     "people": [
       {
-        "name": "Raúl Héctor Castro",
+        "name": "Ra\u00fal H\u00e9ctor Castro",
         "role": "activist",
-        "blurb": "Raúl Héctor Castro grew up in a Mexican immigrant family in Arizona and, after years working as a lawyer for Mexican American communities facing discrimination, became the state's first Latino governor.",
+        "blurb": "Ra\u00fal H\u00e9ctor Castro grew up in a Mexican immigrant family in Arizona and, after years working as a lawyer for Mexican American communities facing discrimination, became the state's first Latino governor.",
         "confidence": "review"
       },
       {
@@ -165,7 +168,8 @@
         "blurb": "Manuelito, a Navajo leader, resisted the forced removal of his people from their Arizona and New Mexico homeland and later helped negotiate the 1868 treaty that let the Navajo return home.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Grand Canyon State"
   },
   "CA": {
     "code": "CA",
@@ -209,7 +213,8 @@
         "blurb": "Fred Korematsu, a Japanese American from California, refused to report to a WWII incarceration camp and fought his conviction in court for decades until it was overturned, becoming a symbol of civil liberties.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Golden State"
   },
   "CO": {
     "code": "CO",
@@ -248,7 +253,8 @@
         "blurb": "Chipeta, a Ute leader, traveled to Washington, D.C. to negotiate on behalf of the Ute people after they were forced from their Colorado homeland, working to protect what land and rights she could.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Centennial State"
   },
   "CT": {
     "code": "CT",
@@ -272,7 +278,7 @@
       "sperm whale"
     ],
     "natureConfidence": "review",
-    "natureNote": "Sperm whale is Connecticut's official state animal (an unusual pick since CT isn't coastal in the way whaling states usually are) — worth a source check.",
+    "natureNote": "Sperm whale is Connecticut's official state animal (an unusual pick since CT isn't coastal in the way whaling states usually are) \u2014 worth a source check.",
     "people": [
       {
         "name": "Prudence Crandall",
@@ -292,7 +298,8 @@
         "blurb": "Constance Baker Motley, who grew up in New Haven, Connecticut, was a lawyer on the legal team that won Brown v. Board of Education and later became the first Black woman appointed as a federal judge.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Constitution State"
   },
   "DC": {
     "code": "DC",
@@ -374,7 +381,8 @@
         "blurb": "Annie Jump Cannon, born in Dover, Delaware, created a system for classifying stars by their temperature that astronomers still use today.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The First State"
   },
   "FL": {
     "code": "FL",
@@ -416,7 +424,8 @@
         "blurb": "Osceola led Seminole resistance in Florida against the U.S. government's attempt to force his people from their homeland during the Seminole Wars.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Sunshine State"
   },
   "GA": {
     "code": "GA",
@@ -460,7 +469,8 @@
         "blurb": "Alonzo Herndon was born enslaved in Georgia and became one of the wealthiest Black businessmen in the country, founding what became the Atlanta Life Insurance Company.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Peach State"
   },
   "HI": {
     "code": "HI",
@@ -487,9 +497,9 @@
     "natureConfidence": "high",
     "people": [
       {
-        "name": "Queen Liliʻuokalani",
+        "name": "Queen Lili\u02bbuokalani",
         "role": "activist",
-        "blurb": "Queen Liliʻuokalani was Hawaii's last reigning monarch; after her kingdom was overthrown, she kept fighting in writing and in court for her people's rights and sovereignty.",
+        "blurb": "Queen Lili\u02bbuokalani was Hawaii's last reigning monarch; after her kingdom was overthrown, she kept fighting in writing and in court for her people's rights and sovereignty.",
         "confidence": "high"
       },
       {
@@ -499,12 +509,13 @@
         "confidence": "high"
       },
       {
-        "name": "Prince Jonah Kūhiō Kalanianaʻole",
+        "name": "Prince Jonah K\u016bhi\u014d Kalaniana\u02bbole",
         "role": "activist",
-        "blurb": "Prince Jonah Kūhiō Kalanianaʻole served as Hawaii's delegate to Congress and wrote the Hawaiian Homes Commission Act, which set aside land so Native Hawaiians could return to farming and ranching their homeland.",
+        "blurb": "Prince Jonah K\u016bhi\u014d Kalaniana\u02bbole served as Hawaii's delegate to Congress and wrote the Hawaiian Homes Commission Act, which set aside land so Native Hawaiians could return to farming and ranching their homeland.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Aloha State"
   },
   "IA": {
     "code": "IA",
@@ -528,12 +539,12 @@
       "white-tailed deer"
     ],
     "natureConfidence": "review",
-    "natureNote": "Iowa's state tree is officially just “Oak” (no single species specified); some sources cite Bur Oak — confirm before printing a species name.",
+    "natureNote": "Iowa's state tree is officially just \u201cOak\u201d (no single species specified); some sources cite Bur Oak \u2014 confirm before printing a species name.",
     "people": [
       {
         "name": "Edna Griffin",
         "role": "activist",
-        "blurb": "Edna Griffin led a 1948 sit-in at a Des Moines, Iowa drugstore that had refused to serve Black customers, a case sometimes called “Iowa's Rosa Parks story.”",
+        "blurb": "Edna Griffin led a 1948 sit-in at a Des Moines, Iowa drugstore that had refused to serve Black customers, a case sometimes called \u201cIowa's Rosa Parks story.\u201d",
         "confidence": "review"
       },
       {
@@ -548,7 +559,8 @@
         "blurb": "James B. Morris Sr. published the Iowa Bystander, one of the oldest Black newspapers in the country, using it to report on and fight discrimination in Iowa.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Hawkeye State"
   },
   "ID": {
     "code": "ID",
@@ -591,7 +603,8 @@
         "blurb": "Chief Tendoy led the Lemhi Shoshone in Idaho and worked to keep peace and protect his people's access to their homeland during a time of growing settler pressure.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Gem State"
   },
   "IL": {
     "code": "IL",
@@ -634,7 +647,8 @@
         "blurb": "Oscar Stanton De Priest, elected from Chicago, Illinois, became the first Black member of Congress from a northern state in the twentieth century and pushed for anti-lynching legislation.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Prairie State"
   },
   "IN": {
     "code": "IN",
@@ -678,7 +692,8 @@
         "blurb": "Levi and Catharine Coffin ran an Underground Railroad stop in Fountain City, Indiana that helped more than 2,000 people escape slavery.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Hoosier State"
   },
   "KS": {
     "code": "KS",
@@ -715,12 +730,13 @@
         "confidence": "high"
       },
       {
-        "name": "Benjamin “Pap” Singleton",
+        "name": "Benjamin \u201cPap\u201d Singleton",
         "role": "activist",
-        "blurb": "Benjamin “Pap” Singleton helped lead thousands of formerly enslaved people, known as Exodusters, to settle in Kansas and build new lives after the Civil War.",
+        "blurb": "Benjamin \u201cPap\u201d Singleton helped lead thousands of formerly enslaved people, known as Exodusters, to settle in Kansas and build new lives after the Civil War.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Sunflower State"
   },
   "KY": {
     "code": "KY",
@@ -763,7 +779,8 @@
         "blurb": "Georgia Davis Powers became Kentucky's first Black state senator and wrote the state's first civil rights and fair housing laws.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Bluegrass State"
   },
   "LA": {
     "code": "LA",
@@ -806,7 +823,8 @@
         "blurb": "Norbert Rillieux, a free Black inventor from New Orleans, Louisiana, invented a new sugar-refining process that made sugar production safer and far more efficient.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Pelican State"
   },
   "MA": {
     "code": "MA",
@@ -852,7 +870,8 @@
         "blurb": "W.E.B. Du Bois, born in Great Barrington, Massachusetts, co-founded the NAACP and spent his life researching and writing about racial inequality in America.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Bay State"
   },
   "MD": {
     "code": "MD",
@@ -895,7 +914,8 @@
         "blurb": "Thurgood Marshall, born in Baltimore, Maryland, argued Brown v. Board of Education and later became the first Black justice on the U.S. Supreme Court.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Old Line State"
   },
   "ME": {
     "code": "ME",
@@ -935,10 +955,11 @@
       {
         "name": "Samantha Smith",
         "role": "activist",
-        "blurb": "Samantha Smith, a ten-year-old from Maine, wrote a letter to the Soviet leader asking about the risk of nuclear war and was invited to visit the Soviet Union as a “goodwill ambassador.”",
+        "blurb": "Samantha Smith, a ten-year-old from Maine, wrote a letter to the Soviet leader asking about the risk of nuclear war and was invited to visit the Soviet Union as a \u201cgoodwill ambassador.\u201d",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Pine Tree State"
   },
   "MI": {
     "code": "MI",
@@ -972,7 +993,7 @@
       {
         "name": "Elijah McCoy",
         "role": "inventor",
-        "blurb": "Elijah McCoy, the son of parents who had escaped slavery, worked in Michigan and patented an automatic lubricator for train engines so reliable that people started asking for “the real McCoy.”",
+        "blurb": "Elijah McCoy, the son of parents who had escaped slavery, worked in Michigan and patented an automatic lubricator for train engines so reliable that people started asking for \u201cthe real McCoy.\u201d",
         "confidence": "high"
       },
       {
@@ -981,7 +1002,8 @@
         "blurb": "Berry Gordy founded Motown Records in Detroit, Michigan, building a music company that launched the careers of many Black artists and changed American music.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Great Lakes State"
   },
   "MN": {
     "code": "MN",
@@ -1014,9 +1036,9 @@
         "confidence": "high"
       },
       {
-        "name": "Charles Eastman (Ohiyésa)",
+        "name": "Charles Eastman (Ohiy\u00e9sa)",
         "role": "both",
-        "blurb": "Charles Eastman (Ohiyésa), a Santee Dakota physician born in Minnesota, became one of the first Native Americans certified as a medical doctor and spent his life writing and speaking about Dakota culture and rights.",
+        "blurb": "Charles Eastman (Ohiy\u00e9sa), a Santee Dakota physician born in Minnesota, became one of the first Native Americans certified as a medical doctor and spent his life writing and speaking about Dakota culture and rights.",
         "confidence": "high"
       },
       {
@@ -1025,7 +1047,8 @@
         "blurb": "Nellie Stone Johnson, a Minnesota labor and civil rights leader, was the first Black person elected to citywide office in Minneapolis and helped write job-discrimination protections into state law.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The North Star State"
   },
   "MO": {
     "code": "MO",
@@ -1068,7 +1091,8 @@
         "blurb": "Josephine Baker, born in St. Louis, Missouri, became an international star and used her fame to refuse to perform for segregated audiences and to support the civil rights movement.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Show-Me State"
   },
   "MS": {
     "code": "MS",
@@ -1093,7 +1117,7 @@
       "gray fox"
     ],
     "natureConfidence": "review",
-    "natureNote": "Mississippi schoolchildren voted for a proposed new state bird (wood duck) around 2021 — confirm whether Northern Mockingbird is still the legally designated bird.",
+    "natureNote": "Mississippi schoolchildren voted for a proposed new state bird (wood duck) around 2021 \u2014 confirm whether Northern Mockingbird is still the legally designated bird.",
     "people": [
       {
         "name": "Fannie Lou Hamer",
@@ -1113,7 +1137,8 @@
         "blurb": "Ida B. Wells, born in Holly Springs, Mississippi, used investigative journalism to document lynching across the country, risking her life to demand justice.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Magnolia State"
   },
   "MT": {
     "code": "MT",
@@ -1155,7 +1180,8 @@
         "blurb": "Jeannette Rankin, from Montana, became the first woman elected to the U.S. Congress and was a lifelong advocate for peace and women's right to vote.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Treasure State"
   },
   "NC": {
     "code": "NC",
@@ -1179,7 +1205,7 @@
       "gray squirrel"
     ],
     "natureConfidence": "review",
-    "natureNote": "North Carolina's official tree statute names simply “Pine” without a species; Longleaf Pine is the commonly cited species — confirm before printing.",
+    "natureNote": "North Carolina's official tree statute names simply \u201cPine\u201d without a species; Longleaf Pine is the commonly cited species \u2014 confirm before printing.",
     "people": [
       {
         "name": "Franklin McCain",
@@ -1199,7 +1225,8 @@
         "blurb": "James E. Shepard founded what became North Carolina Central University, opening doors to higher education for Black students in North Carolina.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Tar Heel State"
   },
   "ND": {
     "code": "ND",
@@ -1243,7 +1270,8 @@
         "blurb": "Elizabeth Preston Anderson led North Dakota's campaign for women's right to vote and helped write it into the state constitution.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Peace Garden State"
   },
   "NE": {
     "code": "NE",
@@ -1282,10 +1310,11 @@
       {
         "name": "Standing Bear",
         "role": "activist",
-        "blurb": "Standing Bear, a Ponca chief, sued the U.S. government from Nebraska and won a landmark 1879 court ruling that Native Americans are “persons” under the law with the right to sue for their freedom.",
+        "blurb": "Standing Bear, a Ponca chief, sued the U.S. government from Nebraska and won a landmark 1879 court ruling that Native Americans are \u201cpersons\u201d under the law with the right to sue for their freedom.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Cornhusker State"
   },
   "NH": {
     "code": "NH",
@@ -1313,7 +1342,7 @@
       {
         "name": "Harriet E. Wilson",
         "role": "both",
-        "blurb": "Harriet E. Wilson, who lived in New Hampshire, wrote “Our Nig,” believed to be the first novel published in the United States by a Black woman.",
+        "blurb": "Harriet E. Wilson, who lived in New Hampshire, wrote \u201cOur Nig,\u201d believed to be the first novel published in the United States by a Black woman.",
         "confidence": "review"
       },
       {
@@ -1328,7 +1357,8 @@
         "blurb": "Amos Fortune, who had been enslaved, bought his own freedom and later that of others, and became a respected tanner and community founder in Jaffrey, New Hampshire.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Granite State"
   },
   "NJ": {
     "code": "NJ",
@@ -1375,7 +1405,8 @@
         "blurb": "Larry Doby grew up in Paterson, New Jersey, and became the first Black player in the American League, facing down threats and insults to help integrate baseball.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Garden State"
   },
   "NM": {
     "code": "NM",
@@ -1390,7 +1421,7 @@
     "population2020": 2117522,
     "bird": "Greater Roadrunner",
     "flower": "Yucca",
-    "tree": "Piñon Pine",
+    "tree": "Pi\u00f1on Pine",
     "crops": [
       "pecans",
       "chile peppers"
@@ -1418,7 +1449,8 @@
         "blurb": "Maria Martinez, a potter from San Ildefonso Pueblo in New Mexico, revived and perfected a black-on-black pottery technique that became famous around the world.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Land of Enchantment"
   },
   "NV": {
     "code": "NV",
@@ -1433,7 +1465,7 @@
     "population2020": 3104614,
     "bird": "Mountain Bluebird",
     "flower": "Sagebrush",
-    "tree": "Single-leaf Piñon and Bristlecone Pine",
+    "tree": "Single-leaf Pi\u00f1on and Bristlecone Pine",
     "animals": [
       "desert bighorn sheep"
     ],
@@ -1457,7 +1489,8 @@
         "blurb": "Lubertha Johnson helped found the Las Vegas, Nevada NAACP chapter and fought for fair housing so Black families were not forced into only one part of the city.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Silver State"
   },
   "NY": {
     "code": "NY",
@@ -1500,7 +1533,8 @@
         "blurb": "Chien-Shiung Wu, a Chinese American physicist who worked in New York, ran an experiment that disproved a rule scientists had long assumed was always true about how atoms behave.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Empire State"
   },
   "OH": {
     "code": "OH",
@@ -1543,7 +1577,8 @@
         "blurb": "John Parker, a formerly enslaved man who became an inventor, helped hundreds of people escape slavery by ferrying them across the Ohio River to freedom, all while running his own iron foundry in Ripley, Ohio.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Buckeye State"
   },
   "OK": {
     "code": "OK",
@@ -1567,7 +1602,7 @@
       "American bison"
     ],
     "natureConfidence": "review",
-    "natureNote": "Oklahoma's floral emblem changed from Mistletoe to Oklahoma Rose in 2004 — confirm Oklahoma Rose is still current.",
+    "natureNote": "Oklahoma's floral emblem changed from Mistletoe to Oklahoma Rose in 2004 \u2014 confirm Oklahoma Rose is still current.",
     "people": [
       {
         "name": "Wilma Mankiller",
@@ -1587,7 +1622,8 @@
         "blurb": "Sequoyah, a Cherokee silversmith, invented a full writing system for the Cherokee language so his people could read and write in their own language; he later settled in what became Cherokee Nation land in Oklahoma.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Sooner State"
   },
   "OR": {
     "code": "OR",
@@ -1616,7 +1652,7 @@
       {
         "name": "Chief Joseph",
         "role": "activist",
-        "blurb": "Chief Joseph led the Nez Perce from their homeland in Oregon's Wallowa Valley, trying to reach safety in Canada rather than be forced onto a reservation, and became known for his skill and his words, “I will fight no more forever.”",
+        "blurb": "Chief Joseph led the Nez Perce from their homeland in Oregon's Wallowa Valley, trying to reach safety in Canada rather than be forced onto a reservation, and became known for his skill and his words, \u201cI will fight no more forever.\u201d",
         "confidence": "high"
       },
       {
@@ -1631,7 +1667,8 @@
         "blurb": "Minoru Yasui, a Japanese American lawyer from Oregon, deliberately broke a curfew law during World War II to challenge it in court, fighting the incarceration of Japanese Americans.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Beaver State"
   },
   "PA": {
     "code": "PA",
@@ -1674,7 +1711,8 @@
         "blurb": "James Forten, a free Black sailmaker in Philadelphia, Pennsylvania, invented a device that made handling ship sails easier, and used his fortune to support the movement to end slavery.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Keystone State"
   },
   "RI": {
     "code": "RI",
@@ -1718,7 +1756,8 @@
         "blurb": "Sissieretta Jones, a celebrated singer who lived in Providence, Rhode Island, became one of the first Black artists to perform at Carnegie Hall, opening doors for Black classical performers.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Ocean State"
   },
   "SC": {
     "code": "SC",
@@ -1757,10 +1796,11 @@
       {
         "name": "Septima Clark",
         "role": "activist",
-        "blurb": "Septima Clark, born in Charleston, South Carolina, ran “citizenship schools” that taught Black adults to read so they could pass unfair voter registration tests.",
+        "blurb": "Septima Clark, born in Charleston, South Carolina, ran \u201ccitizenship schools\u201d that taught Black adults to read so they could pass unfair voter registration tests.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Palmetto State"
   },
   "SD": {
     "code": "SD",
@@ -1799,12 +1839,13 @@
         "confidence": "review"
       },
       {
-        "name": "Zitkála-Ša",
+        "name": "Zitk\u00e1la-\u0160a",
         "role": "both",
-        "blurb": "Zitkála-Ša (Gertrude Simmons Bonnin), a Yankton Dakota writer born in South Dakota, co-founded the National Council of American Indians and fought for Native American citizenship and land rights.",
+        "blurb": "Zitk\u00e1la-\u0160a (Gertrude Simmons Bonnin), a Yankton Dakota writer born in South Dakota, co-founded the National Council of American Indians and fought for Native American citizenship and land rights.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Mount Rushmore State"
   },
   "TN": {
     "code": "TN",
@@ -1847,7 +1888,8 @@
         "blurb": "Wilma Rudolph, who grew up in Clarksville, Tennessee, became an Olympic champion runner and refused to take part in her hometown's celebration for her until it was integrated.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Volunteer State"
   },
   "TX": {
     "code": "TX",
@@ -1889,7 +1931,8 @@
         "blurb": "Emma Tenayuca helped lead the 1938 pecan shellers' strike in San Antonio, Texas, when thousands of mostly Mexican American workers walked out for fair pay.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Lone Star State"
   },
   "UT": {
     "code": "UT",
@@ -1912,7 +1955,7 @@
       "Rocky Mountain elk"
     ],
     "natureConfidence": "review",
-    "natureNote": "Utah changed its state tree from Blue Spruce to Quaking Aspen in 2014 — confirm this is reflected in current sources.",
+    "natureNote": "Utah changed its state tree from Blue Spruce to Quaking Aspen in 2014 \u2014 confirm this is reflected in current sources.",
     "people": [
       {
         "name": "Jane Manning James",
@@ -1932,7 +1975,8 @@
         "blurb": "Green Flake was brought to Utah as an enslaved man among the first Mormon pioneers in 1847; he later gained his freedom and became a respected early settler in Union, Utah.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Beehive State"
   },
   "VA": {
     "code": "VA",
@@ -1976,7 +2020,8 @@
         "blurb": "Booker T. Washington, born enslaved in Virginia, founded the Tuskegee Institute and became one of the most influential Black educators and leaders of his era.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Old Dominion"
   },
   "VT": {
     "code": "VT",
@@ -2022,7 +2067,8 @@
         "blurb": "Daisy Turner, the daughter of a formerly enslaved man who settled in Vermont, spent her long life preserving her family's history through storytelling, work later recognized by the Smithsonian.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Green Mountain State"
   },
   "WA": {
     "code": "WA",
@@ -2064,7 +2110,8 @@
         "blurb": "Gordon Hirabayashi, a college student in Washington, deliberately broke curfew and internment orders during World War II to challenge them in court, and decades later his conviction was overturned.",
         "confidence": "high"
       }
-    ]
+    ],
+    "nickname": "The Evergreen State"
   },
   "WI": {
     "code": "WI",
@@ -2108,7 +2155,8 @@
         "blurb": "Mabel Watson Raimey became Wisconsin's first Black woman lawyer and spent her career fighting discrimination in Milwaukee's schools and workplaces.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Badger State"
   },
   "WV": {
     "code": "WV",
@@ -2150,7 +2198,8 @@
         "blurb": "Memphis Tennessee Garrison, a teacher in the coal towns of West Virginia, organized NAACP chapters across the state and fought for equal pay for Black teachers.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Mountain State"
   },
   "WY": {
     "code": "WY",
@@ -2189,6 +2238,7 @@
         "blurb": "William Jefferson Hardin became one of the first Black lawmakers in the Wyoming Territory legislature, pushing for Black residents' civil rights in the 1870s.",
         "confidence": "review"
       }
-    ]
+    ],
+    "nickname": "The Equality State"
   }
 }
