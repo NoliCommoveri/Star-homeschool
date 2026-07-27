@@ -1,17 +1,17 @@
 <!DOCTYPE html>
-<!-- Geography Star v1.2 — Stage 3 (Natural World shipped; Famous People held).
-     Map deck (modes 1-5) shipped in Stage 1. Capitals and Population
-     shipped in Stage 2. Natural World (mode 9: state bird/flower/tree/
-     crop/animal) ships in this update — mechanically-sourced-enough that
-     it doesn't need the spec §9 review gate to hold it back, though a
-     handful of entries are flagged for a follow-up check (see
-     geodata/build-notes.md). Famous People (mode 8) is authored into
-     geodata/states.json with confidence flags but deliberately NOT
-     inlined here yet — spec §9/§11 require a parent review pass on
-     biographical content before it ships. See docs/geography-star-spec.md
-     for the full spec and build order, and geodata/build-notes.md for how
-     the inlined data below was generated / is kept in sync and for the
-     Stage 3 review checklist. -->
+<!-- Geography Star v2.0 — Stage 4 (Profiles, difficulty tiers, mastery,
+     region progression, CSV export). Map deck (modes 1-5) shipped in
+     Stage 1. Capitals and Population shipped in Stage 2. Natural World
+     (mode 9) shipped in Stage 3 — a handful of entries are flagged for a
+     follow-up check (see geodata/build-notes.md). Famous People (mode 8)
+     remains authored-but-not-inlined per the spec §9/§11 parent-review
+     gate; it has no UI yet. This update adds per-child profiles with a
+     parent PIN, difficulty tiers that gate which modes and how much of
+     the map are unlocked, per-state-per-mode mastery tracking with
+     review/resurfacing, region unlock progression, a parent settings +
+     mastery dashboard, and CSV export — mirroring the pattern already
+     shipped in Math Star and Spelling Star. See docs/geography-star-spec.md
+     §6-§7, §11 for the full spec. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -46,7 +46,8 @@
   .center { text-align: center; }
   label.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--body-text); cursor: pointer; }
   input[type=text] { font-family: inherit; font-size: 20px; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--input-bg); color: var(--text); text-align: center; letter-spacing: .08em; text-transform: uppercase; width: 140px; }
-  input[type=text].wide-input { width: 240px; text-transform: none; letter-spacing: normal; }
+  input[type=text].wide-input, input[type=password].wide-input { width: 240px; text-transform: none; letter-spacing: normal; }
+  input[type=password], input[type=number] { font-family: inherit; font-size: 16px; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--input-bg); color: var(--text); }
   .eyebrow.center { text-align: center; }
 
   /* ---- mode menu ---- */
@@ -116,7 +117,7 @@
 </div>
 
 <script>
-const APP_VERSION = "v1.2";
+const APP_VERSION = "v2.0";
 
 /* ===================== GENERATED MAP DATA ===================== */
 /* Regenerate with `node geodata/build.js` -- see geodata/build-notes.md.  */
@@ -169,6 +170,189 @@ const ALL_CODES = Object.keys(STATE_NAMES).sort();
 const CAPITAL_CODES = Object.keys(CAPITALS).sort();
 const SMALL_CODES = Object.keys(SMALL_STATE_CENTROID);
 const ROUND_SIZE = 10;
+
+// ---------- regions & difficulty tiers (spec §6) ----------
+const REGION_ORDER = ["New England", "Mid-Atlantic", "Southeast", "Midwest", "Great Plains", "Southwest", "Mountain West", "Pacific", "Non-contiguous"];
+const TIERS = {
+  k2:  { label: "K–2",      modes: ["find", "name"], regionScope: "single" },
+  g35: { label: "3rd–5th",  modes: ["find", "name", "capital", "abbr", "unabbr", "capitals", "nature"], regionScope: "progress" },
+  g6:  { label: "6th & up",      modes: ["find", "name", "capital", "abbr", "unabbr", "capitals", "population", "nature"], regionScope: "all" },
+};
+// Columns shown on the parent dashboard's per-region mastery grid; keys
+// match MODE_TITLES below regardless of which tier currently unlocks them,
+// so a parent can see history left over from a since-changed tier.
+const MASTERY_MODE_COLUMNS = ["find", "name", "capital", "abbr", "unabbr", "capitals", "population", "nature"];
+
+// ---------- profiles / storage (mirrors Math Star & Spelling Star, spec §6) ----------
+const STORAGE_PREFIX = "geostar-";
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function nameToKey(name) {
+  const s = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return STORAGE_PREFIX + (s || "child");
+}
+function listProfiles() {
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(STORAGE_PREFIX)) continue;
+    const bareName = k.slice(STORAGE_PREFIX.length) || "profile";
+    try {
+      const d = JSON.parse(localStorage.getItem(k));
+      if (d && d.childName && d.pin) { out.push({ key: k, name: d.childName, corrupted: false }); continue; }
+      // Parses fine but is missing required fields — surface it as damaged
+      // rather than silently dropping it (and the child's data with it).
+      out.push({ key: k, name: bareName, corrupted: true });
+    } catch (e) {
+      out.push({ key: k, name: bareName, corrupted: true });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+function freshData(childName, pin, tier) {
+  return {
+    childName, pin, tier: TIERS[tier] ? tier : "g35",
+    allowChildFocusSwitch: false,
+    activeRegionIndex: 0,
+    unlockedRegionCount: 1,
+    mastery: {}, graduated: {}, reviewFacts: {}, sessionsByMode: {},
+    sessionLog: [],
+    masteryStreakRequired: 3,
+    resurfaceAfterSessions: 10,
+    reviewBankPercent: 30,
+  };
+}
+let KEY = null;
+let data = null;
+// Set by load() on failure so callers can tell "no profile at this key"
+// apart from "data was there but unreadable" (real corruption).
+let lastLoadError = null;
+function load(key) {
+  lastLoadError = null;
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { lastLoadError = "corrupted"; return null; }
+  if (!d || !d.childName || !d.pin) { lastLoadError = "corrupted"; return null; }
+  KEY = key;
+  if (!TIERS[d.tier]) d.tier = "g35";
+  if (d.allowChildFocusSwitch === undefined) d.allowChildFocusSwitch = false;
+  if (!d.activeRegionIndex) d.activeRegionIndex = 0;
+  if (!d.unlockedRegionCount) d.unlockedRegionCount = 1;
+  if (!d.mastery) d.mastery = {};
+  if (!d.graduated) d.graduated = {};
+  if (!d.reviewFacts) d.reviewFacts = {};
+  if (!d.sessionsByMode) d.sessionsByMode = {};
+  if (!d.sessionLog) d.sessionLog = [];
+  // Reliability cap, matching Math Star/Spelling Star precedent: keep the
+  // file snappy on old devices. CSV export is the long-term record.
+  if (d.sessionLog.length > 500) d.sessionLog = d.sessionLog.slice(d.sessionLog.length - 500);
+  if (!d.masteryStreakRequired) d.masteryStreakRequired = 3;
+  if (!d.resurfaceAfterSessions) d.resurfaceAfterSessions = 10;
+  if (!d.reviewBankPercent) d.reviewBankPercent = 30;
+  return d;
+}
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; }
+}
+function applyIdentity() {
+  document.getElementById("greeting").innerHTML = data
+    ? `Hi, ${esc(data.childName)}! &#128506;&#65039;`
+    : "States &amp; Capitals &#128506;&#65039;";
+}
+
+// ---------- region scope & mastery engine (spec §6, §7) ----------
+function regionsInScope() {
+  const tier = TIERS[data.tier] || TIERS.g35;
+  if (tier.regionScope === "all") return REGION_ORDER.slice();
+  const unlockedIdx = Math.max(0, Math.min(data.unlockedRegionCount, REGION_ORDER.length) - 1);
+  if (tier.regionScope === "single") {
+    const active = Math.max(0, Math.min(data.activeRegionIndex, unlockedIdx));
+    return [REGION_ORDER[active]];
+  }
+  return REGION_ORDER.slice(0, unlockedIdx + 1);
+}
+function codesInScope(pool) {
+  const regions = regionsInScope();
+  const scoped = pool.filter((c) => regions.includes(STATE_REGION[c]));
+  return scoped.length ? scoped : pool.slice();
+}
+// Builds a round's queue: states already graduated in this mode drop out of
+// rotation, states flagged in reviewFacts (a recent miss) are weighted up to
+// reviewBankPercent of the round, and everything is scoped to the child's
+// unlocked region(s) first (spec §6, §7).
+function buildQueue(modeId, pool, size) {
+  const base = codesInScope(pool);
+  const grad = data.graduated[modeId] || {};
+  let activeCodes = base.filter((c) => grad[c] === undefined);
+  if (!activeCodes.length) activeCodes = base.slice(); // everything graduated -> resurface a review round
+  const n = Math.min(size, activeCodes.length);
+  const review = data.reviewFacts[modeId] || {};
+  const reviewCodes = activeCodes.filter((c) => review[c]);
+  const freshCodes = activeCodes.filter((c) => !review[c]);
+  const reviewCount = Math.min(Math.round((n * (data.reviewBankPercent || 30)) / 100), reviewCodes.length);
+  const chosen = sample(reviewCodes, reviewCount);
+  chosen.push(...sample(freshCodes, n - chosen.length));
+  if (chosen.length < n) chosen.push(...sample(activeCodes.filter((c) => !chosen.includes(c)), n - chosen.length));
+  return shuffle(chosen);
+}
+function recordAnswer(modeId, code, isCorrect) {
+  if (!data) return;
+  data.mastery[modeId] = data.mastery[modeId] || {};
+  data.graduated[modeId] = data.graduated[modeId] || {};
+  data.reviewFacts[modeId] = data.reviewFacts[modeId] || {};
+  const req = data.masteryStreakRequired || 3;
+  if (isCorrect) {
+    const streak = (data.mastery[modeId][code] || 0) + 1;
+    delete data.reviewFacts[modeId][code];
+    if (streak >= req) {
+      delete data.mastery[modeId][code];
+      data.graduated[modeId][code] = data.sessionsByMode[modeId] || 0;
+    } else {
+      data.mastery[modeId][code] = streak;
+    }
+  } else {
+    data.mastery[modeId][code] = 0;
+    data.reviewFacts[modeId][code] = true;
+    delete data.graduated[modeId][code]; // a miss resurfaces it immediately
+  }
+  persist();
+}
+// A region unlocks the next one once every state in it is graduated in
+// "find" (the foundational map-recognition mode) — ties progression to
+// something the child has actually demonstrated, spec §6.
+function checkRegionProgression() {
+  const tier = TIERS[data.tier] || TIERS.g35;
+  if (tier.regionScope === "all") return;
+  if (data.unlockedRegionCount >= REGION_ORDER.length) return;
+  const region = REGION_ORDER[data.unlockedRegionCount - 1];
+  const codes = ALL_CODES.filter((c) => STATE_REGION[c] === region);
+  const grad = data.graduated["find"] || {};
+  if (codes.length && codes.every((c) => grad[c] !== undefined)) {
+    data.unlockedRegionCount++;
+    if (tier.regionScope === "single") data.activeRegionIndex = data.unlockedRegionCount - 1;
+  }
+}
+function recordSessionEnd(modeId, correct, total) {
+  if (!data) return;
+  data.sessionsByMode[modeId] = (data.sessionsByMode[modeId] || 0) + 1;
+  const cur = data.sessionsByMode[modeId];
+  const resurfaceAfter = data.resurfaceAfterSessions || 10;
+  const grad = data.graduated[modeId] || {};
+  Object.keys(grad).forEach((code) => {
+    if (cur - grad[code] >= resurfaceAfter) delete grad[code];
+  });
+  data.sessionLog.push({ date: Date.now(), mode: modeId, region: regionsInScope().join(" + "), correct, total });
+  if (data.sessionLog.length > 500) data.sessionLog = data.sessionLog.slice(data.sessionLog.length - 500);
+  checkRegionProgression();
+  persist();
+}
+function regionModeStats(region, modeId) {
+  const pool = modeId === "capital" || modeId === "capitals" ? CAPITAL_CODES : ALL_CODES;
+  const codes = pool.filter((c) => STATE_REGION[c] === region);
+  const grad = data.graduated[modeId] || {};
+  const done = codes.filter((c) => grad[c] !== undefined).length;
+  return { done, total: codes.length };
+}
 
 // ---------- map rendering ----------
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -279,28 +463,39 @@ function removeLabels(svg) {
 // ---------- app shell ----------
 const app = document.getElementById("app");
 const homeBtn = document.getElementById("homeBtn");
-function goHome() { renderMenu(); }
+function goHome() { if (!data) return renderPicker(); renderHome(); }
 
 const MODES = [
-  { id: "find", title: "Find the State", icon: "&#128269;", desc: "We name a state — you click it on the map.", deck: "Map Deck" },
-  { id: "name", title: "Name the State", icon: "&#127991;&#65039;", desc: "A state lights up — you pick its name.", deck: "Map Deck" },
-  { id: "capital", title: "Click the Capital", icon: "&#128205;", desc: "Click the dot for the right capital city.", deck: "Map Deck" },
-  { id: "abbr", title: "State &rarr; Abbreviation", icon: "&#128288;", desc: "Kentucky &rarr; KY. Works with the map hidden.", deck: "Map Deck" },
-  { id: "unabbr", title: "Abbreviation &rarr; State", icon: "&#128290;", desc: "KY &rarr; Kentucky. Works with the map hidden.", deck: "Map Deck" },
-  { id: "capitals", title: "Capitals", icon: "&#127970;", desc: "State &harr; capital, either direction. Works with the map hidden.", deck: "Facts Deck" },
-  { id: "population", title: "Population", icon: "&#128101;", desc: "About how many people live there? 2020 Census.", deck: "Facts Deck" },
-  { id: "nature", title: "Natural World", icon: "&#127801;", desc: "State bird, flower, tree, crops, and animals.", deck: "Facts Deck" },
+  { id: "find", title: "Find the State", icon: "&#128269;", desc: "We name a state — you click it on the map.", deck: "Map Deck", tiers: ["k2", "g35", "g6"] },
+  { id: "name", title: "Name the State", icon: "&#127991;&#65039;", desc: "A state lights up — you pick its name.", deck: "Map Deck", tiers: ["k2", "g35", "g6"] },
+  { id: "capital", title: "Click the Capital", icon: "&#128205;", desc: "Click the dot for the right capital city.", deck: "Map Deck", tiers: ["g35", "g6"] },
+  { id: "abbr", title: "State &rarr; Abbreviation", icon: "&#128288;", desc: "Kentucky &rarr; KY. Works with the map hidden.", deck: "Map Deck", tiers: ["g35", "g6"] },
+  { id: "unabbr", title: "Abbreviation &rarr; State", icon: "&#128290;", desc: "KY &rarr; Kentucky. Works with the map hidden.", deck: "Map Deck", tiers: ["g35", "g6"] },
+  { id: "capitals", title: "Capitals", icon: "&#127970;", desc: "State &harr; capital, either direction. Works with the map hidden.", deck: "Facts Deck", tiers: ["g35", "g6"] },
+  { id: "population", title: "Population", icon: "&#128101;", desc: "About how many people live there? 2020 Census.", deck: "Facts Deck", tiers: ["g6"] },
+  { id: "nature", title: "Natural World", icon: "&#127801;", desc: "State bird, flower, tree, crops, and animals.", deck: "Facts Deck", tiers: ["g35", "g6"] },
 ];
 
-function renderMenu() {
+// ---------- child home (mode grid, gated by difficulty tier) ----------
+function renderHome() {
   homeBtn.style.display = "none";
   app.innerHTML = "";
+  const tier = TIERS[data.tier] || TIERS.g35;
+
+  if (tier.regionScope !== "all") {
+    const regions = regionsInScope();
+    const label = tier.regionScope === "single"
+      ? `Practicing: ${regions[0]} (region ${data.unlockedRegionCount} of ${REGION_ORDER.length} unlocked)`
+      : `Practicing: ${regions.join(", ")} (${data.unlockedRegionCount} of ${REGION_ORDER.length} regions unlocked)`;
+    app.appendChild(el("p", { class: "muted center", style: "margin-bottom:14px" }, label));
+  }
+
   const decks = [];
-  MODES.forEach((m) => { if (!decks.includes(m.deck)) decks.push(m.deck); });
+  MODES.forEach((m) => { if (m.tiers.includes(data.tier) && !decks.includes(m.deck)) decks.push(m.deck); });
   decks.forEach((deckName) => {
     app.appendChild(el("div", { class: "deck-label" }, deckName));
     const grid = el("div", { class: "mode-grid" });
-    MODES.filter((m) => m.deck === deckName).forEach((m) => {
+    MODES.filter((m) => m.deck === deckName && m.tiers.includes(data.tier)).forEach((m) => {
       const card = el("button", { class: "mode-card", type: "button" });
       card.innerHTML = `<div class="icon">${m.icon}</div><div><h3>${m.title}</h3><p>${m.desc}</p></div>`;
       card.addEventListener("click", () => startMode(m.id));
@@ -308,10 +503,374 @@ function renderMenu() {
     });
     app.appendChild(grid);
   });
-  app.appendChild(el(
-    "p", { class: "muted", style: "margin-top:18px" },
-    "Famous People — state biographies — arrives in a later update, once its content has been reviewed."
-  ));
+
+  if (data.tier === "g6") {
+    app.appendChild(el(
+      "p", { class: "muted", style: "margin-top:18px" },
+      "Famous People — state biographies — arrives in a later update, once its content has been reviewed."
+    ));
+  }
+
+  const linkRow = el("div", { class: "center", style: "margin-top:18px" });
+  if (tier.regionScope === "single" && data.allowChildFocusSwitch && data.unlockedRegionCount > 1) {
+    const b = el("button", { class: "link" }, "&#128260; Switch region");
+    b.addEventListener("click", renderRegionSwitch);
+    linkRow.appendChild(b);
+  }
+  if (listProfiles().filter((p) => !p.corrupted).length > 1) {
+    const b = el("button", { class: "link" }, "Switch child");
+    b.addEventListener("click", () => { parentUnlocked = false; renderPicker(); });
+    linkRow.appendChild(b);
+  }
+  const pb = el("button", { class: "link" }, "Parent dashboard");
+  pb.addEventListener("click", parentGate);
+  linkRow.appendChild(pb);
+  app.appendChild(linkRow);
+}
+
+// ---------- kid-facing region switcher (parent-gated by allowChildFocusSwitch) ----------
+function renderRegionSwitch() {
+  homeBtn.style.display = "";
+  app.innerHTML = "";
+  const card = el("div", { class: "card" });
+  card.appendChild(el("div", { style: "font-weight:700;font-size:18px;margin-bottom:4px" }, "&#128260; Switch region"));
+  card.appendChild(el("div", { class: "muted", style: "margin-bottom:16px" }, "Pick an unlocked region to practice."));
+  REGION_ORDER.slice(0, data.unlockedRegionCount).forEach((region, idx) => {
+    const row = el("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)" });
+    row.appendChild(el("span", { style: "font-size:17px;font-weight:600" }, region));
+    if (idx === data.activeRegionIndex) {
+      row.appendChild(el("span", { class: "muted" }, "CURRENT"));
+    } else {
+      const b = el("button", {}, "Choose");
+      b.addEventListener("click", () => { data.activeRegionIndex = idx; persist(); renderHome(); });
+      row.appendChild(b);
+    }
+    card.appendChild(row);
+  });
+  app.appendChild(card);
+}
+
+// ---------- profile picker (spec §6) ----------
+function renderPicker() {
+  homeBtn.style.display = "none";
+  document.getElementById("greeting").innerHTML = "Welcome! &#128075;";
+  const profiles = listProfiles();
+  const healthy = profiles.filter((p) => !p.corrupted);
+  const damaged = profiles.filter((p) => p.corrupted);
+  app.innerHTML = "";
+
+  const card = el("div", { class: "card center", style: "max-width:420px;margin:0 auto;padding:32px" });
+  card.appendChild(el("div", { style: "font-size:34px;margin-bottom:10px" }, "&#128506;&#65039;"));
+  card.appendChild(el("div", { style: "font-weight:700;font-size:18px;margin-bottom:16px" }, "Who's exploring today?"));
+  const list = el("div", { style: "display:flex;flex-direction:column;gap:12px;align-items:center" });
+  healthy.forEach((p) => {
+    const b = el("button", { class: "big", style: "width:260px" }, p.name);
+    b.addEventListener("click", () => pickProfile(p.key));
+    list.appendChild(b);
+  });
+  const addBtn = el("button", { class: "outline", style: "width:260px" }, "+ Add a new child");
+  addBtn.addEventListener("click", () => renderSetup(1));
+  list.appendChild(addBtn);
+  card.appendChild(list);
+  app.appendChild(card);
+
+  if (damaged.length) {
+    const dcard = el("div", { class: "card", style: "max-width:420px;margin:16px auto 0;background:var(--gold-soft);border:2px solid var(--gold)" });
+    dcard.appendChild(el("div", { style: "font-weight:700;margin-bottom:6px" }, "&#9888;&#65039; Damaged profile data found"));
+    dcard.appendChild(el(
+      "div", { class: "muted", style: "font-size:14px;margin-bottom:10px" },
+      "This device has saved data that can't be read (often from an interrupted save). It can't be recovered automatically."
+    ));
+    damaged.forEach((p) => {
+      const row = el("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)" });
+      row.appendChild(el("span", {}, p.name));
+      const rm = el("button", { class: "link", style: "color:var(--danger)" }, "Remove & start fresh");
+      rm.addEventListener("click", () => discardCorruptedProfile(p.key));
+      row.appendChild(rm);
+      dcard.appendChild(row);
+    });
+    app.appendChild(dcard);
+  }
+}
+function discardCorruptedProfile(key) {
+  if (!confirm("This permanently deletes the damaged data at this profile so you can set it up fresh under the same name. This can't be undone. Continue?")) return;
+  try { localStorage.removeItem(key); } catch (e) {}
+  renderPicker();
+}
+function pickProfile(key) {
+  data = load(key);
+  if (!data) {
+    if (lastLoadError === "corrupted") alert("This profile's data couldn't be read — it looks like it was damaged.");
+    return renderPicker();
+  }
+  parentUnlocked = false;
+  applyIdentity();
+  renderHome();
+}
+
+// ---------- first-launch / new-child setup wizard ----------
+const setup = { pin: null, name: null };
+function renderSetup(step) {
+  homeBtn.style.display = "none";
+  document.getElementById("greeting").innerHTML = "Welcome! &#128075;";
+  parentUnlocked = false;
+  app.innerHTML = "";
+  const card = el("div", { class: "card center", style: "padding:36px;max-width:420px;margin:0 auto" });
+
+  if (step === 1) {
+    card.innerHTML = `
+      <div style="font-size:34px;margin-bottom:10px">&#128274;</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 1 of 3 — Set a parent PIN</div>
+      <div class="muted" style="margin-bottom:14px">You'll need this PIN to open the parent dashboard, where you manage difficulty, regions, and results.</div>
+      <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="New PIN (at least 4 digits)" class="wide-input" style="text-align:center;font-size:22px;letter-spacing:.3em;text-transform:none">
+      <input type="password" id="pinIn2" inputmode="numeric" maxlength="8" placeholder="Repeat PIN" class="wide-input" style="text-align:center;font-size:22px;letter-spacing:.3em;text-transform:none;margin-top:8px;display:block">
+      <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+      <button class="big" id="setupNext">Continue &rarr;</button>`;
+    app.appendChild(card);
+    document.getElementById("setupNext").addEventListener("click", setupPin);
+    document.getElementById("pinIn").focus();
+  } else if (step === 2) {
+    card.innerHTML = `
+      <div style="font-size:34px;margin-bottom:10px">&#128075;</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 3 — Who's exploring?</div>
+      <div class="muted" style="margin-bottom:14px">This name appears throughout the app.</div>
+      <input type="text" id="nameIn" class="wide-input" placeholder="Child's first name" style="text-align:center;font-size:20px;text-transform:none">
+      <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+      <button class="big" id="setupNext">Continue &rarr;</button>`;
+    app.appendChild(card);
+    document.getElementById("setupNext").addEventListener("click", setupName);
+    document.getElementById("nameIn").focus();
+  } else {
+    card.innerHTML = `
+      <div style="font-size:34px;margin-bottom:10px">&#127891;</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 3 of 3 — Starting difficulty</div>
+      <div class="muted" style="margin-bottom:16px">You can change this anytime in the parent dashboard.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:stretch;max-width:320px;margin:0 auto">
+        <button class="outline" id="tier-k2" style="text-align:left;padding:12px 16px"><strong>K–2</strong> — Just the map, one region at a time</button>
+        <button class="outline" id="tier-g35" style="text-align:left;padding:12px 16px"><strong>3rd–5th</strong> — Map + facts, regions unlock as they're mastered</button>
+        <button class="outline" id="tier-g6" style="text-align:left;padding:12px 16px"><strong>6th &amp; up</strong> — Everything, all 50 states</button>
+      </div>`;
+    app.appendChild(card);
+    ["k2", "g35", "g6"].forEach((t) => document.getElementById("tier-" + t).addEventListener("click", () => setupFinish(t)));
+  }
+}
+function setupPin() {
+  const v = document.getElementById("pinIn").value.trim();
+  const v2 = document.getElementById("pinIn2").value.trim();
+  const msg = document.getElementById("setupMsg");
+  if (v.length < 4) { msg.textContent = "PIN must be at least 4 digits."; return; }
+  if (v !== v2) { msg.textContent = "PINs don't match — try again."; return; }
+  setup.pin = v; renderSetup(2);
+}
+function setupName() {
+  const v = document.getElementById("nameIn").value.trim();
+  const msg = document.getElementById("setupMsg");
+  if (!v) { msg.textContent = "Please enter a name."; return; }
+  setup.name = v; renderSetup(3);
+}
+function setupFinish(tier) {
+  KEY = nameToKey(setup.name);
+  const existing = localStorage.getItem(KEY);
+  if (existing && !confirm(`This device already has saved data for a child named "${setup.name}". Continue and use that existing data?`)) return;
+  if (existing) { data = load(KEY); }
+  else { data = freshData(setup.name, setup.pin, tier); persist(); }
+  applyIdentity();
+  renderHome();
+}
+
+// ---------- parent gate ----------
+let parentUnlocked = false;
+function parentGate() {
+  homeBtn.style.display = "";
+  if (parentUnlocked) return renderParent("settings");
+  app.innerHTML = "";
+  const card = el("div", { class: "card center", style: "padding:36px;max-width:400px;margin:0 auto" });
+  card.innerHTML = `
+    <div style="font-size:34px;margin-bottom:10px">&#128274;</div>
+    <div style="font-weight:700;font-size:18px;margin-bottom:6px">Parents only</div>
+    <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="Enter PIN" class="wide-input" style="text-align:center;font-size:22px;letter-spacing:.3em;text-transform:none">
+    <div id="pinMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+    <button class="big" id="pinSubmitBtn">Unlock</button>`;
+  app.appendChild(card);
+  const pi = document.getElementById("pinIn");
+  pi.focus();
+  pi.addEventListener("keydown", (e) => { if (e.key === "Enter") pinSubmit(); });
+  document.getElementById("pinSubmitBtn").addEventListener("click", pinSubmit);
+}
+function pinSubmit() {
+  const v = document.getElementById("pinIn").value.trim();
+  if (v === data.pin) { parentUnlocked = true; renderParent("settings"); }
+  else { document.getElementById("pinMsg").textContent = "That's not the right PIN."; document.getElementById("pinIn").value = ""; }
+}
+
+// ---------- parent dashboard ----------
+function renderParent(view) {
+  if (!parentUnlocked) return parentGate();
+  homeBtn.style.display = "";
+  app.innerHTML = "";
+  const tabRow = el("div", { class: "row", style: "margin-bottom:16px" });
+  [["settings", "Settings"], ["mastery", "Mastery"]].forEach(([id, label]) => {
+    const b = el("button", { class: view === id ? "" : "outline" }, label);
+    b.addEventListener("click", () => renderParent(id));
+    tabRow.appendChild(b);
+  });
+  const csvBtn = el("button", { class: "outline" }, "Export CSV");
+  csvBtn.addEventListener("click", exportCSV);
+  tabRow.appendChild(csvBtn);
+  app.appendChild(tabRow);
+  app.appendChild(view === "mastery" ? renderMasteryPanel() : renderSettingsPanel());
+}
+function renderSettingsPanel() {
+  const container = el("div", {});
+  const card = el("div", { class: "card" });
+  card.innerHTML = `
+    <div style="font-weight:700;margin-bottom:10px">Settings</div>
+    <div style="font-weight:600;margin-bottom:6px">Difficulty tier</div>
+    <div class="row" style="margin-bottom:14px">
+      ${Object.keys(TIERS).map((t) => `<button class="${data.tier === t ? "" : "outline"}" data-tier="${t}">${esc(TIERS[t].label)}</button>`).join("")}
+    </div>
+    <label style="padding:6px 0"><input type="checkbox" id="focusSwitchChk" ${data.allowChildFocusSwitch ? "checked" : ""}> Let ${esc(data.childName)} switch their own active region from the home screen (K–2 only)</label>
+    <div style="margin-top:18px;font-weight:600">Child's display name</div>
+    <input type="text" id="renameIn" class="wide-input" value="${esc(data.childName)}" style="text-transform:none">
+    <button class="outline" id="renameBtn">Save name</button>
+    <div style="margin-top:18px" class="row">
+      <button class="outline" id="changePinBtn">Change PIN</button>
+      <button class="outline" id="addChildBtn">Add another child on this device</button>
+    </div>
+    <div class="muted" style="margin-top:18px">This device keeps the most recent 500 rounds to stay fast on older devices. Use Export CSV above to save the full history somewhere permanent.</div>`;
+  container.appendChild(card);
+
+  const danger = el("div", { class: "card", style: "border:2px solid var(--danger)" });
+  danger.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;color:var(--danger)">Danger zone</div>
+    <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600">Reset progress</div>
+        <div class="muted" style="font-size:13px">Clears all mastery, streaks, and region unlocks for ${esc(data.childName)}. Keeps their name, PIN, tier, and settings.</div>
+      </div>
+      <button class="outline" id="resetBtn" style="border-color:var(--danger);color:var(--danger)">Reset progress&hellip;</button>
+    </div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600">Delete profile</div>
+        <div class="muted" style="font-size:13px">Permanently removes ${esc(data.childName)}'s entire profile from this device.</div>
+      </div>
+      <button class="outline" id="deleteBtn" style="border-color:var(--danger);color:var(--danger)">Delete profile&hellip;</button>
+    </div>`;
+  container.appendChild(danger);
+  container.appendChild(el("div", { class: "muted center", style: "font-size:12px;margin-top:4px" }, `Geography Star ${APP_VERSION}`));
+
+  container.querySelectorAll("[data-tier]").forEach((b) => b.addEventListener("click", () => setTier(b.getAttribute("data-tier"))));
+  container.querySelector("#focusSwitchChk").addEventListener("change", (e) => setSetting("allowChildFocusSwitch", e.target.checked));
+  container.querySelector("#renameBtn").addEventListener("click", renameChild);
+  container.querySelector("#changePinBtn").addEventListener("click", changePin);
+  container.querySelector("#addChildBtn").addEventListener("click", () => renderSetup(1));
+  container.querySelector("#resetBtn").addEventListener("click", resetProfile);
+  container.querySelector("#deleteBtn").addEventListener("click", deleteProfile);
+  return container;
+}
+function renderMasteryPanel() {
+  const container = el("div", {});
+  const card = el("div", { class: "card" });
+  card.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px">Mastery settings</div>
+    <div class="muted" style="margin-bottom:14px">Applies across all modes (spec §7).</div>
+    <div class="row" style="gap:28px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px">Correct-in-a-row to master a state</div>
+        <input type="number" min="2" max="10" id="streakIn" value="${data.masteryStreakRequired}" style="max-width:110px">
+      </div>
+      <div>
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px">Resurface after (rounds)</div>
+        <input type="number" min="3" max="30" id="resurfaceIn" value="${data.resurfaceAfterSessions}" style="max-width:110px">
+      </div>
+      <div>
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px">Review bank (% of each round)</div>
+        <input type="number" min="0" max="70" id="reviewBankIn" value="${data.reviewBankPercent}" style="max-width:110px">
+      </div>
+    </div>`;
+  container.appendChild(card);
+
+  const grid = el("div", { class: "card" });
+  grid.innerHTML = `
+    <div style="font-weight:700;margin-bottom:10px">Per-region mastery</div>
+    <div class="muted" style="margin-bottom:12px">States mastered / states in region, by mode.</div>
+    <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:13px">
+      <thead><tr>
+        <th style="text-align:left;padding:4px 8px">Region</th>
+        ${MASTERY_MODE_COLUMNS.map((m) => `<th style="text-align:center;padding:4px 8px">${esc(MODE_TITLES[m] || m)}</th>`).join("")}
+      </tr></thead>
+      <tbody>
+        ${REGION_ORDER.map((region) => `
+        <tr style="border-top:1px solid var(--line)">
+          <td style="padding:4px 8px;font-weight:600">${esc(region)}</td>
+          ${MASTERY_MODE_COLUMNS.map((m) => {
+            const s = regionModeStats(region, m);
+            return `<td style="text-align:center;padding:4px 8px">${s.total ? `${s.done}/${s.total}` : "&mdash;"}</td>`;
+          }).join("")}
+        </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+  container.appendChild(grid);
+
+  container.querySelector("#streakIn").addEventListener("change", (e) => setSetting("masteryStreakRequired", Math.max(2, Math.min(10, Number(e.target.value) || 3)), "mastery"));
+  container.querySelector("#resurfaceIn").addEventListener("change", (e) => setSetting("resurfaceAfterSessions", Math.max(3, Math.min(30, Number(e.target.value) || 10)), "mastery"));
+  container.querySelector("#reviewBankIn").addEventListener("change", (e) => setSetting("reviewBankPercent", Math.max(0, Math.min(70, Number(e.target.value) || 30)), "mastery"));
+  return container;
+}
+function setSetting(field, value, view) { data[field] = value; persist(); renderParent(view || "settings"); }
+function setTier(tier) { data.tier = tier; persist(); renderParent("settings"); }
+function renameChild() {
+  const v = document.getElementById("renameIn").value.trim();
+  if (!v) { alert("Name can't be empty."); return; }
+  data.childName = v; persist(); applyIdentity(); renderParent("settings");
+}
+function changePin() {
+  const cur = prompt("Enter current PIN:");
+  if (cur === null) return;
+  if (cur !== data.pin) { alert("Wrong PIN."); return; }
+  const np = prompt("New PIN (at least 4 digits):");
+  if (!np || np.trim().length < 4) { alert("PIN must be at least 4 digits."); return; }
+  data.pin = np.trim(); persist(); alert("PIN updated.");
+}
+function resetProfile() {
+  const kept = {
+    childName: data.childName, pin: data.pin, tier: data.tier,
+    allowChildFocusSwitch: data.allowChildFocusSwitch,
+    masteryStreakRequired: data.masteryStreakRequired,
+    resurfaceAfterSessions: data.resurfaceAfterSessions,
+    reviewBankPercent: data.reviewBankPercent,
+  };
+  if (!confirm(`This clears ALL of ${kept.childName}'s progress — mastery, streaks, and region unlocks — back to zero. Name, PIN, tier, and settings are kept. This can't be undone. Continue?`)) return;
+  data = Object.assign(freshData(kept.childName, kept.pin, kept.tier), kept);
+  persist();
+  applyIdentity();
+  renderParent("settings");
+}
+function deleteProfile() {
+  const name = data.childName;
+  const enteredPin = prompt(`Type ${name}'s PIN to permanently delete this profile:`);
+  if (enteredPin === null) return;
+  if (enteredPin !== data.pin) { alert("Wrong PIN — nothing was deleted."); return; }
+  if (!confirm(`This permanently deletes ${name}'s entire profile — progress, settings, and PIN. This can't be undone. Continue?`)) return;
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  data = null; KEY = null; parentUnlocked = false;
+  applyIdentity();
+  if (listProfiles().length === 0) renderSetup(1); else renderPicker();
+}
+function exportCSV() {
+  const rows = [["child", "date", "time", "mode", "region", "correct", "total", "percentage"]];
+  data.sessionLog.forEach((s) => {
+    const d = new Date(s.date);
+    const pct = s.total ? Math.round((100 * s.correct) / s.total) : 0;
+    rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), MODE_TITLES[s.mode] || s.mode, s.region, s.correct, s.total, `${pct}%`]);
+  });
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${nameToKey(data.childName).replace(STORAGE_PREFIX, "")}-geography-results.csv`;
+  a.click();
 }
 
 function startMode(id) {
@@ -343,6 +902,7 @@ const MODE_TITLES = {
   capitals: "Capitals", population: "Population", nature: "Natural World",
 };
 function renderEnd(modeId, correct, total, replayFn) {
+  recordSessionEnd(modeId, correct, total);
   app.innerHTML = "";
   const card = el("div", { class: "card end-card" });
   card.appendChild(el("div", { class: "eyebrow" }, MODE_TITLES[modeId] || ""));
@@ -364,7 +924,7 @@ function renderEnd(modeId, correct, total, replayFn) {
 
 // ---------- Mode 1: Find the State ----------
 function playFind() {
-  const queue = sample(ALL_CODES, ROUND_SIZE);
+  const queue = buildQueue("find", ALL_CODES, ROUND_SIZE);
   let i = 0, correct = 0, labelsOn = false;
 
   function renderQuestion() {
@@ -411,7 +971,9 @@ function playFind() {
       svg.querySelectorAll(".state-path, .hit-target").forEach((x) => x.classList.add("disabled"));
       const targetPath = svg.querySelector(`path[data-code="${targetCode}"]`);
       targetPath.classList.add("correct");
-      if (code === targetCode) {
+      const isCorrect = code === targetCode;
+      recordAnswer("find", targetCode, isCorrect);
+      if (isCorrect) {
         correct++;
         feedback.className = "feedback ok";
         feedback.innerHTML = feedbackHtml(true, `That's ${targetName}!`);
@@ -432,7 +994,7 @@ function playFind() {
 
 // ---------- Mode 2: Name the State ----------
 function playName() {
-  const queue = sample(ALL_CODES, ROUND_SIZE);
+  const queue = buildQueue("name", ALL_CODES, ROUND_SIZE);
   let i = 0, correct = 0;
 
   function renderQuestion() {
@@ -459,6 +1021,7 @@ function playName() {
         if (answered) return;
         answered = true;
         choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        recordAnswer("name", targetCode, code === targetCode);
         if (code === targetCode) {
           correct++;
           btn.classList.add("correct");
@@ -485,7 +1048,7 @@ function playName() {
 
 // ---------- Mode 3: Click the Capital ----------
 function playCapital() {
-  const queue = sample(CAPITAL_CODES, ROUND_SIZE);
+  const queue = buildQueue("capital", CAPITAL_CODES, ROUND_SIZE);
   let i = 0, correct = 0;
 
   function renderQuestion() {
@@ -529,6 +1092,7 @@ function playCapital() {
       const targetDot = svg.querySelector(`circle.capital-dot[data-code="${targetCode}"]`);
       targetDot.classList.add("correct");
       const capitalName = CAPITALS[targetCode][0];
+      recordAnswer("capital", targetCode, code === targetCode);
       if (code === targetCode) {
         correct++;
         feedback.className = "feedback ok";
@@ -581,6 +1145,7 @@ function playFlashcard(cfg) {
     let answered = false;
 
     function reveal(isCorrect) {
+      recordAnswer(cfg.key, targetCode, isCorrect);
       if (isCorrect) correct++;
       feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
       feedback.innerHTML = feedbackHtml(isCorrect, isCorrect ? cfg.correctPhrase(targetCode) : cfg.wrongPhrase(targetCode));
@@ -645,7 +1210,7 @@ function playFlashcard(cfg) {
 function playAbbr() {
   playFlashcard({
     key: "abbr",
-    queue: sample(ALL_CODES, ROUND_SIZE),
+    queue: buildQueue("abbr", ALL_CODES, ROUND_SIZE),
     promptFor: (code) => STATE_NAMES[code],
     answerType: "text",
     answerLength: 2,
@@ -675,7 +1240,7 @@ function smartAbbrDistractors(targetCode, pool, n) {
 function playUnabbr() {
   playFlashcard({
     key: "unabbr",
-    queue: sample(ALL_CODES, ROUND_SIZE),
+    queue: buildQueue("unabbr", ALL_CODES, ROUND_SIZE),
     promptFor: (code) => code,
     choicesFor: (code) => shuffle([code, ...smartAbbrDistractors(code, ALL_CODES, 3)]),
     labelFor: (code) => STATE_NAMES[code],
@@ -693,7 +1258,7 @@ function normalizeCapitalAnswer(s) {
   return s.toLowerCase().trim().replace(/[.]/g, "").replace(/\s+/g, " ").replace(/\bsaint\b/g, "st");
 }
 function playCapitals() {
-  const queue = sample(CAPITAL_CODES, ROUND_SIZE).map((code) => ({
+  const queue = buildQueue("capitals", CAPITAL_CODES, ROUND_SIZE).map((code) => ({
     code, dir: Math.random() < 0.5 ? "s2c" : "c2s",
   }));
   let i = 0, correct = 0;
@@ -714,6 +1279,7 @@ function playCapitals() {
     let answered = false;
 
     function reveal(isCorrect) {
+      recordAnswer("capitals", code, isCorrect);
       if (isCorrect) correct++;
       feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
       const phrase = isCorrect
@@ -791,7 +1357,7 @@ function popDistractors(trueVal, n) {
   return out;
 }
 function playPopulation() {
-  const queue = sample(ALL_CODES, ROUND_SIZE);
+  const queue = buildQueue("population", ALL_CODES, ROUND_SIZE);
   let i = 0, correct = 0;
 
   function renderQuestion() {
@@ -815,6 +1381,7 @@ function playPopulation() {
         answered = true;
         choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
         const isCorrect = v === target;
+        recordAnswer("population", code, isCorrect);
         if (isCorrect) {
           btn.classList.add("correct");
           correct++;
@@ -886,7 +1453,7 @@ function natureRevealPhrase(dir, cat, stateName, value) {
   }[cat];
 }
 function playNature() {
-  const queue = sample(ALL_CODES, ROUND_SIZE).map((code) => {
+  const queue = buildQueue("nature", ALL_CODES, ROUND_SIZE).map((code) => {
     const cat = sample(natureAvailableCategories(code), 1)[0];
     const value = sample(natureOwnValues(code, cat), 1)[0];
     const dir = Math.random() < 0.5 ? "forward" : "reverse";
@@ -910,6 +1477,7 @@ function playNature() {
     const choiceGrid = el("div", { class: "choice-grid" });
 
     function reveal(isCorrect) {
+      recordAnswer("nature", code, isCorrect);
       if (isCorrect) correct++;
       feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
       feedback.innerHTML = feedbackHtml(isCorrect, natureRevealPhrase(dir, cat, stateName, value));
@@ -982,7 +1550,16 @@ function playNature() {
   renderQuestion();
 }
 
-renderMenu();
+// ---------- boot ----------
+(function boot() {
+  const profiles = listProfiles();
+  if (profiles.length === 0) return renderSetup(1);
+  if (profiles.length === 1 && !profiles[0].corrupted) {
+    data = load(profiles[0].key);
+    if (data) { applyIdentity(); return renderHome(); }
+  }
+  renderPicker();
+})();
 </script>
 </body>
 </html>

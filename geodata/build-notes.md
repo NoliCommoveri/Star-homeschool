@@ -230,3 +230,90 @@ plus the Mode 8 engine and UI — no further authoring required.
 - **Wisconsin (WI) — Mabel Watson Raimey** (both): Mabel Watson Raimey became Wisconsin's first Black woman lawyer and spent her career fighting discrimination in Milwaukee's schools and workplaces.
 - **West Virginia (WV) — Memphis Tennessee Garrison** (activist): Memphis Tennessee Garrison, a teacher in the coal towns of West Virginia, organized NAACP chapters across the state and fought for equal pay for Black teachers.
 - **Wyoming (WY) — William Jefferson Hardin** (activist): William Jefferson Hardin became one of the first Black lawmakers in the Wyoming Territory legislature, pushing for Black residents' civil rights in the 1870s.
+
+## Stage 4 — profiles, difficulty tiers, mastery, region progression
+
+Spec §11 calls this stage's job "port the Math Star pattern" for profiles,
+PIN, and settings, and §6-§7 for difficulty tiers, region progression, and
+per-state-per-mode mastery. All of it lives directly in
+`geography-star.html` — there's no `geodata/` source for this stage, since
+none of it is authored content; it's app logic and per-child state that
+only ever exists in a browser's `localStorage`.
+
+**Storage.** `geostar-<name>` keys, same shape as `mathstar-`/`spellingstar-`:
+`listProfiles()`/`nameToKey()`/`load()`/`persist()` mirror Math Star's
+functions of the same name, including corrupted-profile detection (a key
+under the prefix that fails to parse, or parses but is missing
+`childName`/`pin`) surfaced on the profile picker with a "Remove & start
+fresh" action rather than silently dropped.
+
+**Difficulty tiers** (spec §6) are a `TIERS` map (`k2`, `g35`, `g6`) each
+declaring which mode IDs unlock and a `regionScope`:
+
+- `k2` — Modes 1-2 only, `regionScope: "single"` — the child works one
+  region at a time.
+- `g35` — Modes 1-6 and 9, `regionScope: "progress"` — unlocked regions
+  accumulate.
+- `g6` — all 8 built modes (Famous People/Mode 8 still has no UI — see
+  above), `regionScope: "all"` — the full 50 states + DC, no region
+  restriction.
+
+`renderHome()` filters the `MODES` array by `m.tiers.includes(data.tier)`,
+so a K-2 profile's home screen only ever renders two mode cards — the
+Facts Deck heading doesn't render at all rather than rendering empty.
+
+**Region progression** (spec §6) is one counter, `unlockedRegionCount`,
+interpreted differently per tier's `regionScope`: `single` tiers show only
+`REGION_ORDER[unlockedRegionCount - 1]`; `progress` tiers show the union of
+`REGION_ORDER[0..unlockedRegionCount-1]`. A region unlocks the next one in
+`REGION_ORDER` once every state in it has graduated in Mode 1 (Find the
+State) — chosen as the gating mode because map recognition is the
+prerequisite skill the other modes build on. This is intentionally
+simpler than tying progression to every mode independently.
+
+**Mastery** (spec §7) is tracked per mode per state code: `data.mastery`
+holds an in-progress streak, `data.graduated` holds states that hit
+`masteryStreakRequired` (default 3) and dropped out of rotation, and
+`data.reviewFacts` flags a state after a miss so `buildQueue()` weights it
+back up to `reviewBankPercent` (default 30%) of the next round. A
+graduated state resurfaces (leaves `data.graduated`, re-enters normal
+rotation) once `data.sessionsByMode[mode] - graduatedAtSession >=
+resurfaceAfterSessions` (default 10 rounds of that mode). All three
+numbers are parent-adjustable on the dashboard's Mastery tab, which also
+renders the per-region-per-mode mastery grid spec §7 calls for (states
+mastered / states in region, one row per region, one column per mode).
+
+**Round composition.** `buildQueue(modeId, pool, size)` replaces the old
+`sample(ALL_CODES, ROUND_SIZE)` call in every mode: it scopes `pool` down
+to the child's unlocked region(s) first, drops graduated states out of
+rotation (falling back to the full scoped pool if literally everything in
+scope is graduated, so a round is always playable), then mixes in review
+states up to `reviewBankPercent`. A region with fewer states than
+`ROUND_SIZE` (New England has 6) simply produces a shorter round rather
+than repeating a state within it.
+
+**Parent dashboard.** PIN-gated (`parentGate()`/`pinSubmit()`), two tabs —
+Settings (tier, `allowChildFocusSwitch`, rename, change PIN, add another
+child, reset progress, delete profile) and Mastery (the streak/resurface/
+review-bank numbers plus the per-region grid) — plus an always-visible
+Export CSV button. `allowChildFocusSwitch` only matters for `single`-scope
+tiers (K-2): when on, a "Switch region" link appears on the child's home
+screen letting them pick any already-unlocked region as current, mirroring
+the existing `allowChildFocusSwitch` pattern's intent from spec §6.
+
+**CSV export** is one row per completed round (not per question, since
+Geography Star doesn't keep a full answer-by-answer session log the way
+Math Star does): child, date, time, mode, region(s) in scope at the time,
+correct, total, percentage. Filename is `<name>-geography-results.csv`
+per spec §6. `data.sessionLog` is capped at the most recent 500 rounds for
+the same reliability reason Math Star caps at 300 sessions — CSV export is
+the permanent record, not `localStorage`.
+
+**Verified in a headless browser** (Playwright/Chromium, this environment's
+pre-installed copy): full setup wizard through all three tiers; K-2's
+region restriction and round-size shrinking on a 6-state region; three
+winning rounds graduating all of New England in Find the State and
+auto-unlocking Mid-Atlantic; the mastery grid rendering correct per-region
+counts; tier switching correctly changing which modes render; multi-profile
+picker, wrong-PIN rejection, corrupted-profile detection and removal, and
+profile deletion; and CSV export producing the expected rows and filename.
