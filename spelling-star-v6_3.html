@@ -1472,7 +1472,7 @@ function renderParent(view) {
     html += `<div class="card">
       <div style="font-weight:700;margin-bottom:6px">Import words from CSV into &ldquo;${esc(sel.name)}&rdquo;</div>
       <div class="muted" style="margin-bottom:10px">Columns: <strong>word, hint, sentence, bonus</strong> (bonus = yes/no; hint, sentence, and bonus are optional). A header row is fine.</div>
-      <input type="file" id="csvFile" accept=".csv,.txt" style="margin-bottom:10px">
+      <input type="file" id="csvFile" accept=".csv,.txt,text/csv,text/plain,text/comma-separated-values,application/vnd.ms-excel,application/csv" style="margin-bottom:10px">
       <button onclick="importCSV()">Import CSV</button>
       <div id="csvMsg" class="muted" style="margin-top:8px"></div>
     </div>`;
