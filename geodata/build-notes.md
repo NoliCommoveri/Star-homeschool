@@ -231,6 +231,26 @@ plus the Mode 8 engine and UI — no further authoring required.
 - **West Virginia (WV) — Memphis Tennessee Garrison** (activist): Memphis Tennessee Garrison, a teacher in the coal towns of West Virginia, organized NAACP chapters across the state and fought for equal pay for Black teachers.
 - **Wyoming (WY) — William Jefferson Hardin** (activist): William Jefferson Hardin became one of the first Black lawmakers in the Wyoming Territory legislature, pushing for Black residents' civil rights in the 1870s.
 
+## State Nicknames (Mode 10)
+
+`nickname` in `geodata/states.json`, and the matching `NICKNAMES` block
+inlined in `geography-star.html`, hold each state's best-known traditional
+nickname (e.g. "The Golden State" for California). DC has no state
+nickname, so it's excluded from `NICKNAMES`/`NICKNAME_CODES` — the same
+pattern `CAPITALS` uses for excluding DC.
+
+Like population, this isn't part of `build.js`'s TopoJSON pipeline, so it's
+authored by hand directly into both files. If a nickname is ever corrected,
+update `geodata/states.json` first, then copy the same value into
+`NICKNAMES` in `geography-star.html`.
+
+Mode 10 (State Nicknames) shows the nickname and asks the child to pick the
+matching state from four choices — one direction only, unlike Mode 9's
+either-direction format. It's gated into the `g35` and `g6` tiers alongside
+Capitals and Natural World, tracked in `MASTERY_MODE_COLUMNS`, and its
+mastery grid column uses `NICKNAME_CODES` (49 states, no DC) rather than
+`ALL_CODES`.
+
 ## Stage 4 — profiles, difficulty tiers, mastery, region progression
 
 Spec §11 calls this stage's job "port the Math Star pattern" for profiles,
