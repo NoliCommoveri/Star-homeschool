@@ -508,6 +508,8 @@ function playCapital() {
 }
 
 // ---------- Modes 4 & 5: abbreviation flashcards (map-hidden by default) ----------
+// cfg.answerType: "choice" (default, needs choicesFor + labelFor) or "text"
+// (free-text entry, needs answerLength) -- see playAbbr vs playUnabbr below.
 function playFlashcard(cfg) {
   const queue = cfg.queue;
   let i = 0, correct = 0, showMap = false;
@@ -534,38 +536,63 @@ function playFlashcard(cfg) {
       app.appendChild(mapShell);
     }
 
-    const choiceGrid = el("div", { class: "choice-grid" });
-    const choices = cfg.choicesFor(targetCode);
     const feedback = el("div", { class: "feedback" });
-    const correctLabel = cfg.labelFor(targetCode);
-
     let answered = false;
-    choices.forEach((code) => {
-      const btn = el("button", {}, cfg.labelFor(code));
-      btn.addEventListener("click", () => {
-        if (answered) return;
-        answered = true;
-        choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
-        if (code === targetCode) {
-          correct++;
-          btn.classList.add("correct");
-          feedback.className = "feedback ok";
-          feedback.innerHTML = feedbackHtml(true, cfg.correctPhrase(targetCode));
-        } else {
-          btn.classList.add("wrong");
-          Array.from(choiceGrid.children).forEach((b) => { if (b.textContent === correctLabel) b.classList.add("correct"); });
-          feedback.className = "feedback bad";
-          feedback.innerHTML = feedbackHtml(false, cfg.wrongPhrase(targetCode));
-        }
-        app.appendChild(nextButtonRow(i + 1 >= queue.length, () => {
-          i++;
-          if (i < queue.length) renderQuestion(); else renderEnd(cfg.key, correct, queue.length, cfg.replayFn);
-        }));
+
+    function reveal(isCorrect) {
+      if (isCorrect) correct++;
+      feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
+      feedback.innerHTML = feedbackHtml(isCorrect, isCorrect ? cfg.correctPhrase(targetCode) : cfg.wrongPhrase(targetCode));
+      app.appendChild(nextButtonRow(i + 1 >= queue.length, () => {
+        i++;
+        if (i < queue.length) renderQuestion(); else renderEnd(cfg.key, correct, queue.length, cfg.replayFn);
+      }));
+    }
+
+    if (cfg.answerType === "text") {
+      const form = el("form", { class: "row center", style: "justify-content:center;gap:10px;margin-top:18px" });
+      const input = el("input", {
+        type: "text", maxlength: String(cfg.answerLength || 2), autocomplete: "off",
+        autocapitalize: "characters", spellcheck: "false", "aria-label": "Type your answer",
       });
-      choiceGrid.appendChild(btn);
-    });
-    app.appendChild(choiceGrid);
-    app.appendChild(feedback);
+      const submitBtn = el("button", { type: "submit" }, "Check");
+      form.appendChild(input);
+      form.appendChild(submitBtn);
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (answered || !input.value.trim()) return;
+        answered = true;
+        input.disabled = true;
+        submitBtn.disabled = true;
+        reveal(input.value.trim().toUpperCase() === targetCode.toUpperCase());
+      });
+      app.appendChild(form);
+      app.appendChild(feedback);
+      setTimeout(() => input.focus(), 0);
+    } else {
+      const choiceGrid = el("div", { class: "choice-grid" });
+      const choices = cfg.choicesFor(targetCode);
+      const correctLabel = cfg.labelFor(targetCode);
+      choices.forEach((code) => {
+        const btn = el("button", {}, cfg.labelFor(code));
+        btn.addEventListener("click", () => {
+          if (answered) return;
+          answered = true;
+          choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
+          const isCorrect = code === targetCode;
+          if (isCorrect) {
+            btn.classList.add("correct");
+          } else {
+            btn.classList.add("wrong");
+            Array.from(choiceGrid.children).forEach((b) => { if (b.textContent === correctLabel) b.classList.add("correct"); });
+          }
+          reveal(isCorrect);
+        });
+        choiceGrid.appendChild(btn);
+      });
+      app.appendChild(choiceGrid);
+      app.appendChild(feedback);
+    }
 
     const mapToggleInput = document.getElementById("mapToggle");
     mapToggleInput.checked = showMap;
@@ -579,19 +606,37 @@ function playAbbr() {
     key: "abbr",
     queue: sample(ALL_CODES, ROUND_SIZE),
     promptFor: (code) => STATE_NAMES[code],
-    choicesFor: (code) => shuffle([code, ...distractorCodes(code, ALL_CODES, 3)]),
-    labelFor: (code) => code,
+    answerType: "text",
+    answerLength: 2,
     correctPhrase: (code) => `Yes — ${STATE_NAMES[code]} is abbreviated ${code}.`,
     wrongPhrase: (code) => `Not quite — ${STATE_NAMES[code]} is abbreviated ${code}.`,
     replayFn: playAbbr,
   });
 }
+
+// Picks wrong-answer codes that are easy to confuse with the target
+// abbreviation, rather than pure random picks (spec: mode 5 should train
+// the actual confusions kids make between similar-looking codes).
+// Priority 1: same starting letter (MA vs MD/ME/MI/...).
+// Priority 2: shares a letter with the target somewhere (ND vs SD).
+// Falls back to random codes only if those two groups can't fill n slots.
+function smartAbbrDistractors(targetCode, pool, n) {
+  const remaining = pool.filter((c) => c !== targetCode);
+  const sameFirstLetter = remaining.filter((c) => c[0] === targetCode[0]);
+  const sharesLetter = remaining.filter(
+    (c) => !sameFirstLetter.includes(c) && c.split("").some((ch) => targetCode.includes(ch))
+  );
+  const rest = remaining.filter((c) => !sameFirstLetter.includes(c) && !sharesLetter.includes(c));
+  const prioritized = [...shuffle(sameFirstLetter), ...shuffle(sharesLetter), ...shuffle(rest)];
+  return prioritized.slice(0, n);
+}
+
 function playUnabbr() {
   playFlashcard({
     key: "unabbr",
     queue: sample(ALL_CODES, ROUND_SIZE),
     promptFor: (code) => code,
-    choicesFor: (code) => shuffle([code, ...distractorCodes(code, ALL_CODES, 3)]),
+    choicesFor: (code) => shuffle([code, ...smartAbbrDistractors(code, ALL_CODES, 3)]),
     labelFor: (code) => STATE_NAMES[code],
     correctPhrase: (code) => `Yes — ${code} is ${STATE_NAMES[code]}.`,
     wrongPhrase: (code) => `Not quite — ${code} is ${STATE_NAMES[code]}.`,
