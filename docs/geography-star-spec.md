@@ -5,7 +5,10 @@ Stage 3, natural world half: state symbols/crops/animals authored and
 shipped as Mode 9. Stage 3, famous people half: 153 biographies (3 per
 state) authored into `geodata/states.json` with confidence flags, but
 held per the §9/§11 parent-review gate — not yet inlined, no Mode 8 UI
-yet. See `geodata/build-notes.md` for the review checklist.**
+yet. See `geodata/build-notes.md` for the review checklist. Stage 4
+(profiles, PIN, difficulty tiers, per-state-per-mode mastery, region
+progression, parent settings/mastery dashboard, CSV export) shipped —
+see `geodata/build-notes.md` for how it maps onto §6-§7.**
 Target file: `geography-star.html` (self-contained, alongside Math Star and Spelling Star)
 
 ---
