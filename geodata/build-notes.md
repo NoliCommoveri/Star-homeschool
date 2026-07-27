@@ -92,3 +92,21 @@ Nothing in this file's output requires the spec §9 review gate — capitals,
 FIPS codes, boundaries, and region buckets are all mechanically sourced or
 stable factual assignments. The review gate applies starting in Stage 3
 (state symbols, crops, biographies).
+
+## Population (Stage 2)
+
+`population2020` in `geodata/states.json`, and the matching `POPULATION_2020`
+block inlined in `geography-star.html`, are the 2020 Decennial Census
+resident population counts (the official apportionment figures) for the 50
+states + DC. Public domain, mechanically sourced — not subject to the spec
+§9 review gate.
+
+This data isn't part of `build.js`'s TopoJSON pipeline (it doesn't come from
+`us-atlas`), so it's authored by hand directly into both files. If a count
+is ever corrected, update `population2020` in `geodata/states.json` first,
+then copy the same value into `POPULATION_2020` in `geography-star.html` to
+keep the two in sync.
+
+Mode 7 (Population) rounds every displayed choice — the correct answer and
+its distractors alike — to the nearest 10,000, so the correct choice isn't
+identifiable by being the only non-round number on screen.

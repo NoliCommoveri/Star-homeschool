@@ -1,6 +1,7 @@
 # Geography Star — Specification
 
-Status: **spec only, not yet built.**
+Status: **Stage 1 (map deck) and Stage 2 (capitals + population) shipped.
+Stage 3 (famous people, natural world) not yet started.**
 Target file: `geography-star.html` (self-contained, alongside Math Star and Spelling Star)
 
 ---
