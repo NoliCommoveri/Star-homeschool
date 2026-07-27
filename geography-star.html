@@ -71,6 +71,9 @@
   .choice-grid button:hover:not(:disabled) { border-color: var(--accent); }
   .choice-grid button.correct { background: var(--green-soft); border-color: var(--green); color: var(--green-dark); }
   .choice-grid button.wrong { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  .hint-panel { margin: 10px auto 0; max-width: 480px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px 12px; text-align: left; }
+  .hint-panel ul { margin: 6px 0 0; padding-left: 20px; }
+  .hint-panel li { font-size: 14px; color: var(--body-text); margin: 2px 0; }
   .end-card { text-align: center; }
   .end-card .big-score { font-size: 44px; font-weight: 800; margin: 8px 0; }
 
@@ -137,6 +140,64 @@ const STATE_REGION = {"AK":"Non-contiguous","AL":"Southeast","AR":"Southeast","A
    gate. Source of truth: geodata/states.json "population2020" field. Kept
    in sync by hand (small, stable dataset; no build step needed). */
 const POPULATION_2020 = {"AK":733391,"AL":5024279,"AR":3011524,"AZ":7151502,"CA":39538223,"CO":5773714,"CT":3605944,"DC":689545,"DE":989948,"FL":21538187,"GA":10711908,"HI":1455271,"IA":3190369,"ID":1839106,"IL":12812508,"IN":6785528,"KS":2937880,"KY":4505836,"LA":4657757,"MA":7029917,"MD":6177224,"ME":1362359,"MI":10077331,"MN":5706494,"MO":6154913,"MS":2961279,"MT":1084225,"NC":10439388,"ND":779094,"NE":1961504,"NH":1377529,"NJ":9288994,"NM":2117522,"NV":3104614,"NY":20201249,"OH":11799448,"OK":3959353,"OR":4237256,"PA":13002700,"RI":1097379,"SC":5118425,"SD":886667,"TN":6910840,"TX":29145505,"UT":3271616,"VA":8631393,"VT":643077,"WA":7705281,"WI":5893718,"WV":1793716,"WY":576851};
+
+/* City-population hints for Mode 7 (2020 Decennial Census, largest city
+   first). States that place a city in the Top 50 US Cities list get every
+   one of their entries from that list; every other state gets just its
+   single most populous city, so all 50 states + DC have a hint. */
+const CITY_HINTS = {
+  "AK": [["Anchorage", 291247]],
+  "AL": [["Huntsville", 215006]],
+  "AR": [["Little Rock", 202591]],
+  "AZ": [["Phoenix", 1608139], ["Tucson", 542629], ["Mesa", 504258]],
+  "CA": [["Los Angeles", 3898747], ["San Diego", 1386932], ["San Jose", 1013240], ["San Francisco", 873965], ["Fresno", 542107], ["Sacramento", 524943], ["Long Beach", 466742], ["Oakland", 440646], ["Bakersfield", 403455]],
+  "CO": [["Denver", 715522], ["Colorado Springs", 478961]],
+  "CT": [["Bridgeport", 148654]],
+  "DC": [["Washington", 689545]],
+  "DE": [["Wilmington", 70898]],
+  "FL": [["Jacksonville", 949611], ["Miami", 442241]],
+  "GA": [["Atlanta", 498715]],
+  "HI": [["Honolulu", 347181]],
+  "IA": [["Des Moines", 214133]],
+  "ID": [["Boise", 235684]],
+  "IL": [["Chicago", 2746388]],
+  "IN": [["Indianapolis", 887642]],
+  "KS": [["Wichita", 397532]],
+  "KY": [["Louisville", 633045]],
+  "LA": [["New Orleans", 383997]],
+  "MA": [["Boston", 675647]],
+  "MD": [["Baltimore", 585708]],
+  "ME": [["Portland", 68408]],
+  "MI": [["Detroit", 639111]],
+  "MN": [["Minneapolis", 429954]],
+  "MO": [["Kansas City", 508090]],
+  "MS": [["Jackson", 153701]],
+  "MT": [["Billings", 117218]],
+  "NC": [["Charlotte", 874579], ["Raleigh", 467665]],
+  "ND": [["Fargo", 125990]],
+  "NE": [["Omaha", 486051]],
+  "NH": [["Manchester", 115644]],
+  "NJ": [["Newark", 311549]],
+  "NM": [["Albuquerque", 564559]],
+  "NV": [["Las Vegas", 641903]],
+  "NY": [["New York", 8804190]],
+  "OH": [["Columbus", 905748]],
+  "OK": [["Oklahoma City", 681054], ["Tulsa", 413066]],
+  "OR": [["Portland", 652503]],
+  "PA": [["Philadelphia", 1603797]],
+  "RI": [["Providence", 190934]],
+  "SC": [["Charleston", 150227]],
+  "SD": [["Sioux Falls", 192517]],
+  "TN": [["Nashville", 689447], ["Memphis", 633104]],
+  "TX": [["Houston", 2304580], ["San Antonio", 1434625], ["Dallas", 1304379], ["Austin", 961855], ["Fort Worth", 918915], ["El Paso", 678815], ["Arlington", 394266]],
+  "UT": [["Salt Lake City", 200719]],
+  "VA": [["Virginia Beach", 459470]],
+  "VT": [["Burlington", 44743]],
+  "WA": [["Seattle", 737015]],
+  "WI": [["Milwaukee", 577222]],
+  "WV": [["Charleston", 48864]],
+  "WY": [["Cheyenne", 65132]],
+};
 /* =================== END AUTHORED DATA =================== */
 
 /* ============= AUTHORED DATA (Stage 3 — Natural World) ============= */
@@ -1342,6 +1403,14 @@ function playCapitals() {
 // ---------- Mode 7: Population (2020 Census, multiple choice) ----------
 function formatPop(n) { return n.toLocaleString("en-US"); }
 function round10k(n) { return Math.max(10000, Math.round(n / 10000) * 10000); }
+function cityHintHtml(code, stateName) {
+  const cities = CITY_HINTS[code];
+  const items = cities.map(([city, pop]) => `<li>${city} — ${formatPop(pop)}</li>`).join("");
+  const intro = cities.length > 1
+    ? `${stateName}'s biggest cities (2020 Census), most populous first:`
+    : `${stateName}'s most populous city (2020 Census):`;
+  return `<div class="muted">${intro}</div><ul>${items}</ul>`;
+}
 // Near-miss distractors spread around the true value (rounded to the
 // nearest 10,000, same as the displayed "correct" choice) so the answer
 // isn't guessable by precision or by magnitude alone (spec §5, mode 7).
@@ -1369,6 +1438,20 @@ function playPopulation() {
     app.appendChild(el("div", { class: "eyebrow center" }, "2020 Census"));
     app.appendChild(el("div", { class: "prompt" }, `About how many people live in ${name}?`));
     app.appendChild(progressLine(i, queue.length, correct));
+
+    const hintRow = el("div", { class: "row center", style: "justify-content:center;margin:0 0 4px" });
+    const hintBtn = el("button", { class: "link" }, "Show city hint");
+    const hintPanel = el("div", { class: "hint-panel" });
+    hintPanel.style.display = "none";
+    hintPanel.innerHTML = cityHintHtml(code, name);
+    hintBtn.addEventListener("click", () => {
+      const hidden = hintPanel.style.display === "none";
+      hintPanel.style.display = hidden ? "block" : "none";
+      hintBtn.textContent = hidden ? "Hide city hint" : "Show city hint";
+    });
+    hintRow.appendChild(hintBtn);
+    app.appendChild(hintRow);
+    app.appendChild(hintPanel);
 
     const feedback = el("div", { class: "feedback" });
     let answered = false;
