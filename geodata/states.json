@@ -1,0 +1,597 @@
+{
+  "AK": {
+    "code": "AK",
+    "name": "Alaska",
+    "fips": "02",
+    "region": "Non-contiguous",
+    "capital": "Juneau",
+    "capitalXY": [
+      176.9,
+      556.1
+    ]
+  },
+  "AL": {
+    "code": "AL",
+    "name": "Alabama",
+    "fips": "01",
+    "region": "Southeast",
+    "capital": "Montgomery",
+    "capitalXY": [
+      682.4,
+      440.3
+    ]
+  },
+  "AR": {
+    "code": "AR",
+    "name": "Arkansas",
+    "fips": "05",
+    "region": "Southeast",
+    "capital": "Little Rock",
+    "capitalXY": [
+      566.6,
+      394.2
+    ]
+  },
+  "AZ": {
+    "code": "AZ",
+    "name": "Arizona",
+    "fips": "04",
+    "region": "Southwest",
+    "capital": "Phoenix",
+    "capitalXY": [
+      197.2,
+      399.8
+    ]
+  },
+  "CA": {
+    "code": "CA",
+    "name": "California",
+    "fips": "06",
+    "region": "Pacific",
+    "capital": "Sacramento",
+    "capitalXY": [
+      55.6,
+      248
+    ]
+  },
+  "CO": {
+    "code": "CO",
+    "name": "Colorado",
+    "fips": "08",
+    "region": "Mountain West",
+    "capital": "Denver",
+    "capitalXY": [
+      342.8,
+      273.9
+    ]
+  },
+  "CT": {
+    "code": "CT",
+    "name": "Connecticut",
+    "fips": "09",
+    "region": "New England",
+    "capital": "Hartford",
+    "capitalXY": [
+      885.9,
+      187
+    ],
+    "centroid": [
+      885.8,
+      190.4
+    ]
+  },
+  "DC": {
+    "code": "DC",
+    "name": "District of Columbia",
+    "fips": "11",
+    "region": "Mid-Atlantic",
+    "capital": null,
+    "capitalXY": null,
+    "centroid": [
+      827.7,
+      267.5
+    ]
+  },
+  "DE": {
+    "code": "DE",
+    "name": "Delaware",
+    "fips": "10",
+    "region": "Mid-Atlantic",
+    "capital": "Dover",
+    "capitalXY": [
+      852.1,
+      256.3
+    ],
+    "centroid": [
+      853.4,
+      260.1
+    ]
+  },
+  "FL": {
+    "code": "FL",
+    "name": "Florida",
+    "fips": "12",
+    "region": "Southeast",
+    "capital": "Tallahassee",
+    "capitalXY": [
+      726.2,
+      479.8
+    ]
+  },
+  "GA": {
+    "code": "GA",
+    "name": "Georgia",
+    "fips": "13",
+    "region": "Southeast",
+    "capital": "Atlanta",
+    "capitalXY": [
+      715,
+      405.1
+    ]
+  },
+  "HI": {
+    "code": "HI",
+    "name": "Hawaii",
+    "fips": "15",
+    "region": "Non-contiguous",
+    "capital": "Honolulu",
+    "capitalXY": [
+      267,
+      549.2
+    ]
+  },
+  "IA": {
+    "code": "IA",
+    "name": "Iowa",
+    "fips": "19",
+    "region": "Midwest",
+    "capital": "Des Moines",
+    "capitalXY": [
+      538,
+      238.4
+    ]
+  },
+  "ID": {
+    "code": "ID",
+    "name": "Idaho",
+    "fips": "16",
+    "region": "Mountain West",
+    "capital": "Boise",
+    "capitalXY": [
+      170.1,
+      157.7
+    ]
+  },
+  "IL": {
+    "code": "IL",
+    "name": "Illinois",
+    "fips": "17",
+    "region": "Midwest",
+    "capital": "Springfield",
+    "capitalXY": [
+      607.6,
+      276.6
+    ]
+  },
+  "IN": {
+    "code": "IN",
+    "name": "Indiana",
+    "fips": "18",
+    "region": "Midwest",
+    "capital": "Indianapolis",
+    "capitalXY": [
+      667.8,
+      271.8
+    ]
+  },
+  "KS": {
+    "code": "KS",
+    "name": "Kansas",
+    "fips": "20",
+    "region": "Great Plains",
+    "capital": "Topeka",
+    "capitalXY": [
+      503.7,
+      297.1
+    ]
+  },
+  "KY": {
+    "code": "KY",
+    "name": "Kentucky",
+    "fips": "21",
+    "region": "Southeast",
+    "capital": "Frankfort",
+    "capitalXY": [
+      694,
+      305
+    ]
+  },
+  "LA": {
+    "code": "LA",
+    "name": "Louisiana",
+    "fips": "22",
+    "region": "Southeast",
+    "capital": "Baton Rouge",
+    "capitalXY": [
+      591.9,
+      491.2
+    ]
+  },
+  "MA": {
+    "code": "MA",
+    "name": "Massachusetts",
+    "fips": "25",
+    "region": "New England",
+    "capital": "Boston",
+    "capitalXY": [
+      908.7,
+      167.1
+    ],
+    "centroid": [
+      897.2,
+      172.5
+    ]
+  },
+  "MD": {
+    "code": "MD",
+    "name": "Maryland",
+    "fips": "24",
+    "region": "Mid-Atlantic",
+    "capital": "Annapolis",
+    "capitalXY": [
+      836.4,
+      263.8
+    ],
+    "centroid": [
+      831.6,
+      263.4
+    ]
+  },
+  "ME": {
+    "code": "ME",
+    "name": "Maine",
+    "fips": "23",
+    "region": "New England",
+    "capital": "Augusta",
+    "capitalXY": [
+      917.1,
+      118.6
+    ]
+  },
+  "MI": {
+    "code": "MI",
+    "name": "Michigan",
+    "fips": "26",
+    "region": "Midwest",
+    "capital": "Lansing",
+    "capitalXY": [
+      687.2,
+      201.4
+    ]
+  },
+  "MN": {
+    "code": "MN",
+    "name": "Minnesota",
+    "fips": "27",
+    "region": "Midwest",
+    "capital": "Saint Paul",
+    "capitalXY": [
+      544.7,
+      161.5
+    ]
+  },
+  "MO": {
+    "code": "MO",
+    "name": "Missouri",
+    "fips": "29",
+    "region": "Midwest",
+    "capital": "Jefferson City",
+    "capitalXY": [
+      565.2,
+      306.5
+    ]
+  },
+  "MS": {
+    "code": "MS",
+    "name": "Mississippi",
+    "fips": "28",
+    "region": "Southeast",
+    "capital": "Jackson",
+    "capitalXY": [
+      608.9,
+      448.1
+    ]
+  },
+  "MT": {
+    "code": "MT",
+    "name": "Montana",
+    "fips": "30",
+    "region": "Mountain West",
+    "capital": "Helena",
+    "capitalXY": [
+      248.3,
+      104
+    ]
+  },
+  "NC": {
+    "code": "NC",
+    "name": "North Carolina",
+    "fips": "37",
+    "region": "Southeast",
+    "capital": "Raleigh",
+    "capitalXY": [
+      813,
+      343.1
+    ]
+  },
+  "ND": {
+    "code": "ND",
+    "name": "North Dakota",
+    "fips": "38",
+    "region": "Great Plains",
+    "capital": "Bismarck",
+    "capitalXY": [
+      423.5,
+      118.3
+    ]
+  },
+  "NE": {
+    "code": "NE",
+    "name": "Nebraska",
+    "fips": "31",
+    "region": "Great Plains",
+    "capital": "Lincoln",
+    "capitalXY": [
+      486.1,
+      256.6
+    ]
+  },
+  "NH": {
+    "code": "NH",
+    "name": "New Hampshire",
+    "fips": "33",
+    "region": "New England",
+    "capital": "Concord",
+    "capitalXY": [
+      896,
+      150.4
+    ],
+    "centroid": [
+      892.7,
+      140.3
+    ]
+  },
+  "NJ": {
+    "code": "NJ",
+    "name": "New Jersey",
+    "fips": "34",
+    "region": "Mid-Atlantic",
+    "capital": "Trenton",
+    "capitalXY": [
+      859.7,
+      229.6
+    ],
+    "centroid": [
+      861.5,
+      230.1
+    ]
+  },
+  "NM": {
+    "code": "NM",
+    "name": "New Mexico",
+    "fips": "35",
+    "region": "Southwest",
+    "capital": "Santa Fe",
+    "capitalXY": [
+      316.9,
+      364.6
+    ]
+  },
+  "NV": {
+    "code": "NV",
+    "name": "Nevada",
+    "fips": "32",
+    "region": "Mountain West",
+    "capital": "Carson City",
+    "capitalXY": [
+      88.2,
+      242.9
+    ]
+  },
+  "NY": {
+    "code": "NY",
+    "name": "New York",
+    "fips": "36",
+    "region": "Mid-Atlantic",
+    "capital": "Albany",
+    "capitalXY": [
+      863.6,
+      171.6
+    ]
+  },
+  "OH": {
+    "code": "OH",
+    "name": "Ohio",
+    "fips": "39",
+    "region": "Midwest",
+    "capital": "Columbus",
+    "capitalXY": [
+      721.4,
+      260.8
+    ]
+  },
+  "OK": {
+    "code": "OK",
+    "name": "Oklahoma",
+    "fips": "40",
+    "region": "Great Plains",
+    "capital": "Oklahoma City",
+    "capitalXY": [
+      470.2,
+      378.9
+    ]
+  },
+  "OR": {
+    "code": "OR",
+    "name": "Oregon",
+    "fips": "41",
+    "region": "Pacific",
+    "capital": "Salem",
+    "capitalXY": [
+      70.3,
+      101.2
+    ]
+  },
+  "PA": {
+    "code": "PA",
+    "name": "Pennsylvania",
+    "fips": "42",
+    "region": "Mid-Atlantic",
+    "capital": "Harrisburg",
+    "capitalXY": [
+      823.8,
+      236.1
+    ]
+  },
+  "RI": {
+    "code": "RI",
+    "name": "Rhode Island",
+    "fips": "44",
+    "region": "New England",
+    "capital": "Providence",
+    "capitalXY": [
+      906.1,
+      180.4
+    ],
+    "centroid": [
+      904.4,
+      184.2
+    ]
+  },
+  "SC": {
+    "code": "SC",
+    "name": "South Carolina",
+    "fips": "45",
+    "region": "Southeast",
+    "capital": "Columbia",
+    "capitalXY": [
+      776.3,
+      390.7
+    ]
+  },
+  "SD": {
+    "code": "SD",
+    "name": "South Dakota",
+    "fips": "46",
+    "region": "Great Plains",
+    "capital": "Pierre",
+    "capitalXY": [
+      427.7,
+      173.9
+    ]
+  },
+  "TN": {
+    "code": "TN",
+    "name": "Tennessee",
+    "fips": "47",
+    "region": "Southeast",
+    "capital": "Nashville",
+    "capitalXY": [
+      665.1,
+      355.1
+    ]
+  },
+  "TX": {
+    "code": "TX",
+    "name": "Texas",
+    "fips": "48",
+    "region": "Southwest",
+    "capital": "Austin",
+    "capitalXY": [
+      463.9,
+      497.4
+    ]
+  },
+  "UT": {
+    "code": "UT",
+    "name": "Utah",
+    "fips": "49",
+    "region": "Mountain West",
+    "capital": "Salt Lake City",
+    "capitalXY": [
+      228.5,
+      235.3
+    ]
+  },
+  "VA": {
+    "code": "VA",
+    "name": "Virginia",
+    "fips": "51",
+    "region": "Southeast",
+    "capital": "Richmond",
+    "capitalXY": [
+      826.7,
+      299.4
+    ]
+  },
+  "VT": {
+    "code": "VT",
+    "name": "Vermont",
+    "fips": "50",
+    "region": "New England",
+    "capital": "Montpelier",
+    "capitalXY": [
+      873.7,
+      131.4
+    ],
+    "centroid": [
+      873.4,
+      136
+    ]
+  },
+  "WA": {
+    "code": "WA",
+    "name": "Washington",
+    "fips": "53",
+    "region": "Pacific",
+    "capital": "Olympia",
+    "capitalXY": [
+      85.6,
+      56.2
+    ]
+  },
+  "WI": {
+    "code": "WI",
+    "name": "Wisconsin",
+    "fips": "55",
+    "region": "Midwest",
+    "capital": "Madison",
+    "capitalXY": [
+      606.7,
+      201.2
+    ]
+  },
+  "WV": {
+    "code": "WV",
+    "name": "West Virginia",
+    "fips": "54",
+    "region": "Southeast",
+    "capital": "Charleston",
+    "capitalXY": [
+      750.2,
+      294
+    ]
+  },
+  "WY": {
+    "code": "WY",
+    "name": "Wyoming",
+    "fips": "56",
+    "region": "Mountain West",
+    "capital": "Cheyenne",
+    "capitalXY": [
+      348.7,
+      242.2
+    ]
+  }
+}
+
