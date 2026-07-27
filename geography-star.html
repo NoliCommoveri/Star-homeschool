@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<!-- Geography Star v1.0 — Stage 1 (map engine + map deck).
-     Modes 1,2,4,5 need no authored content; Mode 3 uses baked capitalXY.
-     See docs/geography-star-spec.md for the full spec and build order,
-     and geodata/build-notes.md for how the inlined map data below was
-     generated and how to regenerate it. -->
+<!-- Geography Star v1.1 — Stage 2 (data scaffold + low-risk facts).
+     Map deck (modes 1-5) shipped in Stage 1. Facts deck now adds
+     Capitals and Population, both mechanically sourced (2020 Census) with
+     no review-gated content. Famous People and Natural World (Stage 3)
+     are still to come. See docs/geography-star-spec.md for the full spec
+     and build order, and geodata/build-notes.md for how the inlined map
+     and population data below were generated / are kept in sync. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -38,6 +40,8 @@
   .center { text-align: center; }
   label.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--body-text); cursor: pointer; }
   input[type=text] { font-family: inherit; font-size: 20px; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--input-bg); color: var(--text); text-align: center; letter-spacing: .08em; text-transform: uppercase; width: 140px; }
+  input[type=text].wide-input { width: 240px; text-transform: none; letter-spacing: normal; }
+  .eyebrow.center { text-align: center; }
 
   /* ---- mode menu ---- */
   .mode-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
@@ -106,7 +110,7 @@
 </div>
 
 <script>
-const APP_VERSION = "v1.0";
+const APP_VERSION = "v1.1";
 
 /* ===================== GENERATED MAP DATA ===================== */
 /* Regenerate with `node geodata/build.js` -- see geodata/build-notes.md.  */
@@ -119,6 +123,14 @@ const SMALL_STATE_CENTROID = {"CT":[885.8,190.4],"DC":[827.7,267.5],"DE":[853.4,
 const STATE_REGION = {"AK":"Non-contiguous","AL":"Southeast","AR":"Southeast","AZ":"Southwest","CA":"Pacific","CO":"Mountain West","CT":"New England","DC":"Mid-Atlantic","DE":"Mid-Atlantic","FL":"Southeast","GA":"Southeast","HI":"Non-contiguous","IA":"Midwest","ID":"Mountain West","IL":"Midwest","IN":"Midwest","KS":"Great Plains","KY":"Southeast","LA":"Southeast","MA":"New England","MD":"Mid-Atlantic","ME":"New England","MI":"Midwest","MN":"Midwest","MO":"Midwest","MS":"Southeast","MT":"Mountain West","NC":"Southeast","ND":"Great Plains","NE":"Great Plains","NH":"New England","NJ":"Mid-Atlantic","NM":"Southwest","NV":"Mountain West","NY":"Mid-Atlantic","OH":"Midwest","OK":"Great Plains","OR":"Pacific","PA":"Mid-Atlantic","RI":"New England","SC":"Southeast","SD":"Great Plains","TN":"Southeast","TX":"Southwest","UT":"Mountain West","VA":"Southeast","VT":"New England","WA":"Pacific","WI":"Midwest","WV":"Southeast","WY":"Mountain West"};
 
 /* =================== END GENERATED MAP DATA =================== */
+
+/* ===================== AUTHORED DATA (Stage 2) ===================== */
+/* 2020 Decennial Census resident population counts, keyed by postal code.
+   Public domain, mechanically sourced -- not subject to the spec §9 review
+   gate. Source of truth: geodata/states.json "population2020" field. Kept
+   in sync by hand (small, stable dataset; no build step needed). */
+const POPULATION_2020 = {"AK":733391,"AL":5024279,"AR":3011524,"AZ":7151502,"CA":39538223,"CO":5773714,"CT":3605944,"DC":689545,"DE":989948,"FL":21538187,"GA":10711908,"HI":1455271,"IA":3190369,"ID":1839106,"IL":12812508,"IN":6785528,"KS":2937880,"KY":4505836,"LA":4657757,"MA":7029917,"MD":6177224,"ME":1362359,"MI":10077331,"MN":5706494,"MO":6154913,"MS":2961279,"MT":1084225,"NC":10439388,"ND":779094,"NE":1961504,"NH":1377529,"NJ":9288994,"NM":2117522,"NV":3104614,"NY":20201249,"OH":11799448,"OK":3959353,"OR":4237256,"PA":13002700,"RI":1097379,"SC":5118425,"SD":886667,"TN":6910840,"TX":29145505,"UT":3271616,"VA":8631393,"VT":643077,"WA":7705281,"WI":5893718,"WV":1793716,"WY":576851};
+/* =================== END AUTHORED DATA =================== */
 
 // ---------- small utilities ----------
 function shuffle(arr) {
@@ -252,28 +264,34 @@ const homeBtn = document.getElementById("homeBtn");
 function goHome() { renderMenu(); }
 
 const MODES = [
-  { id: "find", title: "Find the State", icon: "&#128269;", desc: "We name a state — you click it on the map." },
-  { id: "name", title: "Name the State", icon: "&#127991;&#65039;", desc: "A state lights up — you pick its name." },
-  { id: "capital", title: "Click the Capital", icon: "&#128205;", desc: "Click the dot for the right capital city." },
-  { id: "abbr", title: "State &rarr; Abbreviation", icon: "&#128288;", desc: "Kentucky &rarr; KY. Works with the map hidden." },
-  { id: "unabbr", title: "Abbreviation &rarr; State", icon: "&#128290;", desc: "KY &rarr; Kentucky. Works with the map hidden." },
+  { id: "find", title: "Find the State", icon: "&#128269;", desc: "We name a state — you click it on the map.", deck: "Map Deck" },
+  { id: "name", title: "Name the State", icon: "&#127991;&#65039;", desc: "A state lights up — you pick its name.", deck: "Map Deck" },
+  { id: "capital", title: "Click the Capital", icon: "&#128205;", desc: "Click the dot for the right capital city.", deck: "Map Deck" },
+  { id: "abbr", title: "State &rarr; Abbreviation", icon: "&#128288;", desc: "Kentucky &rarr; KY. Works with the map hidden.", deck: "Map Deck" },
+  { id: "unabbr", title: "Abbreviation &rarr; State", icon: "&#128290;", desc: "KY &rarr; Kentucky. Works with the map hidden.", deck: "Map Deck" },
+  { id: "capitals", title: "Capitals", icon: "&#127970;", desc: "State &harr; capital, either direction. Works with the map hidden.", deck: "Facts Deck" },
+  { id: "population", title: "Population", icon: "&#128101;", desc: "About how many people live there? 2020 Census.", deck: "Facts Deck" },
 ];
 
 function renderMenu() {
   homeBtn.style.display = "none";
   app.innerHTML = "";
-  app.appendChild(el("div", { class: "deck-label" }, "Map Deck"));
-  const grid = el("div", { class: "mode-grid" });
-  MODES.forEach((m) => {
-    const card = el("button", { class: "mode-card", type: "button" });
-    card.innerHTML = `<div class="icon">${m.icon}</div><div><h3>${m.title}</h3><p>${m.desc}</p></div>`;
-    card.addEventListener("click", () => startMode(m.id));
-    grid.appendChild(card);
+  const decks = [];
+  MODES.forEach((m) => { if (!decks.includes(m.deck)) decks.push(m.deck); });
+  decks.forEach((deckName) => {
+    app.appendChild(el("div", { class: "deck-label" }, deckName));
+    const grid = el("div", { class: "mode-grid" });
+    MODES.filter((m) => m.deck === deckName).forEach((m) => {
+      const card = el("button", { class: "mode-card", type: "button" });
+      card.innerHTML = `<div class="icon">${m.icon}</div><div><h3>${m.title}</h3><p>${m.desc}</p></div>`;
+      card.addEventListener("click", () => startMode(m.id));
+      grid.appendChild(card);
+    });
+    app.appendChild(grid);
   });
-  app.appendChild(grid);
   app.appendChild(el(
     "p", { class: "muted", style: "margin-top:18px" },
-    "The Facts Deck — capitals, population, famous people, and state symbols — arrives in a later update."
+    "Famous People and Natural World — state symbols, crops, and biographies — arrive in a later update."
   ));
 }
 
@@ -284,6 +302,8 @@ function startMode(id) {
   else if (id === "capital") playCapital();
   else if (id === "abbr") playAbbr();
   else if (id === "unabbr") playUnabbr();
+  else if (id === "capitals") playCapitals();
+  else if (id === "population") playPopulation();
 }
 
 function progressLine(i, total, correct) {
@@ -300,6 +320,7 @@ function nextButtonRow(isLast, onNext) {
 const MODE_TITLES = {
   find: "Find the State", name: "Name the State", capital: "Click the Capital",
   abbr: "State → Abbreviation", unabbr: "Abbreviation → State",
+  capitals: "Capitals", population: "Population",
 };
 function renderEnd(modeId, correct, total, replayFn) {
   app.innerHTML = "";
@@ -642,6 +663,158 @@ function playUnabbr() {
     wrongPhrase: (code) => `Not quite — ${code} is ${STATE_NAMES[code]}.`,
     replayFn: playUnabbr,
   });
+}
+
+// ---------- Mode 6: Capitals (state <-> capital, either direction) ----------
+// Direction is randomized per question. State->capital asks for free-text
+// entry (spelling the city); capital->state is multiple choice, matching
+// the split already used for modes 4/5 (spec allows either format).
+function normalizeCapitalAnswer(s) {
+  return s.toLowerCase().trim().replace(/[.]/g, "").replace(/\s+/g, " ").replace(/\bsaint\b/g, "st");
+}
+function playCapitals() {
+  const queue = sample(CAPITAL_CODES, ROUND_SIZE).map((code) => ({
+    code, dir: Math.random() < 0.5 ? "s2c" : "c2s",
+  }));
+  let i = 0, correct = 0;
+
+  function renderQuestion() {
+    app.innerHTML = "";
+    const { code, dir } = queue[i];
+    const stateName = STATE_NAMES[code];
+    const capitalName = CAPITALS[code][0];
+
+    const promptText = dir === "s2c"
+      ? `What is the capital of ${stateName}?`
+      : `${capitalName} is the capital of which state?`;
+    app.appendChild(el("div", { class: "prompt" }, promptText));
+    app.appendChild(progressLine(i, queue.length, correct));
+
+    const feedback = el("div", { class: "feedback" });
+    let answered = false;
+
+    function reveal(isCorrect) {
+      if (isCorrect) correct++;
+      feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
+      const phrase = isCorrect
+        ? `Yes — ${capitalName} is the capital of ${stateName}.`
+        : `Not quite — ${capitalName} is the capital of ${stateName}.`;
+      feedback.innerHTML = feedbackHtml(isCorrect, phrase);
+      app.appendChild(nextButtonRow(i + 1 >= queue.length, () => {
+        i++;
+        if (i < queue.length) renderQuestion(); else renderEnd("capitals", correct, queue.length, playCapitals);
+      }));
+    }
+
+    if (dir === "s2c") {
+      const form = el("form", { class: "row center", style: "justify-content:center;gap:10px;margin-top:18px" });
+      const input = el("input", {
+        type: "text", class: "wide-input", maxlength: "30", autocomplete: "off",
+        spellcheck: "false", "aria-label": "Type the capital city",
+      });
+      const submitBtn = el("button", { type: "submit" }, "Check");
+      form.appendChild(input);
+      form.appendChild(submitBtn);
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (answered || !input.value.trim()) return;
+        answered = true;
+        input.disabled = true;
+        submitBtn.disabled = true;
+        reveal(normalizeCapitalAnswer(input.value) === normalizeCapitalAnswer(capitalName));
+      });
+      app.appendChild(form);
+      app.appendChild(feedback);
+      setTimeout(() => input.focus(), 0);
+    } else {
+      const choiceGrid = el("div", { class: "choice-grid" });
+      const choices = shuffle([code, ...distractorCodes(code, CAPITAL_CODES, 3)]);
+      choices.forEach((c) => {
+        const btn = el("button", {}, STATE_NAMES[c]);
+        btn.addEventListener("click", () => {
+          if (answered) return;
+          answered = true;
+          choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
+          const isCorrect = c === code;
+          if (isCorrect) {
+            btn.classList.add("correct");
+          } else {
+            btn.classList.add("wrong");
+            Array.from(choiceGrid.children).forEach((b) => { if (b.textContent === stateName) b.classList.add("correct"); });
+          }
+          reveal(isCorrect);
+        });
+        choiceGrid.appendChild(btn);
+      });
+      app.appendChild(choiceGrid);
+      app.appendChild(feedback);
+    }
+  }
+  renderQuestion();
+}
+
+// ---------- Mode 7: Population (2020 Census, multiple choice) ----------
+function formatPop(n) { return n.toLocaleString("en-US"); }
+function round10k(n) { return Math.max(10000, Math.round(n / 10000) * 10000); }
+// Near-miss distractors spread around the true value (rounded to the
+// nearest 10,000, same as the displayed "correct" choice) so the answer
+// isn't guessable by precision or by magnitude alone (spec §5, mode 7).
+function popDistractors(trueVal, n) {
+  const target = round10k(trueVal);
+  const multipliers = shuffle([0.4, 0.55, 0.7, 0.82, 1.18, 1.35, 1.6, 2.1]);
+  const out = [];
+  for (const m of multipliers) {
+    const v = round10k(trueVal * m);
+    if (v !== target && !out.includes(v)) out.push(v);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+function playPopulation() {
+  const queue = sample(ALL_CODES, ROUND_SIZE);
+  let i = 0, correct = 0;
+
+  function renderQuestion() {
+    app.innerHTML = "";
+    const code = queue[i];
+    const name = STATE_NAMES[code];
+    const target = round10k(POPULATION_2020[code]);
+
+    app.appendChild(el("div", { class: "eyebrow center" }, "2020 Census"));
+    app.appendChild(el("div", { class: "prompt" }, `About how many people live in ${name}?`));
+    app.appendChild(progressLine(i, queue.length, correct));
+
+    const feedback = el("div", { class: "feedback" });
+    let answered = false;
+    const choiceGrid = el("div", { class: "choice-grid" });
+    const choices = shuffle([target, ...popDistractors(POPULATION_2020[code], 3)]);
+    choices.forEach((v) => {
+      const btn = el("button", {}, formatPop(v));
+      btn.addEventListener("click", () => {
+        if (answered) return;
+        answered = true;
+        choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        const isCorrect = v === target;
+        if (isCorrect) {
+          btn.classList.add("correct");
+          correct++;
+        } else {
+          btn.classList.add("wrong");
+          Array.from(choiceGrid.children).forEach((b) => { if (b.textContent === formatPop(target)) b.classList.add("correct"); });
+        }
+        feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
+        feedback.innerHTML = feedbackHtml(isCorrect, `${name}'s 2020 Census population was about ${formatPop(target)}.`);
+        app.appendChild(nextButtonRow(i + 1 >= queue.length, () => {
+          i++;
+          if (i < queue.length) renderQuestion(); else renderEnd("population", correct, queue.length, playPopulation);
+        }));
+      });
+      choiceGrid.appendChild(btn);
+    });
+    app.appendChild(choiceGrid);
+    app.appendChild(feedback);
+  }
+  renderQuestion();
 }
 
 renderMenu();
