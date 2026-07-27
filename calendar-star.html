@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calendar Star — Star Apps</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="icon" href="./icons/favicon-32.png" sizes="32x32">
-<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <meta name="theme-color" content="#2A5D9F">
 <style>
   :root {
@@ -59,6 +59,20 @@
   }
   .card h2 { margin: 0 0 4px; font-size: 19px; font-weight: 800; }
   .card .hint { margin: 0 0 16px; font-size: 14px; color: var(--muted); }
+
+  .card-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .poem-toggle {
+    flex: none; border: none; background: var(--gold-soft); color: var(--eyebrow);
+    font-family: inherit; font-weight: 700; font-size: 13px; padding: 10px 14px;
+    border-radius: 12px; cursor: pointer; transition: background .15s ease;
+  }
+  .poem-toggle:hover, .poem-toggle[aria-expanded="true"] { background: var(--gold); color: #fff; }
+  .poem-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .poem-box {
+    background: var(--gold-soft); border: 1px solid var(--gold); border-radius: 14px;
+    padding: 16px 18px; margin: 4px 0 18px;
+  }
+  .poem-box p { margin: 0; font-size: 15px; line-height: 1.7; color: var(--text); font-style: italic; }
 
   table { width: 100%; border-collapse: collapse; }
   th, td {
@@ -124,8 +138,21 @@
 
     <section class="panel" id="panel-months">
       <div class="card">
-        <h2>Months of the Year</h2>
-        <p class="hint">Order and number of days in each month.</p>
+        <div class="card-head-row">
+          <div>
+            <h2>Months of the Year</h2>
+            <p class="hint">Order and number of days in each month.</p>
+          </div>
+          <button type="button" class="poem-toggle" id="poem-toggle" aria-expanded="false" aria-controls="poem-box">Memory Poem</button>
+        </div>
+        <div class="poem-box" id="poem-box" hidden>
+          <p>Thirty days has September,<br>
+          April, June, and November,<br>
+          All the rest have thirty-one,<br>
+          Save February at twenty-eight,<br>
+          But leap year, coming once in four,<br>
+          February then has one day more.</p>
+        </div>
         <table>
           <thead>
             <tr><th class="num">#</th><th>Month</th><th class="num">Days</th></tr>
@@ -187,6 +214,14 @@
     yearsGrid.appendChild(tile);
   }
 
+  const poemToggle = document.getElementById('poem-toggle');
+  const poemBox = document.getElementById('poem-box');
+  poemToggle.addEventListener('click', () => {
+    const expanded = poemToggle.getAttribute('aria-expanded') === 'true';
+    poemToggle.setAttribute('aria-expanded', String(!expanded));
+    poemBox.hidden = expanded;
+  });
+
   const buttons = document.querySelectorAll('.switcher button');
   const panels = document.querySelectorAll('.panel');
   buttons.forEach(btn => {
@@ -198,6 +233,8 @@
       document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
     });
   });
+
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 </script>
 </body>
 </html>
