@@ -9,7 +9,34 @@
       176.9,
       556.1
     ],
-    "population2020": 733391
+    "population2020": 733391,
+    "bird": "Willow Ptarmigan",
+    "flower": "Forget-me-not",
+    "tree": "Sitka Spruce",
+    "animals": [
+      "Moose"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Elizabeth Peratrovich",
+        "role": "activist",
+        "blurb": "Elizabeth Peratrovich, a Tlingit leader, argued before Alaska's territorial lawmakers for the Anti-Discrimination Act of 1945, one of the first anti-discrimination laws passed anywhere in the United States.",
+        "confidence": "high"
+      },
+      {
+        "name": "Roy Peratrovich",
+        "role": "activist",
+        "blurb": "Roy Peratrovich, a Tlingit leader and Elizabeth Peratrovich's husband, led the Alaska Native Brotherhood's campaign alongside her for the 1945 Anti-Discrimination Act.",
+        "confidence": "review"
+      },
+      {
+        "name": "Benny Benson",
+        "role": "inventor",
+        "blurb": "Benny Benson, a 13-year-old Alutiiq boy, won a territory-wide contest to design Alaska's flag, choosing the Big Dipper and North Star to represent strength and a guiding light.",
+        "confidence": "review"
+      }
+    ]
   },
   "AL": {
     "code": "AL",
@@ -21,7 +48,38 @@
       682.4,
       440.3
     ],
-    "population2020": 5024279
+    "population2020": 5024279,
+    "bird": "Yellowhammer",
+    "flower": "Camellia",
+    "tree": "Longleaf Pine",
+    "crops": [
+      "peanuts",
+      "cotton"
+    ],
+    "animals": [
+      "American black bear"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Rosa Parks",
+        "role": "activist",
+        "blurb": "Rosa Parks refused to give up her bus seat to a white passenger in Montgomery, Alabama. Her arrest helped start a boycott that ended bus segregation in the city.",
+        "confidence": "high"
+      },
+      {
+        "name": "Fred Shuttlesworth",
+        "role": "activist",
+        "blurb": "Fred Shuttlesworth co-founded the Southern Christian Leadership Conference and helped organize the Birmingham campaign that pushed the country toward ending segregation laws.",
+        "confidence": "high"
+      },
+      {
+        "name": "Coretta Scott King",
+        "role": "activist",
+        "blurb": "Coretta Scott King, born in Marion, Alabama, worked alongside her husband Martin Luther King Jr. in the civil rights movement and continued that work for decades after his death.",
+        "confidence": "high"
+      }
+    ]
   },
   "AR": {
     "code": "AR",
@@ -33,7 +91,38 @@
       566.6,
       394.2
     ],
-    "population2020": 3011524
+    "population2020": 3011524,
+    "bird": "Northern Mockingbird",
+    "flower": "Apple Blossom",
+    "tree": "Loblolly Pine",
+    "crops": [
+      "rice",
+      "soybeans"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Daisy Bates",
+        "role": "activist",
+        "blurb": "Daisy Bates guided and protected the Little Rock Nine, the Black students who integrated Central High School in 1957, and ran the newspaper that helped organize Arkansas's civil rights movement.",
+        "confidence": "high"
+      },
+      {
+        "name": "Wiley Branton",
+        "role": "activist",
+        "blurb": "Wiley Branton was the lawyer who represented the Little Rock Nine, arguing the case that forced Central High School to admit Black students.",
+        "confidence": "review"
+      },
+      {
+        "name": "John H. Johnson",
+        "role": "both",
+        "blurb": "John H. Johnson grew up in Arkansas City, Arkansas, and founded Ebony and Jet magazines, building one of the largest Black-owned publishing companies in the country.",
+        "confidence": "high"
+      }
+    ]
   },
   "AZ": {
     "code": "AZ",
@@ -45,7 +134,38 @@
       197.2,
       399.8
     ],
-    "population2020": 7151502
+    "population2020": 7151502,
+    "bird": "Cactus Wren",
+    "flower": "Saguaro Cactus Blossom",
+    "tree": "Palo Verde",
+    "crops": [
+      "cotton",
+      "citrus"
+    ],
+    "animals": [
+      "ringtail"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Raúl Héctor Castro",
+        "role": "activist",
+        "blurb": "Raúl Héctor Castro grew up in a Mexican immigrant family in Arizona and, after years working as a lawyer for Mexican American communities facing discrimination, became the state's first Latino governor.",
+        "confidence": "review"
+      },
+      {
+        "name": "Annie Dodge Wauneka",
+        "role": "activist",
+        "blurb": "Annie Dodge Wauneka, a Navajo leader, spent decades teaching public health on the Navajo Nation and helped fight tuberculosis, becoming the first Native American to receive the Presidential Medal of Freedom.",
+        "confidence": "high"
+      },
+      {
+        "name": "Manuelito",
+        "role": "activist",
+        "blurb": "Manuelito, a Navajo leader, resisted the forced removal of his people from their Arizona and New Mexico homeland and later helped negotiate the 1868 treaty that let the Navajo return home.",
+        "confidence": "review"
+      }
+    ]
   },
   "CA": {
     "code": "CA",
@@ -57,7 +177,39 @@
       55.6,
       248
     ],
-    "population2020": 39538223
+    "population2020": 39538223,
+    "bird": "California Quail",
+    "flower": "California Poppy",
+    "tree": "Coast Redwood",
+    "crops": [
+      "almonds",
+      "grapes",
+      "strawberries"
+    ],
+    "animals": [
+      "California grizzly bear"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Cesar Chavez",
+        "role": "activist",
+        "blurb": "Cesar Chavez co-founded the United Farm Workers in California and led boycotts and strikes that won farmworkers better pay, safer conditions, and the right to unionize.",
+        "confidence": "high"
+      },
+      {
+        "name": "Dolores Huerta",
+        "role": "activist",
+        "blurb": "Dolores Huerta co-founded the United Farm Workers alongside Cesar Chavez, organizing strikes and negotiating contracts that improved life for California's farmworkers.",
+        "confidence": "high"
+      },
+      {
+        "name": "Fred Korematsu",
+        "role": "activist",
+        "blurb": "Fred Korematsu, a Japanese American from California, refused to report to a WWII incarceration camp and fought his conviction in court for decades until it was overturned, becoming a symbol of civil liberties.",
+        "confidence": "high"
+      }
+    ]
   },
   "CO": {
     "code": "CO",
@@ -69,7 +221,34 @@
       342.8,
       273.9
     ],
-    "population2020": 5773714
+    "population2020": 5773714,
+    "bird": "Lark Bunting",
+    "flower": "Rocky Mountain Columbine",
+    "tree": "Colorado Blue Spruce",
+    "animals": [
+      "Rocky Mountain bighorn sheep"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Chin Lin Sou",
+        "role": "both",
+        "blurb": "Chin Lin Sou, a Chinese immigrant, became a respected businessman and leader of Denver's Chinese community during Colorado's mining era, despite intense anti-Chinese discrimination.",
+        "confidence": "review"
+      },
+      {
+        "name": "Barney Ford",
+        "role": "both",
+        "blurb": "Barney Ford escaped slavery and became a successful Colorado businessman, using his wealth and influence to help win Black Coloradans the right to vote.",
+        "confidence": "high"
+      },
+      {
+        "name": "Chipeta",
+        "role": "activist",
+        "blurb": "Chipeta, a Ute leader, traveled to Washington, D.C. to negotiate on behalf of the Ute people after they were forced from their Colorado homeland, working to protect what land and rights she could.",
+        "confidence": "review"
+      }
+    ]
   },
   "CT": {
     "code": "CT",
@@ -85,6 +264,34 @@
     "centroid": [
       885.8,
       190.4
+    ],
+    "bird": "American Robin",
+    "flower": "Mountain Laurel",
+    "tree": "White Oak",
+    "animals": [
+      "sperm whale"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Sperm whale is Connecticut's official state animal (an unusual pick since CT isn't coastal in the way whaling states usually are) — worth a source check.",
+    "people": [
+      {
+        "name": "Prudence Crandall",
+        "role": "activist",
+        "blurb": "Prudence Crandall opened a school for Black girls in Connecticut in 1833, defying a mob and an unjust new state law that tried to shut it down.",
+        "confidence": "high"
+      },
+      {
+        "name": "Ebenezer Bassett",
+        "role": "both",
+        "blurb": "Ebenezer Bassett, born in Connecticut, became the first African American to serve as a U.S. diplomat, representing the country in Haiti.",
+        "confidence": "high"
+      },
+      {
+        "name": "Constance Baker Motley",
+        "role": "activist",
+        "blurb": "Constance Baker Motley, who grew up in New Haven, Connecticut, was a lawyer on the legal team that won Brown v. Board of Education and later became the first Black woman appointed as a federal judge.",
+        "confidence": "high"
+      }
     ]
   },
   "DC": {
@@ -98,6 +305,32 @@
     "centroid": [
       827.7,
       267.5
+    ],
+    "bird": "Wood Thrush",
+    "flower": "American Beauty Rose",
+    "tree": "Scarlet Oak",
+    "animals": [],
+    "natureConfidence": "review",
+    "natureNote": "DC is not a state and has no officially designated animal; verify bird/flower/tree, which are DC Council-designated emblems rather than state law.",
+    "people": [
+      {
+        "name": "Mary Church Terrell",
+        "role": "activist",
+        "blurb": "Mary Church Terrell, living in Washington, D.C., co-founded the National Association of Colored Women and led a successful campaign against segregated restaurants in the city.",
+        "confidence": "high"
+      },
+      {
+        "name": "Anna Julia Cooper",
+        "role": "both",
+        "blurb": "Anna Julia Cooper, an educator in Washington, D.C., wrote one of the first books arguing that Black women's voices were essential to social progress, and later earned a Ph.D. at nearly 67 years old.",
+        "confidence": "high"
+      },
+      {
+        "name": "Charles Hamilton Houston",
+        "role": "activist",
+        "blurb": "Charles Hamilton Houston, a Washington, D.C. lawyer, trained a generation of civil rights lawyers, including Thurgood Marshall, and designed the legal strategy that led to Brown v. Board of Education.",
+        "confidence": "high"
+      }
     ]
   },
   "DE": {
@@ -114,6 +347,33 @@
     "centroid": [
       853.4,
       260.1
+    ],
+    "bird": "Blue Hen Chicken",
+    "flower": "Peach Blossom",
+    "tree": "American Holly",
+    "animals": [
+      "horseshoe crab"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Louis L. Redding",
+        "role": "activist",
+        "blurb": "Louis L. Redding was Delaware's first Black lawyer and argued the school segregation case that became part of Brown v. Board of Education.",
+        "confidence": "high"
+      },
+      {
+        "name": "Absalom Jones",
+        "role": "activist",
+        "blurb": "Absalom Jones was born enslaved in Delaware, bought his freedom, and co-founded the Free African Society, one of the first organizations to help formerly enslaved Black Americans.",
+        "confidence": "high"
+      },
+      {
+        "name": "Annie Jump Cannon",
+        "role": "inventor",
+        "blurb": "Annie Jump Cannon, born in Dover, Delaware, created a system for classifying stars by their temperature that astronomers still use today.",
+        "confidence": "high"
+      }
     ]
   },
   "FL": {
@@ -126,7 +386,37 @@
       726.2,
       479.8
     ],
-    "population2020": 21538187
+    "population2020": 21538187,
+    "bird": "Northern Mockingbird",
+    "flower": "Orange Blossom",
+    "tree": "Sabal Palm",
+    "crops": [
+      "oranges"
+    ],
+    "animals": [
+      "Florida panther"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Mary McLeod Bethune",
+        "role": "both",
+        "blurb": "Mary McLeod Bethune founded a school in Daytona Beach, Florida that grew into Bethune-Cookman University, and she later advised U.S. presidents on issues facing Black Americans.",
+        "confidence": "high"
+      },
+      {
+        "name": "A. Philip Randolph",
+        "role": "activist",
+        "blurb": "A. Philip Randolph, born in Crescent City, Florida, organized the Brotherhood of Sleeping Car Porters, the first major Black labor union, and helped plan the March on Washington.",
+        "confidence": "high"
+      },
+      {
+        "name": "Osceola",
+        "role": "activist",
+        "blurb": "Osceola led Seminole resistance in Florida against the U.S. government's attempt to force his people from their homeland during the Seminole Wars.",
+        "confidence": "review"
+      }
+    ]
   },
   "GA": {
     "code": "GA",
@@ -138,7 +428,39 @@
       715,
       405.1
     ],
-    "population2020": 10711908
+    "population2020": 10711908,
+    "bird": "Brown Thrasher",
+    "flower": "Cherokee Rose",
+    "tree": "Southern Live Oak",
+    "crops": [
+      "peaches",
+      "peanuts",
+      "pecans"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Martin Luther King Jr.",
+        "role": "activist",
+        "blurb": "Martin Luther King Jr., born in Atlanta, Georgia, led nonviolent protests against segregation and helped win the Civil Rights Act and Voting Rights Act.",
+        "confidence": "high"
+      },
+      {
+        "name": "John Lewis",
+        "role": "activist",
+        "blurb": "John Lewis, who grew up in rural Georgia, helped lead the 1965 march across the Edmund Pettus Bridge in Selma, a turning point that helped win the Voting Rights Act.",
+        "confidence": "high"
+      },
+      {
+        "name": "Alonzo Herndon",
+        "role": "both",
+        "blurb": "Alonzo Herndon was born enslaved in Georgia and became one of the wealthiest Black businessmen in the country, founding what became the Atlanta Life Insurance Company.",
+        "confidence": "high"
+      }
+    ]
   },
   "HI": {
     "code": "HI",
@@ -150,7 +472,39 @@
       267,
       549.2
     ],
-    "population2020": 1455271
+    "population2020": 1455271,
+    "bird": "Nene (Hawaiian Goose)",
+    "flower": "Pua Aloalo (Yellow Hibiscus)",
+    "tree": "Kukui (Candlenut)",
+    "crops": [
+      "pineapple",
+      "coffee",
+      "macadamia nuts"
+    ],
+    "animals": [
+      "Hawaiian monk seal"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Queen Liliʻuokalani",
+        "role": "activist",
+        "blurb": "Queen Liliʻuokalani was Hawaii's last reigning monarch; after her kingdom was overthrown, she kept fighting in writing and in court for her people's rights and sovereignty.",
+        "confidence": "high"
+      },
+      {
+        "name": "Patsy Mink",
+        "role": "activist",
+        "blurb": "Patsy Mink, born in Hawaii, became the first woman of color elected to the U.S. Congress and co-wrote Title IX, the law that guarantees equal access to education and school sports regardless of sex.",
+        "confidence": "high"
+      },
+      {
+        "name": "Prince Jonah Kūhiō Kalanianaʻole",
+        "role": "activist",
+        "blurb": "Prince Jonah Kūhiō Kalanianaʻole served as Hawaii's delegate to Congress and wrote the Hawaiian Homes Commission Act, which set aside land so Native Hawaiians could return to farming and ranching their homeland.",
+        "confidence": "review"
+      }
+    ]
   },
   "IA": {
     "code": "IA",
@@ -162,7 +516,39 @@
       538,
       238.4
     ],
-    "population2020": 3190369
+    "population2020": 3190369,
+    "bird": "American Goldfinch",
+    "flower": "Wild Rose",
+    "tree": "Oak",
+    "crops": [
+      "corn",
+      "soybeans"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Iowa's state tree is officially just “Oak” (no single species specified); some sources cite Bur Oak — confirm before printing a species name.",
+    "people": [
+      {
+        "name": "Edna Griffin",
+        "role": "activist",
+        "blurb": "Edna Griffin led a 1948 sit-in at a Des Moines, Iowa drugstore that had refused to serve Black customers, a case sometimes called “Iowa's Rosa Parks story.”",
+        "confidence": "review"
+      },
+      {
+        "name": "Alexander Clark",
+        "role": "activist",
+        "blurb": "Alexander Clark, an Iowa civil rights leader, sued to desegregate Muscatine's public schools and won, decades before Brown v. Board of Education.",
+        "confidence": "high"
+      },
+      {
+        "name": "James B. Morris Sr.",
+        "role": "activist",
+        "blurb": "James B. Morris Sr. published the Iowa Bystander, one of the oldest Black newspapers in the country, using it to report on and fight discrimination in Iowa.",
+        "confidence": "review"
+      }
+    ]
   },
   "ID": {
     "code": "ID",
@@ -174,7 +560,38 @@
       170.1,
       157.7
     ],
-    "population2020": 1839106
+    "population2020": 1839106,
+    "bird": "Mountain Bluebird",
+    "flower": "Syringa",
+    "tree": "Western White Pine",
+    "crops": [
+      "potatoes"
+    ],
+    "animals": [
+      "Rocky Mountain elk"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Idaho has no officially designated state animal; Rocky Mountain elk is a regional stand-in, not a legal designation.",
+    "people": [
+      {
+        "name": "Sacagawea",
+        "role": "both",
+        "blurb": "Sacagawea, a Lemhi Shoshone woman born in what is now Idaho, guided and translated for the Lewis and Clark Expedition, helping it survive and succeed.",
+        "confidence": "high"
+      },
+      {
+        "name": "Polly Bemis",
+        "role": "both",
+        "blurb": "Polly Bemis was brought to Idaho as a young woman during the mining era and later became a respected rancher along the Salmon River, remembered as one of Idaho's notable Chinese American pioneers.",
+        "confidence": "review"
+      },
+      {
+        "name": "Chief Tendoy",
+        "role": "activist",
+        "blurb": "Chief Tendoy led the Lemhi Shoshone in Idaho and worked to keep peace and protect his people's access to their homeland during a time of growing settler pressure.",
+        "confidence": "review"
+      }
+    ]
   },
   "IL": {
     "code": "IL",
@@ -186,7 +603,38 @@
       607.6,
       276.6
     ],
-    "population2020": 12812508
+    "population2020": 12812508,
+    "bird": "Northern Cardinal",
+    "flower": "Violet",
+    "tree": "White Oak",
+    "crops": [
+      "corn",
+      "soybeans"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Jesse Binga",
+        "role": "both",
+        "blurb": "Jesse Binga founded one of the first Black-owned banks in Chicago, Illinois, giving Black families and businesses access to loans when other banks would not.",
+        "confidence": "review"
+      },
+      {
+        "name": "Jean Baptiste Point du Sable",
+        "role": "both",
+        "blurb": "Jean Baptiste Point du Sable, a Black and Haitian trader, built the first permanent settlement at the site that became Chicago, Illinois.",
+        "confidence": "high"
+      },
+      {
+        "name": "Oscar Stanton De Priest",
+        "role": "activist",
+        "blurb": "Oscar Stanton De Priest, elected from Chicago, Illinois, became the first Black member of Congress from a northern state in the twentieth century and pushed for anti-lynching legislation.",
+        "confidence": "review"
+      }
+    ]
   },
   "IN": {
     "code": "IN",
@@ -198,7 +646,39 @@
       667.8,
       271.8
     ],
-    "population2020": 6785528
+    "population2020": 6785528,
+    "bird": "Northern Cardinal",
+    "flower": "Peony",
+    "tree": "Tulip Tree",
+    "crops": [
+      "corn",
+      "soybeans"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Indiana has no officially designated state animal; white-tailed deer is a regional stand-in, not a legal designation.",
+    "people": [
+      {
+        "name": "Madam C.J. Walker",
+        "role": "both",
+        "blurb": "Madam C.J. Walker built her hair care business into a fortune while based in Indianapolis, Indiana, becoming one of the first American women to become a self-made millionaire.",
+        "confidence": "high"
+      },
+      {
+        "name": "Tecumseh",
+        "role": "activist",
+        "blurb": "Tecumseh, a Shawnee leader based in Indiana, worked to unite Native nations to resist the loss of their land to U.S. settlers.",
+        "confidence": "high"
+      },
+      {
+        "name": "Levi Coffin",
+        "role": "activist",
+        "blurb": "Levi and Catharine Coffin ran an Underground Railroad stop in Fountain City, Indiana that helped more than 2,000 people escape slavery.",
+        "confidence": "high"
+      }
+    ]
   },
   "KS": {
     "code": "KS",
@@ -210,7 +690,37 @@
       503.7,
       297.1
     ],
-    "population2020": 2937880
+    "population2020": 2937880,
+    "bird": "Western Meadowlark",
+    "flower": "Sunflower",
+    "tree": "Cottonwood",
+    "crops": [
+      "wheat"
+    ],
+    "animals": [
+      "American bison"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Gordon Parks",
+        "role": "both",
+        "blurb": "Gordon Parks grew up in Fort Scott, Kansas and became a groundbreaking photographer and filmmaker who documented poverty and racism in America.",
+        "confidence": "high"
+      },
+      {
+        "name": "Linda Brown",
+        "role": "activist",
+        "blurb": "Linda Brown and her family were at the center of Brown v. Board of Education, the Topeka, Kansas case that ended legal school segregation nationwide.",
+        "confidence": "high"
+      },
+      {
+        "name": "Benjamin “Pap” Singleton",
+        "role": "activist",
+        "blurb": "Benjamin “Pap” Singleton helped lead thousands of formerly enslaved people, known as Exodusters, to settle in Kansas and build new lives after the Civil War.",
+        "confidence": "review"
+      }
+    ]
   },
   "KY": {
     "code": "KY",
@@ -222,7 +732,38 @@
       694,
       305
     ],
-    "population2020": 4505836
+    "population2020": 4505836,
+    "bird": "Northern Cardinal",
+    "flower": "Goldenrod",
+    "tree": "Tulip Poplar",
+    "crops": [
+      "tobacco",
+      "corn"
+    ],
+    "animals": [
+      "gray squirrel"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Muhammad Ali",
+        "role": "both",
+        "blurb": "Muhammad Ali, born in Louisville, Kentucky, became a champion boxer and used his fame to speak out against racism and the Vietnam War, giving up his title rather than go against his beliefs.",
+        "confidence": "high"
+      },
+      {
+        "name": "Whitney M. Young Jr.",
+        "role": "activist",
+        "blurb": "Whitney M. Young Jr., born in Kentucky, led the National Urban League and pushed American businesses and government to open more jobs to Black workers.",
+        "confidence": "high"
+      },
+      {
+        "name": "Georgia Davis Powers",
+        "role": "activist",
+        "blurb": "Georgia Davis Powers became Kentucky's first Black state senator and wrote the state's first civil rights and fair housing laws.",
+        "confidence": "review"
+      }
+    ]
   },
   "LA": {
     "code": "LA",
@@ -234,7 +775,38 @@
       591.9,
       491.2
     ],
-    "population2020": 4657757
+    "population2020": 4657757,
+    "bird": "Brown Pelican",
+    "flower": "Magnolia",
+    "tree": "Bald Cypress",
+    "crops": [
+      "sugarcane",
+      "rice"
+    ],
+    "animals": [
+      "Louisiana black bear"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Homer Plessy",
+        "role": "activist",
+        "blurb": "Homer Plessy boarded a whites-only train car in New Orleans, Louisiana on purpose to challenge segregation laws in court, a case that reached the Supreme Court.",
+        "confidence": "high"
+      },
+      {
+        "name": "Ruby Bridges",
+        "role": "activist",
+        "blurb": "Ruby Bridges was six years old when she became the first Black child to integrate an all-white elementary school in New Orleans, Louisiana, walking past angry crowds every day.",
+        "confidence": "high"
+      },
+      {
+        "name": "Norbert Rillieux",
+        "role": "inventor",
+        "blurb": "Norbert Rillieux, a free Black inventor from New Orleans, Louisiana, invented a new sugar-refining process that made sugar production safer and far more efficient.",
+        "confidence": "high"
+      }
+    ]
   },
   "MA": {
     "code": "MA",
@@ -250,6 +822,36 @@
     "centroid": [
       897.2,
       172.5
+    ],
+    "bird": "Black-capped Chickadee",
+    "flower": "Mayflower",
+    "tree": "American Elm",
+    "crops": [
+      "cranberries"
+    ],
+    "animals": [
+      "right whale"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Phillis Wheatley",
+        "role": "both",
+        "blurb": "Phillis Wheatley, enslaved in Boston, Massachusetts, became the first African American to publish a book of poetry, at a time when many people wrongly claimed Black people could not write literature.",
+        "confidence": "high"
+      },
+      {
+        "name": "An Wang",
+        "role": "inventor",
+        "blurb": "An Wang, an immigrant from China, founded Wang Laboratories in Massachusetts and patented key computer memory technology used in early computers.",
+        "confidence": "high"
+      },
+      {
+        "name": "W.E.B. Du Bois",
+        "role": "both",
+        "blurb": "W.E.B. Du Bois, born in Great Barrington, Massachusetts, co-founded the NAACP and spent his life researching and writing about racial inequality in America.",
+        "confidence": "high"
+      }
     ]
   },
   "MD": {
@@ -266,6 +868,33 @@
     "centroid": [
       831.6,
       263.4
+    ],
+    "bird": "Baltimore Oriole",
+    "flower": "Black-eyed Susan",
+    "tree": "White Oak",
+    "animals": [
+      "blue crab"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Harriet Tubman",
+        "role": "activist",
+        "blurb": "Harriet Tubman escaped slavery in Maryland and returned again and again to guide dozens of others to freedom along the Underground Railroad.",
+        "confidence": "high"
+      },
+      {
+        "name": "Frederick Douglass",
+        "role": "both",
+        "blurb": "Frederick Douglass escaped slavery in Maryland, taught himself to read and write, and became one of the most powerful writers and speakers in the movement to end slavery.",
+        "confidence": "high"
+      },
+      {
+        "name": "Thurgood Marshall",
+        "role": "activist",
+        "blurb": "Thurgood Marshall, born in Baltimore, Maryland, argued Brown v. Board of Education and later became the first Black justice on the U.S. Supreme Court.",
+        "confidence": "high"
+      }
     ]
   },
   "ME": {
@@ -278,7 +907,38 @@
       917.1,
       118.6
     ],
-    "population2020": 1362359
+    "population2020": 1362359,
+    "bird": "Black-capped Chickadee",
+    "flower": "White Pine Cone and Tassel",
+    "tree": "Eastern White Pine",
+    "crops": [
+      "potatoes",
+      "wild blueberries"
+    ],
+    "animals": [
+      "moose"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Gerald Talbot",
+        "role": "activist",
+        "blurb": "Gerald Talbot became Maine's first Black state legislator and worked to pass some of the state's first civil rights laws.",
+        "confidence": "review"
+      },
+      {
+        "name": "Lucy Nicolar",
+        "role": "activist",
+        "blurb": "Lucy Nicolar, a Penobscot performer and advocate, spent her life sharing Wabanaki culture and pushing for the rights of Maine's Native nations.",
+        "confidence": "review"
+      },
+      {
+        "name": "Samantha Smith",
+        "role": "activist",
+        "blurb": "Samantha Smith, a ten-year-old from Maine, wrote a letter to the Soviet leader asking about the risk of nuclear war and was invited to visit the Soviet Union as a “goodwill ambassador.”",
+        "confidence": "high"
+      }
+    ]
   },
   "MI": {
     "code": "MI",
@@ -290,7 +950,38 @@
       687.2,
       201.4
     ],
-    "population2020": 10077331
+    "population2020": 10077331,
+    "bird": "American Robin",
+    "flower": "Apple Blossom",
+    "tree": "Eastern White Pine",
+    "crops": [
+      "cherries",
+      "apples"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Ossian Sweet",
+        "role": "activist",
+        "blurb": "Dr. Ossian Sweet defended his Detroit, Michigan home from a mob that attacked it because a Black family had moved in, and his trial became a landmark case for Black Americans' right to live where they chose.",
+        "confidence": "review"
+      },
+      {
+        "name": "Elijah McCoy",
+        "role": "inventor",
+        "blurb": "Elijah McCoy, the son of parents who had escaped slavery, worked in Michigan and patented an automatic lubricator for train engines so reliable that people started asking for “the real McCoy.”",
+        "confidence": "high"
+      },
+      {
+        "name": "Berry Gordy",
+        "role": "both",
+        "blurb": "Berry Gordy founded Motown Records in Detroit, Michigan, building a music company that launched the careers of many Black artists and changed American music.",
+        "confidence": "high"
+      }
+    ]
   },
   "MN": {
     "code": "MN",
@@ -302,7 +993,39 @@
       544.7,
       161.5
     ],
-    "population2020": 5706494
+    "population2020": 5706494,
+    "bird": "Common Loon",
+    "flower": "Showy Lady's Slipper",
+    "tree": "Norway (Red) Pine",
+    "crops": [
+      "wild rice",
+      "corn"
+    ],
+    "animals": [
+      "gray wolf"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Minnesota has no officially designated state mammal; gray wolf is a regional stand-in reflecting the state's wolf population, not a legal designation.",
+    "people": [
+      {
+        "name": "Roy Wilkins",
+        "role": "activist",
+        "blurb": "Roy Wilkins, who grew up in St. Paul, Minnesota, led the NAACP for more than 20 years, helping push through major civil rights laws.",
+        "confidence": "high"
+      },
+      {
+        "name": "Charles Eastman (Ohiyésa)",
+        "role": "both",
+        "blurb": "Charles Eastman (Ohiyésa), a Santee Dakota physician born in Minnesota, became one of the first Native Americans certified as a medical doctor and spent his life writing and speaking about Dakota culture and rights.",
+        "confidence": "high"
+      },
+      {
+        "name": "Nellie Stone Johnson",
+        "role": "activist",
+        "blurb": "Nellie Stone Johnson, a Minnesota labor and civil rights leader, was the first Black person elected to citywide office in Minneapolis and helped write job-discrimination protections into state law.",
+        "confidence": "review"
+      }
+    ]
   },
   "MO": {
     "code": "MO",
@@ -314,7 +1037,38 @@
       565.2,
       306.5
     ],
-    "population2020": 6154913
+    "population2020": 6154913,
+    "bird": "Eastern Bluebird",
+    "flower": "White Hawthorn Blossom",
+    "tree": "Flowering Dogwood",
+    "crops": [
+      "soybeans",
+      "corn"
+    ],
+    "animals": [
+      "Missouri mule"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "George Washington Carver",
+        "role": "inventor",
+        "blurb": "George Washington Carver was born into slavery near Diamond, Missouri, and grew up to develop more than a hundred new uses for peanuts, sweet potatoes, and other crops, helping farmers stop relying only on cotton.",
+        "confidence": "high"
+      },
+      {
+        "name": "Dred Scott",
+        "role": "activist",
+        "blurb": "Dred Scott, an enslaved man living in Missouri, sued for his freedom in a case that reached the Supreme Court; though he lost, the case pushed the nation closer to the Civil War and the end of slavery.",
+        "confidence": "high"
+      },
+      {
+        "name": "Josephine Baker",
+        "role": "activist",
+        "blurb": "Josephine Baker, born in St. Louis, Missouri, became an international star and used her fame to refuse to perform for segregated audiences and to support the civil rights movement.",
+        "confidence": "high"
+      }
+    ]
   },
   "MS": {
     "code": "MS",
@@ -326,7 +1080,40 @@
       608.9,
       448.1
     ],
-    "population2020": 2961279
+    "population2020": 2961279,
+    "bird": "Northern Mockingbird",
+    "flower": "Magnolia",
+    "tree": "Southern Magnolia",
+    "crops": [
+      "cotton",
+      "soybeans"
+    ],
+    "animals": [
+      "red fox",
+      "gray fox"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Mississippi schoolchildren voted for a proposed new state bird (wood duck) around 2021 — confirm whether Northern Mockingbird is still the legally designated bird.",
+    "people": [
+      {
+        "name": "Fannie Lou Hamer",
+        "role": "activist",
+        "blurb": "Fannie Lou Hamer, a sharecropper from Mississippi, helped register Black voters despite violent threats and co-founded a new political party to demand a real seat at the table.",
+        "confidence": "high"
+      },
+      {
+        "name": "Medgar Evers",
+        "role": "activist",
+        "blurb": "Medgar Evers led NAACP efforts in Mississippi to register Black voters and investigate violence against Black residents, work that made him a target and cost him his life.",
+        "confidence": "high"
+      },
+      {
+        "name": "Ida B. Wells",
+        "role": "activist",
+        "blurb": "Ida B. Wells, born in Holly Springs, Mississippi, used investigative journalism to document lynching across the country, risking her life to demand justice.",
+        "confidence": "high"
+      }
+    ]
   },
   "MT": {
     "code": "MT",
@@ -338,7 +1125,37 @@
       248.3,
       104
     ],
-    "population2020": 1084225
+    "population2020": 1084225,
+    "bird": "Western Meadowlark",
+    "flower": "Bitterroot",
+    "tree": "Ponderosa Pine",
+    "crops": [
+      "wheat"
+    ],
+    "animals": [
+      "grizzly bear"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Plenty Coups",
+        "role": "activist",
+        "blurb": "Plenty Coups, a Crow chief in Montana, chose diplomacy over war to try to protect Crow land and worked to preserve his nation's independence and culture.",
+        "confidence": "review"
+      },
+      {
+        "name": "Susie Walking Bear Yellowtail",
+        "role": "activist",
+        "blurb": "Susie Walking Bear Yellowtail, a Crow nurse from Montana, fought to improve healthcare for Native Americans and helped end the forced sterilization of Native women.",
+        "confidence": "review"
+      },
+      {
+        "name": "Jeannette Rankin",
+        "role": "activist",
+        "blurb": "Jeannette Rankin, from Montana, became the first woman elected to the U.S. Congress and was a lifelong advocate for peace and women's right to vote.",
+        "confidence": "high"
+      }
+    ]
   },
   "NC": {
     "code": "NC",
@@ -350,7 +1167,39 @@
       813,
       343.1
     ],
-    "population2020": 10439388
+    "population2020": 10439388,
+    "bird": "Northern Cardinal",
+    "flower": "Flowering Dogwood",
+    "tree": "Longleaf Pine",
+    "crops": [
+      "tobacco",
+      "sweet potatoes"
+    ],
+    "animals": [
+      "gray squirrel"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "North Carolina's official tree statute names simply “Pine” without a species; Longleaf Pine is the commonly cited species — confirm before printing.",
+    "people": [
+      {
+        "name": "Franklin McCain",
+        "role": "activist",
+        "blurb": "Franklin McCain and three classmates sat down at a whites-only lunch counter in Greensboro, North Carolina in 1960, sparking a wave of sit-ins across the South.",
+        "confidence": "high"
+      },
+      {
+        "name": "Charlotte Hawkins Brown",
+        "role": "both",
+        "blurb": "Charlotte Hawkins Brown founded the Palmer Memorial Institute in North Carolina, a leading school for Black students at a time when many such schools had few resources.",
+        "confidence": "high"
+      },
+      {
+        "name": "James E. Shepard",
+        "role": "activist",
+        "blurb": "James E. Shepard founded what became North Carolina Central University, opening doors to higher education for Black students in North Carolina.",
+        "confidence": "review"
+      }
+    ]
   },
   "ND": {
     "code": "ND",
@@ -362,7 +1211,39 @@
       423.5,
       118.3
     ],
-    "population2020": 779094
+    "population2020": 779094,
+    "bird": "Western Meadowlark",
+    "flower": "Wild Prairie Rose",
+    "tree": "American Elm",
+    "crops": [
+      "wheat",
+      "sunflowers"
+    ],
+    "animals": [
+      "Nokota horse"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Confirm the Nokota horse's exact official designation (state equine vs. honorary status).",
+    "people": [
+      {
+        "name": "Buffalo Bird Woman (Waheenee)",
+        "role": "both",
+        "blurb": "Buffalo Bird Woman (Waheenee), a Hidatsa woman from North Dakota, shared her detailed knowledge of traditional Hidatsa farming methods, preserving skills that had fed her people for generations.",
+        "confidence": "review"
+      },
+      {
+        "name": "Era Bell Thompson",
+        "role": "both",
+        "blurb": "Era Bell Thompson grew up on a North Dakota homestead and became a groundbreaking journalist and editor at Ebony magazine, writing about Black life in America.",
+        "confidence": "review"
+      },
+      {
+        "name": "Elizabeth Preston Anderson",
+        "role": "activist",
+        "blurb": "Elizabeth Preston Anderson led North Dakota's campaign for women's right to vote and helped write it into the state constitution.",
+        "confidence": "review"
+      }
+    ]
   },
   "NE": {
     "code": "NE",
@@ -374,7 +1255,37 @@
       486.1,
       256.6
     ],
-    "population2020": 1961504
+    "population2020": 1961504,
+    "bird": "Western Meadowlark",
+    "flower": "Goldenrod",
+    "tree": "Eastern Cottonwood",
+    "crops": [
+      "corn"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Malcolm X",
+        "role": "activist",
+        "blurb": "Malcolm X was born in Omaha, Nebraska, and grew up to become one of the most influential voices for Black pride and civil rights in America.",
+        "confidence": "high"
+      },
+      {
+        "name": "Susan La Flesche Picotte",
+        "role": "both",
+        "blurb": "Susan La Flesche Picotte, an Omaha Nation woman from Nebraska, became the first Native American woman to earn a medical degree and spent her career bringing healthcare to her community.",
+        "confidence": "high"
+      },
+      {
+        "name": "Standing Bear",
+        "role": "activist",
+        "blurb": "Standing Bear, a Ponca chief, sued the U.S. government from Nebraska and won a landmark 1879 court ruling that Native Americans are “persons” under the law with the right to sue for their freedom.",
+        "confidence": "high"
+      }
+    ]
   },
   "NH": {
     "code": "NH",
@@ -390,6 +1301,33 @@
     "centroid": [
       892.7,
       140.3
+    ],
+    "bird": "Purple Finch",
+    "flower": "Purple Lilac",
+    "tree": "White Birch",
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Harriet E. Wilson",
+        "role": "both",
+        "blurb": "Harriet E. Wilson, who lived in New Hampshire, wrote “Our Nig,” believed to be the first novel published in the United States by a Black woman.",
+        "confidence": "review"
+      },
+      {
+        "name": "Ona Judge",
+        "role": "activist",
+        "blurb": "Ona Judge escaped slavery from President George Washington's household and lived the rest of her life as a free woman in New Hampshire, refusing every attempt to bring her back.",
+        "confidence": "high"
+      },
+      {
+        "name": "Amos Fortune",
+        "role": "both",
+        "blurb": "Amos Fortune, who had been enslaved, bought his own freedom and later that of others, and became a respected tanner and community founder in Jaffrey, New Hampshire.",
+        "confidence": "review"
+      }
     ]
   },
   "NJ": {
@@ -406,6 +1344,37 @@
     "centroid": [
       861.5,
       230.1
+    ],
+    "bird": "American Goldfinch",
+    "flower": "Purple Violet",
+    "tree": "Northern Red Oak",
+    "crops": [
+      "blueberries",
+      "tomatoes"
+    ],
+    "animals": [
+      "horse"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Paul Robeson",
+        "role": "both",
+        "blurb": "Paul Robeson, born in Princeton, New Jersey, became a famous singer and actor who used his platform to speak out against racism and for workers' rights around the world.",
+        "confidence": "high"
+      },
+      {
+        "name": "Alice Paul",
+        "role": "activist",
+        "blurb": "Alice Paul, from New Jersey, organized marches and picketed the White House to win women the right to vote, and later wrote the Equal Rights Amendment.",
+        "confidence": "high"
+      },
+      {
+        "name": "Larry Doby",
+        "role": "both",
+        "blurb": "Larry Doby grew up in Paterson, New Jersey, and became the first Black player in the American League, facing down threats and insults to help integrate baseball.",
+        "confidence": "high"
+      }
     ]
   },
   "NM": {
@@ -418,7 +1387,38 @@
       316.9,
       364.6
     ],
-    "population2020": 2117522
+    "population2020": 2117522,
+    "bird": "Greater Roadrunner",
+    "flower": "Yucca",
+    "tree": "Piñon Pine",
+    "crops": [
+      "pecans",
+      "chile peppers"
+    ],
+    "animals": [
+      "black bear"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Po'pay",
+        "role": "activist",
+        "blurb": "Po'pay, a Pueblo religious leader, organized the Pueblo Revolt of 1680 in New Mexico, uniting many Pueblo communities to push out Spanish colonizers for over a decade.",
+        "confidence": "high"
+      },
+      {
+        "name": "Fabiola Cabeza de Baca",
+        "role": "both",
+        "blurb": "Fabiola Cabeza de Baca, a Hispanic New Mexican teacher and writer, worked to preserve Hispanic food traditions and improve rural life through her work as a home economist.",
+        "confidence": "review"
+      },
+      {
+        "name": "Maria Martinez",
+        "role": "both",
+        "blurb": "Maria Martinez, a potter from San Ildefonso Pueblo in New Mexico, revived and perfected a black-on-black pottery technique that became famous around the world.",
+        "confidence": "high"
+      }
+    ]
   },
   "NV": {
     "code": "NV",
@@ -430,7 +1430,34 @@
       88.2,
       242.9
     ],
-    "population2020": 3104614
+    "population2020": 3104614,
+    "bird": "Mountain Bluebird",
+    "flower": "Sagebrush",
+    "tree": "Single-leaf Piñon and Bristlecone Pine",
+    "animals": [
+      "desert bighorn sheep"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Sarah Winnemucca",
+        "role": "both",
+        "blurb": "Sarah Winnemucca, a Northern Paiute woman from Nevada, wrote a book about her people's treatment and traveled the country giving speeches to demand better treatment for Native Americans.",
+        "confidence": "high"
+      },
+      {
+        "name": "James McMillan",
+        "role": "activist",
+        "blurb": "Dr. James McMillan led the effort that peacefully desegregated Las Vegas, Nevada hotels and casinos in 1960 through an agreement known as the Moulin Rouge Agreement.",
+        "confidence": "review"
+      },
+      {
+        "name": "Lubertha Johnson",
+        "role": "activist",
+        "blurb": "Lubertha Johnson helped found the Las Vegas, Nevada NAACP chapter and fought for fair housing so Black families were not forced into only one part of the city.",
+        "confidence": "review"
+      }
+    ]
   },
   "NY": {
     "code": "NY",
@@ -442,7 +1469,38 @@
       863.6,
       171.6
     ],
-    "population2020": 20201249
+    "population2020": 20201249,
+    "bird": "Eastern Bluebird",
+    "flower": "Rose",
+    "tree": "Sugar Maple",
+    "crops": [
+      "apples",
+      "maple syrup"
+    ],
+    "animals": [
+      "beaver"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Shirley Chisholm",
+        "role": "activist",
+        "blurb": "Shirley Chisholm, representing Brooklyn, New York, became the first Black woman elected to Congress and the first to run for a major party's presidential nomination.",
+        "confidence": "high"
+      },
+      {
+        "name": "Sojourner Truth",
+        "role": "activist",
+        "blurb": "Sojourner Truth escaped slavery in New York and became a powerful speaker for the end of slavery and for women's rights.",
+        "confidence": "high"
+      },
+      {
+        "name": "Chien-Shiung Wu",
+        "role": "inventor",
+        "blurb": "Chien-Shiung Wu, a Chinese American physicist who worked in New York, ran an experiment that disproved a rule scientists had long assumed was always true about how atoms behave.",
+        "confidence": "review"
+      }
+    ]
   },
   "OH": {
     "code": "OH",
@@ -454,7 +1512,38 @@
       721.4,
       260.8
     ],
-    "population2020": 11799448
+    "population2020": 11799448,
+    "bird": "Northern Cardinal",
+    "flower": "Scarlet Carnation",
+    "tree": "Ohio Buckeye",
+    "crops": [
+      "soybeans",
+      "corn"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Garrett Morgan",
+        "role": "inventor",
+        "blurb": "Garrett Morgan, living in Cleveland, Ohio, invented an early gas mask and a three-position traffic signal, and once used his gas mask to rescue workers trapped in a tunnel under Lake Erie.",
+        "confidence": "high"
+      },
+      {
+        "name": "John Mercer Langston",
+        "role": "both",
+        "blurb": "John Mercer Langston, who lived in Ohio, became one of the first Black lawyers in the country and later the first Black man elected to Congress from Virginia.",
+        "confidence": "review"
+      },
+      {
+        "name": "John Parker",
+        "role": "both",
+        "blurb": "John Parker, a formerly enslaved man who became an inventor, helped hundreds of people escape slavery by ferrying them across the Ohio River to freedom, all while running his own iron foundry in Ripley, Ohio.",
+        "confidence": "high"
+      }
+    ]
   },
   "OK": {
     "code": "OK",
@@ -466,7 +1555,39 @@
       470.2,
       378.9
     ],
-    "population2020": 3959353
+    "population2020": 3959353,
+    "bird": "Scissor-tailed Flycatcher",
+    "flower": "Oklahoma Rose",
+    "tree": "Eastern Redbud",
+    "crops": [
+      "wheat",
+      "cotton"
+    ],
+    "animals": [
+      "American bison"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Oklahoma's floral emblem changed from Mistletoe to Oklahoma Rose in 2004 — confirm Oklahoma Rose is still current.",
+    "people": [
+      {
+        "name": "Wilma Mankiller",
+        "role": "activist",
+        "blurb": "Wilma Mankiller became the first woman elected principal chief of the Cherokee Nation in Oklahoma and improved healthcare, education, and water systems for her community.",
+        "confidence": "high"
+      },
+      {
+        "name": "Clara Luper",
+        "role": "activist",
+        "blurb": "Clara Luper led some of the nation's first sit-ins at a segregated lunch counter in Oklahoma City, years before the more famous Greensboro sit-ins.",
+        "confidence": "high"
+      },
+      {
+        "name": "Sequoyah",
+        "role": "inventor",
+        "blurb": "Sequoyah, a Cherokee silversmith, invented a full writing system for the Cherokee language so his people could read and write in their own language; he later settled in what became Cherokee Nation land in Oklahoma.",
+        "confidence": "review"
+      }
+    ]
   },
   "OR": {
     "code": "OR",
@@ -478,7 +1599,39 @@
       70.3,
       101.2
     ],
-    "population2020": 4237256
+    "population2020": 4237256,
+    "bird": "Western Meadowlark",
+    "flower": "Oregon Grape",
+    "tree": "Douglas Fir",
+    "crops": [
+      "hazelnuts",
+      "pears",
+      "hops"
+    ],
+    "animals": [
+      "American beaver"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Chief Joseph",
+        "role": "activist",
+        "blurb": "Chief Joseph led the Nez Perce from their homeland in Oregon's Wallowa Valley, trying to reach safety in Canada rather than be forced onto a reservation, and became known for his skill and his words, “I will fight no more forever.”",
+        "confidence": "high"
+      },
+      {
+        "name": "Beatrice Morrow Cannady",
+        "role": "activist",
+        "blurb": "Beatrice Morrow Cannady ran a newspaper in Portland, Oregon and spent decades fighting the state's discriminatory laws and pushing for civil rights.",
+        "confidence": "review"
+      },
+      {
+        "name": "Minoru Yasui",
+        "role": "activist",
+        "blurb": "Minoru Yasui, a Japanese American lawyer from Oregon, deliberately broke a curfew law during World War II to challenge it in court, fighting the incarceration of Japanese Americans.",
+        "confidence": "high"
+      }
+    ]
   },
   "PA": {
     "code": "PA",
@@ -490,7 +1643,38 @@
       823.8,
       236.1
     ],
-    "population2020": 13002700
+    "population2020": 13002700,
+    "bird": "Ruffed Grouse",
+    "flower": "Mountain Laurel",
+    "tree": "Eastern Hemlock",
+    "crops": [
+      "mushrooms",
+      "apples"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Octavius Catto",
+        "role": "activist",
+        "blurb": "Octavius Catto organized in Philadelphia, Pennsylvania to desegregate the city's streetcars and to win Black men the right to vote, work that ultimately cost him his life.",
+        "confidence": "high"
+      },
+      {
+        "name": "Bayard Rustin",
+        "role": "activist",
+        "blurb": "Bayard Rustin, born in West Chester, Pennsylvania, organized the 1963 March on Washington and taught Martin Luther King Jr. about nonviolent protest strategy.",
+        "confidence": "high"
+      },
+      {
+        "name": "James Forten",
+        "role": "both",
+        "blurb": "James Forten, a free Black sailmaker in Philadelphia, Pennsylvania, invented a device that made handling ship sails easier, and used his fortune to support the movement to end slavery.",
+        "confidence": "review"
+      }
+    ]
   },
   "RI": {
     "code": "RI",
@@ -506,6 +1690,34 @@
     "centroid": [
       904.4,
       184.2
+    ],
+    "bird": "Rhode Island Red (chicken)",
+    "flower": "Violet",
+    "tree": "Red Maple",
+    "animals": [
+      "harbor seal"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Rhode Island has no officially designated state animal; harbor seal is a regional stand-in (seals winter in Narragansett Bay), not a legal designation.",
+    "people": [
+      {
+        "name": "George T. Downing",
+        "role": "activist",
+        "blurb": "George T. Downing, a Rhode Island restaurant owner, led the successful fight to desegregate the state's public schools in 1866.",
+        "confidence": "review"
+      },
+      {
+        "name": "Christiana Carteaux Bannister",
+        "role": "both",
+        "blurb": "Christiana Carteaux Bannister, a Narragansett and Black businesswoman in Providence, Rhode Island, used her wealth to found a home for elderly Black residents and to support Black artists.",
+        "confidence": "review"
+      },
+      {
+        "name": "Sissieretta Jones",
+        "role": "both",
+        "blurb": "Sissieretta Jones, a celebrated singer who lived in Providence, Rhode Island, became one of the first Black artists to perform at Carnegie Hall, opening doors for Black classical performers.",
+        "confidence": "review"
+      }
     ]
   },
   "SC": {
@@ -518,7 +1730,37 @@
       776.3,
       390.7
     ],
-    "population2020": 5118425
+    "population2020": 5118425,
+    "bird": "Carolina Wren",
+    "flower": "Yellow Jessamine",
+    "tree": "Sabal Palmetto",
+    "crops": [
+      "peaches"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Denmark Vesey",
+        "role": "activist",
+        "blurb": "Denmark Vesey bought his freedom and then planned a large uprising against slavery in Charleston, South Carolina; the plan was discovered before it could happen, but it remains a landmark act of resistance.",
+        "confidence": "high"
+      },
+      {
+        "name": "Robert Smalls",
+        "role": "both",
+        "blurb": "Robert Smalls, enslaved in South Carolina, freed himself and his family by secretly steering a Confederate ship to freedom, then went on to serve in the U.S. Congress.",
+        "confidence": "high"
+      },
+      {
+        "name": "Septima Clark",
+        "role": "activist",
+        "blurb": "Septima Clark, born in Charleston, South Carolina, ran “citizenship schools” that taught Black adults to read so they could pass unfair voter registration tests.",
+        "confidence": "high"
+      }
+    ]
   },
   "SD": {
     "code": "SD",
@@ -530,7 +1772,39 @@
       427.7,
       173.9
     ],
-    "population2020": 886667
+    "population2020": 886667,
+    "bird": "Ring-necked Pheasant",
+    "flower": "Pasque Flower",
+    "tree": "Black Hills Spruce",
+    "crops": [
+      "soybeans",
+      "corn",
+      "sunflowers"
+    ],
+    "animals": [
+      "coyote"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Sitting Bull",
+        "role": "activist",
+        "blurb": "Sitting Bull, a Hunkpapa Lakota leader, resisted the U.S. government's attempts to force his people off their land in what is now South Dakota and continued speaking up for his people for the rest of his life.",
+        "confidence": "high"
+      },
+      {
+        "name": "Ben Reifel",
+        "role": "both",
+        "blurb": "Ben Reifel, a Lakota man from South Dakota, became the first enrolled member of a Sioux tribe elected to the U.S. Congress.",
+        "confidence": "review"
+      },
+      {
+        "name": "Zitkála-Ša",
+        "role": "both",
+        "blurb": "Zitkála-Ša (Gertrude Simmons Bonnin), a Yankton Dakota writer born in South Dakota, co-founded the National Council of American Indians and fought for Native American citizenship and land rights.",
+        "confidence": "high"
+      }
+    ]
   },
   "TN": {
     "code": "TN",
@@ -542,7 +1816,38 @@
       665.1,
       355.1
     ],
-    "population2020": 6910840
+    "population2020": 6910840,
+    "bird": "Northern Mockingbird",
+    "flower": "Iris",
+    "tree": "Tulip Poplar",
+    "crops": [
+      "soybeans",
+      "tobacco"
+    ],
+    "animals": [
+      "raccoon"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Diane Nash",
+        "role": "activist",
+        "blurb": "Diane Nash helped lead the Nashville, Tennessee sit-ins and Freedom Rides, organizing fellow students to challenge segregation through disciplined nonviolent protest.",
+        "confidence": "high"
+      },
+      {
+        "name": "Z. Alexander Looby",
+        "role": "activist",
+        "blurb": "Z. Alexander Looby, a lawyer in Nashville, Tennessee, represented students arrested during sit-ins, and after his home was bombed for it, the city ended lunch-counter segregation.",
+        "confidence": "review"
+      },
+      {
+        "name": "Wilma Rudolph",
+        "role": "activist",
+        "blurb": "Wilma Rudolph, who grew up in Clarksville, Tennessee, became an Olympic champion runner and refused to take part in her hometown's celebration for her until it was integrated.",
+        "confidence": "review"
+      }
+    ]
   },
   "TX": {
     "code": "TX",
@@ -554,7 +1859,37 @@
       463.9,
       497.4
     ],
-    "population2020": 29145505
+    "population2020": 29145505,
+    "bird": "Northern Mockingbird",
+    "flower": "Bluebonnet",
+    "tree": "Pecan",
+    "crops": [
+      "cotton"
+    ],
+    "animals": [
+      "nine-banded armadillo"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Barbara Jordan",
+        "role": "activist",
+        "blurb": "Barbara Jordan, from Houston, Texas, became the first Black woman elected to the Texas Senate and later the first Southern Black woman in Congress, known for her powerful defense of the Constitution.",
+        "confidence": "high"
+      },
+      {
+        "name": "Bessie Coleman",
+        "role": "both",
+        "blurb": "Bessie Coleman, born in Atlanta, Texas, became the first Black woman to earn a pilot's license, training in France because American flight schools refused to teach her.",
+        "confidence": "high"
+      },
+      {
+        "name": "Emma Tenayuca",
+        "role": "activist",
+        "blurb": "Emma Tenayuca helped lead the 1938 pecan shellers' strike in San Antonio, Texas, when thousands of mostly Mexican American workers walked out for fair pay.",
+        "confidence": "high"
+      }
+    ]
   },
   "UT": {
     "code": "UT",
@@ -566,7 +1901,38 @@
       228.5,
       235.3
     ],
-    "population2020": 3271616
+    "population2020": 3271616,
+    "bird": "California Gull",
+    "flower": "Sego Lily",
+    "tree": "Quaking Aspen",
+    "crops": [
+      "tart cherries"
+    ],
+    "animals": [
+      "Rocky Mountain elk"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Utah changed its state tree from Blue Spruce to Quaking Aspen in 2014 — confirm this is reflected in current sources.",
+    "people": [
+      {
+        "name": "Jane Manning James",
+        "role": "both",
+        "blurb": "Jane Manning James, a Black pioneer who walked much of the way to Utah, became a respected member of her Salt Lake City community despite facing discrimination there.",
+        "confidence": "review"
+      },
+      {
+        "name": "Martha Hughes Cannon",
+        "role": "activist",
+        "blurb": "Martha Hughes Cannon, a physician in Utah, became the first woman elected as a state senator in the United States, running against and beating her own husband.",
+        "confidence": "high"
+      },
+      {
+        "name": "Green Flake",
+        "role": "both",
+        "blurb": "Green Flake was brought to Utah as an enslaved man among the first Mormon pioneers in 1847; he later gained his freedom and became a respected early settler in Union, Utah.",
+        "confidence": "review"
+      }
+    ]
   },
   "VA": {
     "code": "VA",
@@ -578,7 +1944,39 @@
       826.7,
       299.4
     ],
-    "population2020": 8631393
+    "population2020": 8631393,
+    "bird": "Northern Cardinal",
+    "flower": "American Dogwood",
+    "tree": "Flowering Dogwood",
+    "crops": [
+      "peanuts",
+      "tobacco"
+    ],
+    "animals": [
+      "white-tailed deer"
+    ],
+    "natureConfidence": "review",
+    "natureNote": "Virginia has no officially designated state land mammal; white-tailed deer is a regional stand-in, not a legal designation.",
+    "people": [
+      {
+        "name": "Maggie L. Walker",
+        "role": "both",
+        "blurb": "Maggie L. Walker, born in Richmond, Virginia, became the first woman in the U.S. to charter and run a bank, giving Black families in her community a place to save and borrow money.",
+        "confidence": "high"
+      },
+      {
+        "name": "Barbara Johns",
+        "role": "activist",
+        "blurb": "Barbara Johns, a sixteen-year-old student, organized a walkout at her segregated Virginia high school in 1951 to demand equal facilities, and her case became part of Brown v. Board of Education.",
+        "confidence": "high"
+      },
+      {
+        "name": "Booker T. Washington",
+        "role": "both",
+        "blurb": "Booker T. Washington, born enslaved in Virginia, founded the Tuskegee Institute and became one of the most influential Black educators and leaders of his era.",
+        "confidence": "high"
+      }
+    ]
   },
   "VT": {
     "code": "VT",
@@ -594,6 +1992,36 @@
     "centroid": [
       873.4,
       136
+    ],
+    "bird": "Hermit Thrush",
+    "flower": "Red Clover",
+    "tree": "Sugar Maple",
+    "crops": [
+      "maple syrup"
+    ],
+    "animals": [
+      "Morgan horse"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Alexander Twilight",
+        "role": "both",
+        "blurb": "Alexander Twilight, in Vermont, became the first Black American known to earn a college degree, and later served in the Vermont legislature.",
+        "confidence": "high"
+      },
+      {
+        "name": "Lucy Terry Prince",
+        "role": "both",
+        "blurb": "Lucy Terry Prince, who had been enslaved, became known as an early Black American poet and later successfully argued a land case before the Vermont Supreme Court, likely the first Black person to do so.",
+        "confidence": "review"
+      },
+      {
+        "name": "Daisy Turner",
+        "role": "both",
+        "blurb": "Daisy Turner, the daughter of a formerly enslaved man who settled in Vermont, spent her long life preserving her family's history through storytelling, work later recognized by the Smithsonian.",
+        "confidence": "review"
+      }
     ]
   },
   "WA": {
@@ -606,7 +2034,37 @@
       85.6,
       56.2
     ],
-    "population2020": 7705281
+    "population2020": 7705281,
+    "bird": "American Goldfinch",
+    "flower": "Coast Rhododendron",
+    "tree": "Western Hemlock",
+    "crops": [
+      "apples"
+    ],
+    "animals": [
+      "Olympic marmot"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Chief Seattle",
+        "role": "activist",
+        "blurb": "Chief Seattle, a Duwamish and Suquamish leader, worked to keep peace with settlers while trying to protect his people's land and way of life in what is now Washington state.",
+        "confidence": "review"
+      },
+      {
+        "name": "Nettie Craig Asberry",
+        "role": "both",
+        "blurb": "Nettie Craig Asberry co-founded one of the first NAACP chapters on the West Coast, in Tacoma, Washington, and fought for Black civil rights in the region for decades.",
+        "confidence": "review"
+      },
+      {
+        "name": "Gordon Hirabayashi",
+        "role": "activist",
+        "blurb": "Gordon Hirabayashi, a college student in Washington, deliberately broke curfew and internment orders during World War II to challenge them in court, and decades later his conviction was overturned.",
+        "confidence": "high"
+      }
+    ]
   },
   "WI": {
     "code": "WI",
@@ -618,7 +2076,39 @@
       606.7,
       201.2
     ],
-    "population2020": 5893718
+    "population2020": 5893718,
+    "bird": "American Robin",
+    "flower": "Wood Violet",
+    "tree": "Sugar Maple",
+    "crops": [
+      "dairy",
+      "cranberries",
+      "corn"
+    ],
+    "animals": [
+      "American badger"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Vel Phillips",
+        "role": "activist",
+        "blurb": "Vel Phillips became the first Black woman elected to the Milwaukee, Wisconsin common council and later wrote the state's first fair housing law after years of it being blocked.",
+        "confidence": "high"
+      },
+      {
+        "name": "Ada Deer",
+        "role": "activist",
+        "blurb": "Ada Deer, a Menominee leader from Wisconsin, led the successful fight to restore her tribe's federal recognition after it had been unfairly terminated by Congress.",
+        "confidence": "high"
+      },
+      {
+        "name": "Mabel Watson Raimey",
+        "role": "both",
+        "blurb": "Mabel Watson Raimey became Wisconsin's first Black woman lawyer and spent her career fighting discrimination in Milwaukee's schools and workplaces.",
+        "confidence": "review"
+      }
+    ]
   },
   "WV": {
     "code": "WV",
@@ -630,7 +2120,37 @@
       750.2,
       294
     ],
-    "population2020": 1793716
+    "population2020": 1793716,
+    "bird": "Northern Cardinal",
+    "flower": "Rhododendron",
+    "tree": "Sugar Maple",
+    "crops": [
+      "apples"
+    ],
+    "animals": [
+      "black bear"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Katherine Johnson",
+        "role": "both",
+        "blurb": "Katherine Johnson, born in White Sulphur Springs, West Virginia, was a NASA mathematician whose calculations helped send American astronauts safely into orbit and to the Moon.",
+        "confidence": "high"
+      },
+      {
+        "name": "Carter G. Woodson",
+        "role": "both",
+        "blurb": "Carter G. Woodson, who grew up in West Virginia and worked in its coal mines before going to college, started Black History Week, which grew into today's Black History Month.",
+        "confidence": "high"
+      },
+      {
+        "name": "Memphis Tennessee Garrison",
+        "role": "activist",
+        "blurb": "Memphis Tennessee Garrison, a teacher in the coal towns of West Virginia, organized NAACP chapters across the state and fought for equal pay for Black teachers.",
+        "confidence": "review"
+      }
+    ]
   },
   "WY": {
     "code": "WY",
@@ -642,6 +2162,33 @@
       348.7,
       242.2
     ],
-    "population2020": 576851
+    "population2020": 576851,
+    "bird": "Western Meadowlark",
+    "flower": "Indian Paintbrush",
+    "tree": "Plains Cottonwood",
+    "animals": [
+      "American bison"
+    ],
+    "natureConfidence": "high",
+    "people": [
+      {
+        "name": "Esther Hobart Morris",
+        "role": "activist",
+        "blurb": "Esther Hobart Morris, from Wyoming, became the first woman in the country to serve as a judge after Wyoming became the first place in the nation to give women the right to vote.",
+        "confidence": "high"
+      },
+      {
+        "name": "Chief Washakie",
+        "role": "activist",
+        "blurb": "Chief Washakie led the Eastern Shoshone in Wyoming for more than 60 years, working to secure and protect the Wind River Reservation for his people.",
+        "confidence": "high"
+      },
+      {
+        "name": "William Jefferson Hardin",
+        "role": "activist",
+        "blurb": "William Jefferson Hardin became one of the first Black lawmakers in the Wyoming Territory legislature, pushing for Black residents' civil rights in the 1870s.",
+        "confidence": "review"
+      }
+    ]
   }
 }

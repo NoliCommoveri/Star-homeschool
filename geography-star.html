@@ -1,11 +1,17 @@
 <!DOCTYPE html>
-<!-- Geography Star v1.1 — Stage 2 (data scaffold + low-risk facts).
-     Map deck (modes 1-5) shipped in Stage 1. Facts deck now adds
-     Capitals and Population, both mechanically sourced (2020 Census) with
-     no review-gated content. Famous People and Natural World (Stage 3)
-     are still to come. See docs/geography-star-spec.md for the full spec
-     and build order, and geodata/build-notes.md for how the inlined map
-     and population data below were generated / are kept in sync. -->
+<!-- Geography Star v1.2 — Stage 3 (Natural World shipped; Famous People held).
+     Map deck (modes 1-5) shipped in Stage 1. Capitals and Population
+     shipped in Stage 2. Natural World (mode 9: state bird/flower/tree/
+     crop/animal) ships in this update — mechanically-sourced-enough that
+     it doesn't need the spec §9 review gate to hold it back, though a
+     handful of entries are flagged for a follow-up check (see
+     geodata/build-notes.md). Famous People (mode 8) is authored into
+     geodata/states.json with confidence flags but deliberately NOT
+     inlined here yet — spec §9/§11 require a parent review pass on
+     biographical content before it ships. See docs/geography-star-spec.md
+     for the full spec and build order, and geodata/build-notes.md for how
+     the inlined data below was generated / is kept in sync and for the
+     Stage 3 review checklist. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -110,7 +116,7 @@
 </div>
 
 <script>
-const APP_VERSION = "v1.1";
+const APP_VERSION = "v1.2";
 
 /* ===================== GENERATED MAP DATA ===================== */
 /* Regenerate with `node geodata/build.js` -- see geodata/build-notes.md.  */
@@ -131,6 +137,18 @@ const STATE_REGION = {"AK":"Non-contiguous","AL":"Southeast","AR":"Southeast","A
    in sync by hand (small, stable dataset; no build step needed). */
 const POPULATION_2020 = {"AK":733391,"AL":5024279,"AR":3011524,"AZ":7151502,"CA":39538223,"CO":5773714,"CT":3605944,"DC":689545,"DE":989948,"FL":21538187,"GA":10711908,"HI":1455271,"IA":3190369,"ID":1839106,"IL":12812508,"IN":6785528,"KS":2937880,"KY":4505836,"LA":4657757,"MA":7029917,"MD":6177224,"ME":1362359,"MI":10077331,"MN":5706494,"MO":6154913,"MS":2961279,"MT":1084225,"NC":10439388,"ND":779094,"NE":1961504,"NH":1377529,"NJ":9288994,"NM":2117522,"NV":3104614,"NY":20201249,"OH":11799448,"OK":3959353,"OR":4237256,"PA":13002700,"RI":1097379,"SC":5118425,"SD":886667,"TN":6910840,"TX":29145505,"UT":3271616,"VA":8631393,"VT":643077,"WA":7705281,"WI":5893718,"WV":1793716,"WY":576851};
 /* =================== END AUTHORED DATA =================== */
+
+/* ============= AUTHORED DATA (Stage 3 — Natural World) ============= */
+/* State bird/flower/tree, plus selected distinctive crops and native
+   animals, keyed by postal code. Source of truth: geodata/states.json.
+   Authored from general knowledge (spec §9) rather than fetched from a
+   primary source -- most entries are well-established designations
+   (natureConfidence: "high"), but a handful of states have a flagged
+   uncertainty (natureConfidence: "review"); see the Stage 3 review
+   checklist in geodata/build-notes.md before treating every value here as
+   settled fact. Kept in sync by hand (small, stable dataset). */
+const NATURE = {"AK":{"bird":"Willow Ptarmigan","flower":"Forget-me-not","tree":"Sitka Spruce","crops":[],"animals":["Moose"]},"AL":{"bird":"Yellowhammer","flower":"Camellia","tree":"Longleaf Pine","crops":["peanuts","cotton"],"animals":["American black bear"]},"AR":{"bird":"Northern Mockingbird","flower":"Apple Blossom","tree":"Loblolly Pine","crops":["rice","soybeans"],"animals":["white-tailed deer"]},"AZ":{"bird":"Cactus Wren","flower":"Saguaro Cactus Blossom","tree":"Palo Verde","crops":["cotton","citrus"],"animals":["ringtail"]},"CA":{"bird":"California Quail","flower":"California Poppy","tree":"Coast Redwood","crops":["almonds","grapes","strawberries"],"animals":["California grizzly bear"]},"CO":{"bird":"Lark Bunting","flower":"Rocky Mountain Columbine","tree":"Colorado Blue Spruce","crops":[],"animals":["Rocky Mountain bighorn sheep"]},"CT":{"bird":"American Robin","flower":"Mountain Laurel","tree":"White Oak","crops":[],"animals":["sperm whale"]},"DC":{"bird":"Wood Thrush","flower":"American Beauty Rose","tree":"Scarlet Oak","crops":[],"animals":[]},"DE":{"bird":"Blue Hen Chicken","flower":"Peach Blossom","tree":"American Holly","crops":[],"animals":["horseshoe crab"]},"FL":{"bird":"Northern Mockingbird","flower":"Orange Blossom","tree":"Sabal Palm","crops":["oranges"],"animals":["Florida panther"]},"GA":{"bird":"Brown Thrasher","flower":"Cherokee Rose","tree":"Southern Live Oak","crops":["peaches","peanuts","pecans"],"animals":["white-tailed deer"]},"HI":{"bird":"Nene (Hawaiian Goose)","flower":"Pua Aloalo (Yellow Hibiscus)","tree":"Kukui (Candlenut)","crops":["pineapple","coffee","macadamia nuts"],"animals":["Hawaiian monk seal"]},"IA":{"bird":"American Goldfinch","flower":"Wild Rose","tree":"Oak","crops":["corn","soybeans"],"animals":["white-tailed deer"]},"ID":{"bird":"Mountain Bluebird","flower":"Syringa","tree":"Western White Pine","crops":["potatoes"],"animals":["Rocky Mountain elk"]},"IL":{"bird":"Northern Cardinal","flower":"Violet","tree":"White Oak","crops":["corn","soybeans"],"animals":["white-tailed deer"]},"IN":{"bird":"Northern Cardinal","flower":"Peony","tree":"Tulip Tree","crops":["corn","soybeans"],"animals":["white-tailed deer"]},"KS":{"bird":"Western Meadowlark","flower":"Sunflower","tree":"Cottonwood","crops":["wheat"],"animals":["American bison"]},"KY":{"bird":"Northern Cardinal","flower":"Goldenrod","tree":"Tulip Poplar","crops":["tobacco","corn"],"animals":["gray squirrel"]},"LA":{"bird":"Brown Pelican","flower":"Magnolia","tree":"Bald Cypress","crops":["sugarcane","rice"],"animals":["Louisiana black bear"]},"MA":{"bird":"Black-capped Chickadee","flower":"Mayflower","tree":"American Elm","crops":["cranberries"],"animals":["right whale"]},"MD":{"bird":"Baltimore Oriole","flower":"Black-eyed Susan","tree":"White Oak","crops":[],"animals":["blue crab"]},"ME":{"bird":"Black-capped Chickadee","flower":"White Pine Cone and Tassel","tree":"Eastern White Pine","crops":["potatoes","wild blueberries"],"animals":["moose"]},"MI":{"bird":"American Robin","flower":"Apple Blossom","tree":"Eastern White Pine","crops":["cherries","apples"],"animals":["white-tailed deer"]},"MN":{"bird":"Common Loon","flower":"Showy Lady's Slipper","tree":"Norway (Red) Pine","crops":["wild rice","corn"],"animals":["gray wolf"]},"MO":{"bird":"Eastern Bluebird","flower":"White Hawthorn Blossom","tree":"Flowering Dogwood","crops":["soybeans","corn"],"animals":["Missouri mule"]},"MS":{"bird":"Northern Mockingbird","flower":"Magnolia","tree":"Southern Magnolia","crops":["cotton","soybeans"],"animals":["red fox","gray fox"]},"MT":{"bird":"Western Meadowlark","flower":"Bitterroot","tree":"Ponderosa Pine","crops":["wheat"],"animals":["grizzly bear"]},"NC":{"bird":"Northern Cardinal","flower":"Flowering Dogwood","tree":"Longleaf Pine","crops":["tobacco","sweet potatoes"],"animals":["gray squirrel"]},"ND":{"bird":"Western Meadowlark","flower":"Wild Prairie Rose","tree":"American Elm","crops":["wheat","sunflowers"],"animals":["Nokota horse"]},"NE":{"bird":"Western Meadowlark","flower":"Goldenrod","tree":"Eastern Cottonwood","crops":["corn"],"animals":["white-tailed deer"]},"NH":{"bird":"Purple Finch","flower":"Purple Lilac","tree":"White Birch","crops":[],"animals":["white-tailed deer"]},"NJ":{"bird":"American Goldfinch","flower":"Purple Violet","tree":"Northern Red Oak","crops":["blueberries","tomatoes"],"animals":["horse"]},"NM":{"bird":"Greater Roadrunner","flower":"Yucca","tree":"Piñon Pine","crops":["pecans","chile peppers"],"animals":["black bear"]},"NV":{"bird":"Mountain Bluebird","flower":"Sagebrush","tree":"Single-leaf Piñon and Bristlecone Pine","crops":[],"animals":["desert bighorn sheep"]},"NY":{"bird":"Eastern Bluebird","flower":"Rose","tree":"Sugar Maple","crops":["apples","maple syrup"],"animals":["beaver"]},"OH":{"bird":"Northern Cardinal","flower":"Scarlet Carnation","tree":"Ohio Buckeye","crops":["soybeans","corn"],"animals":["white-tailed deer"]},"OK":{"bird":"Scissor-tailed Flycatcher","flower":"Oklahoma Rose","tree":"Eastern Redbud","crops":["wheat","cotton"],"animals":["American bison"]},"OR":{"bird":"Western Meadowlark","flower":"Oregon Grape","tree":"Douglas Fir","crops":["hazelnuts","pears","hops"],"animals":["American beaver"]},"PA":{"bird":"Ruffed Grouse","flower":"Mountain Laurel","tree":"Eastern Hemlock","crops":["mushrooms","apples"],"animals":["white-tailed deer"]},"RI":{"bird":"Rhode Island Red (chicken)","flower":"Violet","tree":"Red Maple","crops":[],"animals":["harbor seal"]},"SC":{"bird":"Carolina Wren","flower":"Yellow Jessamine","tree":"Sabal Palmetto","crops":["peaches"],"animals":["white-tailed deer"]},"SD":{"bird":"Ring-necked Pheasant","flower":"Pasque Flower","tree":"Black Hills Spruce","crops":["soybeans","corn","sunflowers"],"animals":["coyote"]},"TN":{"bird":"Northern Mockingbird","flower":"Iris","tree":"Tulip Poplar","crops":["soybeans","tobacco"],"animals":["raccoon"]},"TX":{"bird":"Northern Mockingbird","flower":"Bluebonnet","tree":"Pecan","crops":["cotton"],"animals":["nine-banded armadillo"]},"UT":{"bird":"California Gull","flower":"Sego Lily","tree":"Quaking Aspen","crops":["tart cherries"],"animals":["Rocky Mountain elk"]},"VA":{"bird":"Northern Cardinal","flower":"American Dogwood","tree":"Flowering Dogwood","crops":["peanuts","tobacco"],"animals":["white-tailed deer"]},"VT":{"bird":"Hermit Thrush","flower":"Red Clover","tree":"Sugar Maple","crops":["maple syrup"],"animals":["Morgan horse"]},"WA":{"bird":"American Goldfinch","flower":"Coast Rhododendron","tree":"Western Hemlock","crops":["apples"],"animals":["Olympic marmot"]},"WI":{"bird":"American Robin","flower":"Wood Violet","tree":"Sugar Maple","crops":["dairy","cranberries","corn"],"animals":["American badger"]},"WV":{"bird":"Northern Cardinal","flower":"Rhododendron","tree":"Sugar Maple","crops":["apples"],"animals":["black bear"]},"WY":{"bird":"Western Meadowlark","flower":"Indian Paintbrush","tree":"Plains Cottonwood","crops":[],"animals":["American bison"]}};
+/* =================== END AUTHORED DATA (Stage 3) =================== */
 
 // ---------- small utilities ----------
 function shuffle(arr) {
@@ -271,6 +289,7 @@ const MODES = [
   { id: "unabbr", title: "Abbreviation &rarr; State", icon: "&#128290;", desc: "KY &rarr; Kentucky. Works with the map hidden.", deck: "Map Deck" },
   { id: "capitals", title: "Capitals", icon: "&#127970;", desc: "State &harr; capital, either direction. Works with the map hidden.", deck: "Facts Deck" },
   { id: "population", title: "Population", icon: "&#128101;", desc: "About how many people live there? 2020 Census.", deck: "Facts Deck" },
+  { id: "nature", title: "Natural World", icon: "&#127801;", desc: "State bird, flower, tree, crops, and animals.", deck: "Facts Deck" },
 ];
 
 function renderMenu() {
@@ -291,7 +310,7 @@ function renderMenu() {
   });
   app.appendChild(el(
     "p", { class: "muted", style: "margin-top:18px" },
-    "Famous People and Natural World — state symbols, crops, and biographies — arrive in a later update."
+    "Famous People — state biographies — arrives in a later update, once its content has been reviewed."
   ));
 }
 
@@ -304,6 +323,7 @@ function startMode(id) {
   else if (id === "unabbr") playUnabbr();
   else if (id === "capitals") playCapitals();
   else if (id === "population") playPopulation();
+  else if (id === "nature") playNature();
 }
 
 function progressLine(i, total, correct) {
@@ -320,7 +340,7 @@ function nextButtonRow(isLast, onNext) {
 const MODE_TITLES = {
   find: "Find the State", name: "Name the State", capital: "Click the Capital",
   abbr: "State → Abbreviation", unabbr: "Abbreviation → State",
-  capitals: "Capitals", population: "Population",
+  capitals: "Capitals", population: "Population", nature: "Natural World",
 };
 function renderEnd(modeId, correct, total, replayFn) {
   app.innerHTML = "";
@@ -811,6 +831,151 @@ function playPopulation() {
       });
       choiceGrid.appendChild(btn);
     });
+    app.appendChild(choiceGrid);
+    app.appendChild(feedback);
+  }
+  renderQuestion();
+}
+
+// ---------- Mode 9: Natural World (bird/flower/tree/crop/animal, either direction) ----------
+function natureOwnValues(code, cat) {
+  if (cat === "animal") return NATURE[code].animals;
+  if (cat === "crop") return NATURE[code].crops;
+  return [NATURE[code][cat]];
+}
+function natureAvailableCategories(code) {
+  const cats = ["bird", "flower", "tree"];
+  if (NATURE[code].animals.length) cats.push("animal");
+  if (NATURE[code].crops.length) cats.push("crop");
+  return cats;
+}
+function natureForwardPrompt(cat, stateName) {
+  return {
+    bird: `What is ${stateName}'s state bird?`,
+    flower: `What is ${stateName}'s state flower?`,
+    tree: `What is ${stateName}'s state tree?`,
+    animal: `Which of these animals is native to ${stateName}?`,
+    crop: `Which of these is a well-known crop grown in ${stateName}?`,
+  }[cat];
+}
+function natureReversePrompt(cat, value) {
+  return {
+    bird: `The ${value} is the state bird of which state?`,
+    flower: `The ${value} is the state flower of which state?`,
+    tree: `The ${value} is the state tree of which state?`,
+    animal: `Which state is home to the ${value}?`,
+    crop: `Which state is known for growing ${value}?`,
+  }[cat];
+}
+function natureRevealPhrase(dir, cat, stateName, value) {
+  if (dir === "forward") {
+    return {
+      bird: `${stateName}'s state bird is the ${value}.`,
+      flower: `${stateName}'s state flower is the ${value}.`,
+      tree: `${stateName}'s state tree is the ${value}.`,
+      animal: `The ${value} is a native animal of ${stateName}.`,
+      crop: `One of the well-known crops grown in ${stateName} is ${value}.`,
+    }[cat];
+  }
+  return {
+    bird: `The ${value} is the state bird of ${stateName}.`,
+    flower: `The ${value} is the state flower of ${stateName}.`,
+    tree: `The ${value} is the state tree of ${stateName}.`,
+    animal: `The ${value} is native to ${stateName}.`,
+    crop: `${stateName} is known for growing ${value}.`,
+  }[cat];
+}
+function playNature() {
+  const queue = sample(ALL_CODES, ROUND_SIZE).map((code) => {
+    const cat = sample(natureAvailableCategories(code), 1)[0];
+    const value = sample(natureOwnValues(code, cat), 1)[0];
+    const dir = Math.random() < 0.5 ? "forward" : "reverse";
+    return { code, cat, value, dir };
+  });
+  let i = 0, correct = 0;
+
+  function renderQuestion() {
+    app.innerHTML = "";
+    const { code, cat, value, dir } = queue[i];
+    const stateName = STATE_NAMES[code];
+
+    app.appendChild(el(
+      "div", { class: "prompt" },
+      dir === "forward" ? natureForwardPrompt(cat, stateName) : natureReversePrompt(cat, value)
+    ));
+    app.appendChild(progressLine(i, queue.length, correct));
+
+    const feedback = el("div", { class: "feedback" });
+    let answered = false;
+    const choiceGrid = el("div", { class: "choice-grid" });
+
+    function reveal(isCorrect) {
+      if (isCorrect) correct++;
+      feedback.className = "feedback " + (isCorrect ? "ok" : "bad");
+      feedback.innerHTML = feedbackHtml(isCorrect, natureRevealPhrase(dir, cat, stateName, value));
+      app.appendChild(nextButtonRow(i + 1 >= queue.length, () => {
+        i++;
+        if (i < queue.length) renderQuestion(); else renderEnd("nature", correct, queue.length, playNature);
+      }));
+    }
+
+    if (dir === "forward") {
+      // Choices are values (bird/flower/tree/animal/crop names). Distractors
+      // come from other states' values for the same category, excluding
+      // anything that's also true for this state, so only one choice is
+      // ever correct even when a state has more than one crop or animal.
+      const ownSet = new Set(natureOwnValues(code, cat));
+      const pool = [];
+      ALL_CODES.forEach((c) => {
+        if (c === code) return;
+        natureOwnValues(c, cat).forEach((v) => { if (!ownSet.has(v) && !pool.includes(v)) pool.push(v); });
+      });
+      const choices = shuffle([value, ...sample(pool, 3)]);
+      choices.forEach((v) => {
+        const btn = el("button", {}, v);
+        btn.addEventListener("click", () => {
+          if (answered) return;
+          answered = true;
+          choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
+          const isCorrect = v === value;
+          if (isCorrect) {
+            btn.classList.add("correct");
+          } else {
+            btn.classList.add("wrong");
+            Array.from(choiceGrid.children).forEach((b) => { if (b.textContent === value) b.classList.add("correct"); });
+          }
+          reveal(isCorrect);
+        });
+        choiceGrid.appendChild(btn);
+      });
+    } else {
+      // Choices are state names. Distractors are states whose own values for
+      // this category don't include the target value, so only one choice is
+      // ever correct.
+      const pool = ALL_CODES.filter((c) => {
+        if (c === code) return false;
+        const own = natureOwnValues(c, cat);
+        return own.length > 0 && !own.includes(value);
+      });
+      const choices = shuffle([code, ...sample(pool, 3)]);
+      choices.forEach((c) => {
+        const btn = el("button", {}, STATE_NAMES[c]);
+        btn.addEventListener("click", () => {
+          if (answered) return;
+          answered = true;
+          choiceGrid.querySelectorAll("button").forEach((b) => (b.disabled = true));
+          const isCorrect = c === code;
+          if (isCorrect) {
+            btn.classList.add("correct");
+          } else {
+            btn.classList.add("wrong");
+            Array.from(choiceGrid.children).forEach((b) => { if (b.textContent === stateName) b.classList.add("correct"); });
+          }
+          reveal(isCorrect);
+        });
+        choiceGrid.appendChild(btn);
+      });
+    }
     app.appendChild(choiceGrid);
     app.appendChild(feedback);
   }

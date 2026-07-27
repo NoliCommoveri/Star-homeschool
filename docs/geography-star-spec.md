@@ -1,7 +1,11 @@
 # Geography Star — Specification
 
 Status: **Stage 1 (map deck) and Stage 2 (capitals + population) shipped.
-Stage 3 (famous people, natural world) not yet started.**
+Stage 3, natural world half: state symbols/crops/animals authored and
+shipped as Mode 9. Stage 3, famous people half: 153 biographies (3 per
+state) authored into `geodata/states.json` with confidence flags, but
+held per the §9/§11 parent-review gate — not yet inlined, no Mode 8 UI
+yet. See `geodata/build-notes.md` for the review checklist.**
 Target file: `geography-star.html` (self-contained, alongside Math Star and Spelling Star)
 
 ---
