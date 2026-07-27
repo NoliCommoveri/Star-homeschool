@@ -140,5 +140,10 @@
 
     <footer>Questions or something not working? Check with whoever manages the Star Apps site.</footer>
   </div>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}
+</script>
 </body>
 </html>

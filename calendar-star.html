@@ -233,6 +233,8 @@
       document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
     });
   });
+
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 </script>
 </body>
 </html>

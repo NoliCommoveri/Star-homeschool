@@ -113,5 +113,10 @@
 
     <footer>Progress is saved on this device only, for each app.</footer>
   </div>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}
+</script>
 </body>
 </html>
