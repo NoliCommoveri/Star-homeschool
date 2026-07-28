@@ -6,10 +6,16 @@ v6.2 (Phase A, §5) shipped: N-field numeric widget, options-driven choice
 widget, decimal numpad key (unused so far), `promptText`/`formatAnswer()`,
 object-aware `answerSig()`, `strand`/`reviewable` on `CATS`, full problem
 descriptors in review/graduated entries with a migration for pre-existing
-numeric2 entries, and subgroup `defaultRequired`. No new categories yet and no
-visible behavior change — see §5 and the changelog (§13). §6 onward (the
-fractions/decimals/percentages categories themselves, v6.3/v6.4) is not yet
-implemented.**
+numeric2 entries, and subgroup `defaultRequired`. No new categories and no
+visible behavior change in v6.2 itself.
+v6.3 (Phase B, §6) shipped: three fraction categories — `fraction-simplify`,
+`fraction-mixed`, `fraction-equivalent` — all subgroup-mastered and
+reviewable, built on v6.2's plumbing (fraction/mixed-number field layouts,
+fraction-shaped choice options, a Practice-only near-miss hint for
+equivalent-but-unsimplified and right-fraction-wrong-whole-number answers).
+`CATS` now spans two strands ("Whole numbers", "Fractions"), so the
+focus-area picker and Mastery dropdown group by strand. §7 onward (decimals
+and percentages, v6.4) is not yet implemented.**
 
 Target file: `math-star-v6_1.html` (self-contained, alongside Spelling Star and
 Geography Star)
@@ -486,7 +492,7 @@ change.
 | Version | Contents | Acceptance |
 |---|---|---|
 | **v6.2** | §5 in full. No new categories. **Shipped.** | Division facts and comparing numbers behave identically to v6.1. Old profiles open with no visible change. |
-| **v6.3** | §6 — three fraction categories | Fraction entry works on a phone-sized numpad. Simplify rejects unsimplified equivalents with a near-miss hint in Practice. Review facts survive a reload. |
+| **v6.3** | §6 — three fraction categories. **Shipped.** | Fraction entry works on a phone-sized numpad. Simplify rejects unsimplified equivalents with a near-miss hint in Practice. Review facts survive a reload. |
 | **v6.4** | §7 — three decimal + two percentage categories | Decimal key behaves. `ragged` comparisons include shorter-is-larger cases. No float-comparison misses. |
 
 Doing §5 alone, first, is what keeps this from becoming a rewrite. After it
@@ -521,5 +527,5 @@ behavior or data-model change and noted here.
 |---|---|
 | v6.1 | Shipped: 12 categories, mastery heatmap, rounding subgroup prototype, per-category mastery/resurface overrides, review + graduation with resurfacing, parent dashboard, CSV export. |
 | v6.2 | Shipped — §5 plumbing: N-field numeric widget, options-based choice widget, decimal numpad key, `promptText`/`formatAnswer()`, `answerSig()` for object answers, `strand`/`reviewable` on `CATS`, full descriptors in review entries (with a migration for pre-existing numeric2 entries), subgroup `defaultRequired`. No new categories; no visible behavior change. |
-| v6.3 | *Planned* — §6 fractions: `fraction-simplify`, `fraction-mixed`, `fraction-equivalent`. |
+| v6.3 | Shipped — §6 fractions: `fraction-simplify`, `fraction-mixed`, `fraction-equivalent`, each subgroup-mastered and reviewable. Fraction/mixed-number field layouts, fraction-shaped choice options, Practice-only near-miss hints, strand headers in the focus-area picker and Mastery dropdown. Also fixed a pre-existing display bug where an empty numeric-field box showed the literal text "&amp;nbsp;" instead of a blank space. |
 | v6.4 | *Planned* — §7 decimals and percentages: `decimal-place-value`, `decimal-compare`, `decimal-arithmetic`, `percent-of-number`, `percent-convert`. |
