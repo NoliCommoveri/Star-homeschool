@@ -1,5 +1,30 @@
 <!DOCTYPE html>
-<!-- Math Star v6.1 — see APP_VERSION const in <script>; bump both together.
+<!-- Math Star v6.3 — see APP_VERSION const in <script>; bump both together.
+     v6.3: Phase B (docs/math-star-spec.md §6) — three fraction categories:
+     Simplify fractions, Mixed numbers, Equivalent fractions, each subgroup-
+     mastered and reviewable. Built entirely on v6.2's plumbing: fraction
+     entry uses the N-field widget (stacked numerator/denominator, or a
+     whole-number box beside a stacked pair for mixed numbers, via a new
+     `layout` field); Choose-the-equivalent-fraction uses the choice widget
+     with fraction-shaped options rendered as small stacked fractions
+     (optionSig/optionLabelHtml generalize submission/display beyond plain
+     strings); Missing-part reuses the plain numeric widget. Added a
+     Practice-only near-miss hint (§9.2) for an equivalent-but-unsimplified
+     answer and a right-fraction-wrong-whole-number answer. Added strand
+     section headers/optgroups to the focus-area picker and Mastery dropdown
+     now that "Fractions" is a second strand alongside "Whole numbers".
+     v6.2: Phase A plumbing for the fractions/decimals/percentages strands
+     (docs/math-star-spec.md §5) — no new categories, no visible behavior
+     change. numeric2 generalized to an N-field widget (S.fields keyed by
+     field id, replacing S.typedQ/S.typedR); comparison generalized to an
+     options-driven choice widget; numpad gained a per-problem decimal key
+     (unused by any current category); promptText/formatAnswer() added for
+     plain-text prompt/answer display (fixes &times; rendering literally and
+     [object Object] answers in session detail as a side effect); answerSig()
+     canonicalizes object-shaped answers; CATS gained strand/reviewable;
+     review/graduated entries now persist the full problem descriptor
+     (fields/options survive a reload) instead of a 6-field subset, with a
+     migration for pre-existing numeric2 entries.
      v6.1: Drill-mode neutrality fix — numDisplay's ok/bad border class was not
      gated by isDrill, so a correct Drill answer got a green border while a
      wrong one didn't (fb="wrong-locked" never matched "wrong"), leaking
@@ -72,12 +97,20 @@
   .num2field { flex:1; padding:10px; border-radius:10px; border:3px solid var(--border); cursor:pointer; }
   .num2field.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .num2field .lbl { font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+  .frac-wrap { display:flex; flex-direction:column; align-items:stretch; width:120px; margin:0 auto; }
+  .frac-wrap .num2field { flex:none; }
+  .frac-rule { height:3px; background:var(--border); margin:4px 0; border-radius:2px; }
+  .mixed-wrap { display:flex; align-items:center; gap:14px; justify-content:center; }
+  .mixed-wrap .num2field.whole { flex:none; width:70px; }
+  .frac-inline { display:inline-flex; flex-direction:column; align-items:center; font-weight:800; line-height:1.15; font-size:22px; }
+  .frac-inline .fi-n { border-bottom:2px solid currentColor; padding:0 8px 2px; }
+  .frac-inline .fi-d { padding:2px 8px 0; }
   .numpad { display:grid; grid-template-columns: repeat(3,1fr); gap:8px; max-width:260px; margin:20px auto 0; }
   .numpad button { font-size:24px; font-weight:800; padding:16px 0; border-radius:12px; background:var(--card); color:var(--text); border:2px solid var(--border); }
   .numpad button:active { background: var(--accent-soft); border-color: var(--accent); }
   .numpad button:disabled { background:#EEE; color:#AAA; }
   .numpad button.wide { grid-column: span 2; font-size:16px; background:var(--soft); }
-  .cmp-row { display:flex; gap:14px; justify-content:center; margin-top:22px; }
+  .cmp-row { display:flex; gap:14px; justify-content:center; margin-top:22px; flex-wrap:wrap; }
   .cmp-row button { font-size:32px; font-weight:800; padding:16px 30px; border-radius:16px; }
   .mg-grid { display:flex; flex-direction:column; gap:2px; overflow-x:auto; padding-bottom:4px; }
   .mg-row { display:flex; gap:2px; }
@@ -105,23 +138,39 @@
 <script>
 // App version — bump this on any behavior/data-model change, and note it in
 // the design doc changelog. Keeps code and design docs verifiably in sync.
-const APP_VERSION = "v6.1";
+const APP_VERSION = "v6.3";
 // ---------- Category metadata ----------
 const CATS = [
-  { id: "addition-facts", label: "Addition facts", band: "K-1", widget: "numeric" },
-  { id: "addition-multidigit", label: "Addition (regrouping)", band: "2-3", widget: "numeric" },
-  { id: "subtraction-facts", label: "Subtraction facts", band: "K-1", widget: "numeric" },
-  { id: "subtraction-multidigit", label: "Subtraction (regrouping)", band: "2-3", widget: "numeric" },
-  { id: "multiplication-facts", label: "Multiplication facts", band: "2-4", widget: "numeric" },
-  { id: "division-facts", label: "Division facts (with remainders)", band: "3-4", widget: "numeric2" },
-  { id: "missing-operand", label: "Missing operand", band: "1-3", widget: "numeric" },
-  { id: "fact-families", label: "Fact families", band: "1-3", widget: "numeric" },
-  { id: "place-value", label: "Place value", band: "1-3", widget: "numeric" },
-  { id: "rounding", label: "Rounding", band: "2-4", widget: "numeric" },
-  { id: "comparing-numbers", label: "Comparing numbers", band: "K-2", widget: "comparison" },
-  { id: "skip-counting", label: "Skip counting", band: "K-2", widget: "numeric" },
+  { id: "addition-facts", label: "Addition facts", band: "K-1", widget: "numeric", strand: "Whole numbers", reviewable: true },
+  { id: "addition-multidigit", label: "Addition (regrouping)", band: "2-3", widget: "numeric", strand: "Whole numbers" },
+  { id: "subtraction-facts", label: "Subtraction facts", band: "K-1", widget: "numeric", strand: "Whole numbers", reviewable: true },
+  { id: "subtraction-multidigit", label: "Subtraction (regrouping)", band: "2-3", widget: "numeric", strand: "Whole numbers" },
+  { id: "multiplication-facts", label: "Multiplication facts", band: "2-4", widget: "numeric", strand: "Whole numbers", reviewable: true },
+  { id: "division-facts", label: "Division facts (with remainders)", band: "3-4", widget: "numeric2", strand: "Whole numbers", reviewable: true },
+  { id: "missing-operand", label: "Missing operand", band: "1-3", widget: "numeric", strand: "Whole numbers" },
+  { id: "fact-families", label: "Fact families", band: "1-3", widget: "numeric", strand: "Whole numbers" },
+  { id: "place-value", label: "Place value", band: "1-3", widget: "numeric", strand: "Whole numbers" },
+  { id: "rounding", label: "Rounding", band: "2-4", widget: "numeric", strand: "Whole numbers" },
+  { id: "comparing-numbers", label: "Comparing numbers", band: "K-2", widget: "comparison", strand: "Whole numbers" },
+  { id: "skip-counting", label: "Skip counting", band: "K-2", widget: "numeric", strand: "Whole numbers" },
+  { id: "fraction-simplify", label: "Simplify fractions", band: "3-5", widget: "fraction", strand: "Fractions", reviewable: true },
+  { id: "fraction-mixed", label: "Mixed numbers", band: "3-5", widget: "mixed", strand: "Fractions", reviewable: true },
+  { id: "fraction-equivalent", label: "Equivalent fractions", band: "3-5", widget: "choice", strand: "Fractions", reviewable: true },
 ];
 function catMeta(id) { return CATS.find(c => c.id === id) || CATS[0]; }
+// Groups CATS by strand, preserving each strand's first-appearance order —
+// used to add section headers/optgroups once a category list spans more
+// than one strand (v6.2 §5.6 added the field; v6.3 is the first phase where
+// there's a second strand to actually group by).
+function catsByStrand() {
+  const groups = [];
+  const byName = {};
+  CATS.forEach(c => {
+    if (!byName[c.strand]) { byName[c.strand] = { strand: c.strand, cats: [] }; groups.push(byName[c.strand]); }
+    byName[c.strand].cats.push(c);
+  });
+  return groups;
+}
 // A focus area has one or more categories. Older saved data only has a
 // single `category` string; this normalizes both shapes to an array.
 function focusCategories(f) { return f.categories || [f.category]; }
@@ -168,11 +217,25 @@ function gridRowCol(category, r) {
 // their own grouping defined here.
 const SUBGROUP_CATS = {
   "rounding": [
-    { id: "nearest-10", label: "Nearest 10", roundTo: 10 },
-    { id: "nearest-100", label: "Nearest 100", roundTo: 100 },
-    { id: "nearest-1000", label: "Nearest 1000", roundTo: 1000 },
-    { id: "nearest-10000", label: "Nearest 10,000", roundTo: 10000 },
-    { id: "nearest-100000", label: "Nearest 100,000", roundTo: 100000 },
+    { id: "nearest-10", label: "Nearest 10", roundTo: 10, defaultRequired: 30 },
+    { id: "nearest-100", label: "Nearest 100", roundTo: 100, defaultRequired: 30 },
+    { id: "nearest-1000", label: "Nearest 1000", roundTo: 1000, defaultRequired: 30 },
+    { id: "nearest-10000", label: "Nearest 10,000", roundTo: 10000, defaultRequired: 30 },
+    { id: "nearest-100000", label: "Nearest 100,000", roundTo: 100000, defaultRequired: 30 },
+  ],
+  "fraction-simplify": [
+    { id: "factor-2", label: "Factor of 2", factor: 2, defaultRequired: 12 },
+    { id: "factor-3", label: "Factor of 3", factor: 3, defaultRequired: 12 },
+    { id: "factor-4", label: "Factor of 4", factor: 4, defaultRequired: 12 },
+    { id: "factor-5", label: "Factor of 5", factor: 5, defaultRequired: 12 },
+  ],
+  "fraction-mixed": [
+    { id: "improper-to-mixed", label: "Improper to mixed", defaultRequired: 12 },
+    { id: "mixed-to-improper", label: "Mixed to improper", defaultRequired: 12 },
+  ],
+  "fraction-equivalent": [
+    { id: "choose-equivalent", label: "Choose the equivalent fraction", defaultRequired: 20 },
+    { id: "missing-part", label: "Missing part", defaultRequired: 15 },
   ],
 };
 function subgroupList(cat) { return SUBGROUP_CATS[cat] || []; }
@@ -183,7 +246,9 @@ function subgroupMeta(cat, id) { return subgroupList(cat).find(s => s.id === id)
 function subgroupRequired(cat, subId) {
   const catMap = data.subgroupMasteryRequired && data.subgroupMasteryRequired[cat];
   const val = catMap && catMap[subId];
-  return (val !== undefined && val !== null) ? val : 30;
+  if (val !== undefined && val !== null) return val;
+  const meta = subgroupMeta(cat, subId);
+  return (meta && meta.defaultRequired !== undefined) ? meta.defaultRequired : 30;
 }
 
 // ---------- Per-category mastery overrides ----------
@@ -302,7 +367,7 @@ function freshData(childName, pin, gradeLevel) {
     masteryGrid: {},
     categoryStats: {},
     subgroupMastery: {},
-    subgroupMasteryRequired: { rounding: Object.fromEntries(subgroupList("rounding").map(s => [s.id, 30])) },
+    subgroupMasteryRequired: Object.fromEntries(Object.keys(SUBGROUP_CATS).map(cat => [cat, Object.fromEntries(subgroupList(cat).map(s => [s.id, s.defaultRequired !== undefined ? s.defaultRequired : 30]))])),
     resurfaceAfterSessions: 10,
     masteryStreakRequired: 3,
     categoryMasteryRequired: {},
@@ -358,7 +423,7 @@ function load(key) {
       const legacy = typeof existing === "number" ? existing : null;
       const map = (legacy === null && existing && typeof existing === "object") ? existing : {};
       subgroupList(cat).forEach(s => {
-        if (map[s.id] === undefined) map[s.id] = legacy !== null ? legacy : 30;
+        if (map[s.id] === undefined) map[s.id] = legacy !== null ? legacy : (s.defaultRequired !== undefined ? s.defaultRequired : 30);
       });
       d.subgroupMasteryRequired[cat] = map;
     });
@@ -392,9 +457,11 @@ function load(key) {
     // v6 §3.4: the per-fact review/graduation pool is bounded-fact-space only.
     // Prune any open-ended entries left over from before this rule existed.
     // categoryStats/subgroupMastery (where open-ended progress actually lives)
-    // are untouched, so no progress is lost.
-    d.reviewFacts = (d.reviewFacts || []).filter(r => GRID_CATS[r.category]);
-    d.graduated   = (d.graduated || []).filter(g => GRID_CATS[g.category]);
+    // are untouched, so no progress is lost. v6.2 §5.6: gated on the
+    // per-category `reviewable` flag rather than GRID_CATS directly, so a
+    // future reviewable-but-not-heatmap category isn't pruned by accident.
+    d.reviewFacts = (d.reviewFacts || []).filter(r => catMeta(r.category).reviewable).map(migrateProblemDescriptor).filter(Boolean);
+    d.graduated   = (d.graduated || []).filter(g => catMeta(g.category).reviewable).map(migrateProblemDescriptor).filter(Boolean);
     return d;
   } catch(e) {
     lastLoadError = "corrupted";
@@ -428,36 +495,48 @@ function sessionCategoryLabel(s) {
 }
 function shuffle(a){ a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+// Unicode superscript/subscript digits, used to render a fraction inline in
+// plain text (e.g. "⁸⁄₁₂") without HTML markup — matches the fraction
+// widget's stacked look closely enough to read as the same thing.
+const SUP_DIGITS = {"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
+const SUB_DIGITS = {"0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉"};
+function toSup(n) { return String(n).split("").map(c => SUP_DIGITS[c] || c).join(""); }
+function toSub(n) { return String(n).split("").map(c => SUB_DIGITS[c] || c).join(""); }
+function fracUnicode(n, d) { return `${toSup(n)}⁄${toSub(d)}`; }
 
 // ---------- Problem generators ----------
-function genAdditionFacts(){ const a=randInt(0,9), b=randInt(0,9); return { key:`${a}+${b}`, prompt:`${a} + ${b} = ?`, answer:a+b }; }
+function genAdditionFacts(){ const a=randInt(0,9), b=randInt(0,9); const prompt=`${a} + ${b} = ?`; return { key:`${a}+${b}`, prompt, promptText:prompt, answer:a+b }; }
 function genAdditionMultidigit(){
   const digits = Math.random()<0.5?2:3;
   const min = digits===2?10:100, max = digits===2?99:999;
   const a=randInt(min,max), b=randInt(min,max);
-  return { key:`${a}+${b}`, prompt:`${a} + ${b} = ?`, answer:a+b };
+  const prompt = `${a} + ${b} = ?`;
+  return { key:`${a}+${b}`, prompt, promptText:prompt, answer:a+b };
 }
-function genSubtractionFacts(){ const a=randInt(0,9), b=randInt(0,a); return { key:`${a}-${b}`, prompt:`${a} - ${b} = ?`, answer:a-b }; }
+function genSubtractionFacts(){ const a=randInt(0,9), b=randInt(0,a); const prompt=`${a} - ${b} = ?`; return { key:`${a}-${b}`, prompt, promptText:prompt, answer:a-b }; }
 function genSubtractionMultidigit(){
   const digits = Math.random()<0.5?2:3;
   const min = digits===2?10:100, max = digits===2?99:999;
   let a=randInt(min,max), b=randInt(min,max);
   if (b>a) [a,b]=[b,a];
-  return { key:`${a}-${b}`, prompt:`${a} - ${b} = ?`, answer:a-b };
+  const prompt = `${a} - ${b} = ?`;
+  return { key:`${a}-${b}`, prompt, promptText:prompt, answer:a-b };
 }
-function genMultiplicationFacts(){ const a=randInt(0,12), b=randInt(0,12); return { key:`${a}x${b}`, prompt:`${a} &times; ${b} = ?`, answer:a*b }; }
+function genMultiplicationFacts(){ const a=randInt(0,12), b=randInt(0,12); return { key:`${a}x${b}`, prompt:`${a} &times; ${b} = ?`, promptText:`${a} × ${b} = ?`, answer:a*b }; }
 function genDivisionFacts(){
   const divisor=randInt(2,12), quotient=randInt(2,12);
   const remainder = Math.random()<0.4 ? randInt(1,divisor-1) : 0;
   const dividend = divisor*quotient+remainder;
-  return { key:`${dividend}/${divisor}`, prompt:`${dividend} &divide; ${divisor} = ?`, answer:{ q:quotient, r:remainder } };
+  return { key:`${dividend}/${divisor}`, prompt:`${dividend} &divide; ${divisor} = ?`, promptText:`${dividend} ÷ ${divisor} = ?`, answer:{ q:quotient, r:remainder } };
 }
 function genMissingOperand(){
   const op = Math.random()<0.5 ? "+" : "-";
   let a,b,c;
   if (op==="+") { a=randInt(1,20); b=randInt(1,20); c=a+b; } else { a=randInt(5,20); b=randInt(1,a); c=a-b; }
-  if (Math.random()<0.5) return { key:`_${op}${b}=${c}`, prompt:`▢ ${op} ${b} = ${c}`, answer:a };
-  return { key:`${a}${op}_=${c}`, prompt:`${a} ${op} ▢ = ${c}`, answer:b };
+  if (Math.random()<0.5) { const prompt=`▢ ${op} ${b} = ${c}`; return { key:`_${op}${b}=${c}`, prompt, promptText:prompt, answer:a }; }
+  const prompt = `${a} ${op} ▢ = ${c}`;
+  return { key:`${a}${op}_=${c}`, prompt, promptText:prompt, answer:b };
 }
 function genFactFamilies(){
   const a=randInt(1,12), b=randInt(1,12), c=a+b;
@@ -468,7 +547,7 @@ function genFactFamilies(){
     { prompt:`${c} - ${b} = ▢`, answer:a },
   ];
   const v = variants[randInt(0,3)];
-  return { key:`fam-${a}-${b}-${v.prompt}`, prompt:v.prompt, answer:v.answer };
+  return { key:`fam-${a}-${b}-${v.prompt}`, prompt:v.prompt, promptText:v.prompt, answer:v.answer };
 }
 function genPlaceValue(){
   const n = randInt(100,9999);
@@ -478,7 +557,8 @@ function genPlaceValue(){
   const fromRight = s.length-1-pos;
   const placeNames = ["ones","tens","hundreds","thousands"];
   const value = digit * Math.pow(10, fromRight);
-  return { key:`pv-${n}-${pos}`, prompt:`In ${n}, what is the value of the digit ${digit} (the ${placeNames[fromRight]||"?"} place)?`, answer:value };
+  const prompt = `In ${n}, what is the value of the digit ${digit} (the ${placeNames[fromRight]||"?"} place)?`;
+  return { key:`pv-${n}-${pos}`, prompt, promptText:prompt, answer:value };
 }
 // Numbers now range up to 999,999 (previously capped at 9999) so that
 // rounding to the nearest 10,000 or 100,000 has real headroom in the digits
@@ -489,18 +569,117 @@ function genRounding(subgroupId){
   const meta = subgroupId ? subgroupMeta("rounding", subgroupId) : null;
   const roundTo = meta ? meta.roundTo : [10,100,1000,10000,100000][randInt(0,4)];
   const n = randInt(roundTo + 1, ROUNDING_MAX);
-  return { key:`round-${n}-${roundTo}`, prompt:`Round ${n.toLocaleString()} to the nearest ${roundTo.toLocaleString()}.`, answer: Math.round(n/roundTo)*roundTo, subgroup: meta ? meta.id : undefined };
+  const prompt = `Round ${n.toLocaleString()} to the nearest ${roundTo.toLocaleString()}.`;
+  return { key:`round-${n}-${roundTo}`, prompt, promptText:prompt, answer: Math.round(n/roundTo)*roundTo, subgroup: meta ? meta.id : undefined };
 }
 function genComparingNumbers(){
   const a=randInt(1,999), b=randInt(1,999);
   const answer = a>b?">":a<b?"<":"=";
-  return { key:`cmp-${a}-${b}`, prompt:`${a}     ${b}`, answer };
+  const prompt = `${a}     ${b}`;
+  return { key:`cmp-${a}-${b}`, prompt, promptText:prompt, answer };
 }
 function genSkipCounting(){
   const step=[2,3,5,10][randInt(0,3)];
   const start=randInt(1,10)*step;
   const seq=[start,start+step,start+2*step];
-  return { key:`skip-${step}-${start}`, prompt:`${seq.join(", ")}, ___ ?`, answer:start+3*step };
+  const prompt = `${seq.join(", ")}, ___ ?`;
+  return { key:`skip-${step}-${start}`, prompt, promptText:prompt, answer:start+3*step };
+}
+// ---------- Fraction generators (v6.3 §6) ----------
+// fraction-simplify: generated by construction — pick the (already reduced)
+// answer first, then scale it up by the subgroup's factor — rather than
+// searching a random fraction for a common factor. That guarantees the
+// presented fraction's GCF is exactly the subgroup's factor.
+function genFractionSimplify(subgroupId){
+  const meta = subgroupMeta("fraction-simplify", subgroupId);
+  const k = meta.factor;
+  let d0, n0;
+  do { d0 = randInt(2, 12); n0 = randInt(1, d0 - 1); } while (gcd(n0, d0) !== 1);
+  const n = n0 * k, d = d0 * k;
+  const prompt = `Write ${fracUnicode(n, d)} in simplest form.`;
+  const promptText = `Write ${n}/${d} in simplest form.`;
+  return {
+    key: `simp-${n}/${d}`, prompt, promptText,
+    answer: { n: n0, d: d0 },
+    fields: [{ id: "n", label: "Numerator" }, { id: "d", label: "Denominator" }],
+    layout: "fraction", type: "fraction", subgroup: meta.id,
+  };
+}
+// fraction-mixed: one shared (w, n, d) triple, fraction part already in
+// lowest terms, tests conversion rather than simplification.
+function genFractionMixed(subgroupId){
+  const d = randInt(2, 12);
+  let n; do { n = randInt(1, d - 1); } while (gcd(n, d) !== 1);
+  const w = randInt(1, 9);
+  if (subgroupId === "mixed-to-improper") {
+    const prompt = `Write ${w} ${fracUnicode(n, d)} as an improper fraction.`;
+    const promptText = `Write ${w} ${n}/${d} as an improper fraction.`;
+    return {
+      key: `mix-${w}_${n}/${d}`, prompt, promptText,
+      answer: { n: w * d + n, d },
+      fields: [{ id: "n", label: "Numerator" }, { id: "d", label: "Denominator" }],
+      layout: "fraction", type: "fraction", subgroup: subgroupId,
+    };
+  }
+  const impN = w * d + n;
+  const prompt = `Write ${fracUnicode(impN, d)} as a mixed number.`;
+  const promptText = `Write ${impN}/${d} as a mixed number.`;
+  return {
+    key: `imp-${impN}/${d}`, prompt, promptText,
+    answer: { w, n, d },
+    fields: [{ id: "w", label: "Whole" }, { id: "n", label: "Numerator" }, { id: "d", label: "Denominator" }],
+    layout: "mixed", type: "mixed", subgroup: subgroupId,
+  };
+}
+// fraction-equivalent: the correct equivalent is always (n0*k)/(d0*k) for
+// k in 2..5 — never a larger scaling.
+function genFractionEquivalent(subgroupId){
+  let d0, n0;
+  do { d0 = randInt(2, 10); n0 = randInt(1, d0 - 1); } while (gcd(n0, d0) !== 1);
+  const k = randInt(2, 5);
+  if (subgroupId === "missing-part") {
+    const numBlank = Math.random() < 0.5;
+    const n = n0 * k, d = d0 * k;
+    const prompt = numBlank
+      ? `${fracUnicode(n0, d0)} = ▢⁄${toSub(d)}`
+      : `${fracUnicode(n0, d0)} = ${toSup(n)}⁄▢`;
+    const promptText = numBlank ? `${n0}/${d0} = ▢/${d}` : `${n0}/${d0} = ${n}/▢`;
+    return {
+      key: `eqvm-${n0}/${d0}-x${k}-${numBlank?"num":"den"}`,
+      prompt, promptText,
+      answer: numBlank ? n : d,
+      subgroup: "missing-part", type: "numeric",
+    };
+  }
+  // choose-equivalent: 1 correct option + 3 error-shaped distractors, each
+  // targeting a specific misconception (see §6.3). A distractor is rejected
+  // if it's accidentally equivalent to the base fraction.
+  const correct = { n: n0 * k, d: d0 * k };
+  const candidates = [];
+  const isEquivalent = (n, d) => n * d0 === n0 * d;
+  const addCandidate = (n, d) => {
+    if (n <= 0 || d <= 0) return;
+    if (isEquivalent(n, d)) return;
+    if (candidates.some(c => c.n === n && c.d === d)) return;
+    candidates.push({ n, d });
+  };
+  addCandidate(n0 + k, d0 + k);   // adding to both parts instead of multiplying
+  addCandidate(n0 * k, d0);       // scaling the numerator only
+  addCandidate(n0, d0 * k);       // scaling the denominator only
+  for (let tries = 0; tries < 12 && candidates.length < 3; tries++) {
+    const j = randInt(2, 5);
+    if (j !== k) addCandidate(n0 * j, d0 * k); // two different factors
+  }
+  for (let extra = 2; candidates.length < 3; extra++) addCandidate(n0 * k + extra, d0 * k);
+  const distractors = shuffle(candidates).slice(0, 3);
+  const options = shuffle([correct, ...distractors]);
+  const prompt = `Which fraction is equivalent to ${fracUnicode(n0, d0)}?`;
+  const promptText = `Which fraction is equivalent to ${n0}/${d0}?`;
+  return {
+    key: `eqv-${n0}/${d0}-x${k}`, prompt, promptText,
+    answer: correct, options,
+    subgroup: "choose-equivalent", type: "choice",
+  };
 }
 function buildProblem(category){
   const widget = catMeta(category).widget;
@@ -522,9 +701,54 @@ function buildProblem(category){
     }
     case "comparing-numbers": g=genComparingNumbers(); break;
     case "skip-counting": g=genSkipCounting(); break;
+    case "fraction-simplify": {
+      const subs = subgroupList("fraction-simplify");
+      g = genFractionSimplify(subs[randInt(0, subs.length - 1)].id);
+      break;
+    }
+    case "fraction-mixed": {
+      const subs = subgroupList("fraction-mixed");
+      g = genFractionMixed(subs[randInt(0, subs.length - 1)].id);
+      break;
+    }
+    case "fraction-equivalent": {
+      const subs = subgroupList("fraction-equivalent");
+      g = genFractionEquivalent(subs[randInt(0, subs.length - 1)].id);
+      break;
+    }
     default: g=genAdditionFacts(); category="addition-facts";
   }
-  return { ...g, category, type: widget };
+  const p = { ...g, category, type: g.type || widget };
+  // v6.2 §5.1/§5.2: per-widget field/option defaults, attached once here
+  // rather than duplicated in every generator.
+  if (widget === "numeric2" && !p.fields) p.fields = [{ id: "q", label: "Quotient" }, { id: "r", label: "Remainder" }];
+  if (widget === "comparison" && !p.options) { p.options = ["<", "=", ">"]; p.optionsOrdered = true; }
+  return p;
+}
+// v6.2 §5.7: the full problem shape, for whatever needs to persist or
+// re-derive a problem beyond the session it was answered in (review pool,
+// graduated facts) — so widgets beyond plain numeric (fields, options,
+// decimal) survive a reload instead of losing the parts a 6-field subset
+// couldn't hold.
+function problemDescriptor(p) {
+  const d = { key: p.key, category: p.category, prompt: p.prompt, answer: p.answer, type: p.type };
+  if (p.subgroup !== undefined) d.subgroup = p.subgroup;
+  if (p.promptText !== undefined) d.promptText = p.promptText;
+  if (p.fields) d.fields = p.fields;
+  if (p.options) d.options = p.options;
+  if (p.optionsOrdered) d.optionsOrdered = p.optionsOrdered;
+  if (p.allowDecimal) d.allowDecimal = p.allowDecimal;
+  if (p.layout) d.layout = p.layout;
+  return d;
+}
+// Reconstructs a stored review/graduated entry saved before fields/options
+// existed, so it can still render with today's widget code. Returns null if
+// the shape can't be safely reconstructed (nothing does today).
+function migrateProblemDescriptor(entry) {
+  if (entry.type === "numeric2" && !entry.fields) {
+    return { ...entry, fields: [{ id: "q", label: "Quotient" }, { id: "r", label: "Remainder" }] };
+  }
+  return entry;
 }
 // Rejection-sample against facts already picked for this session so the same
 // exact fact (e.g. "7x8") doesn't turn up twice in one drill/practice run.
@@ -540,9 +764,41 @@ function buildUniqueProblem(category, usedKeys, maxTries) {
 }
 // Answer-value signature used to group problems so we can keep same-answer
 // items apart, independent of the underlying fact key.
-function answerSig(item) {
-  if (item.type === "numeric2" && item.answer && typeof item.answer === "object") return `${item.answer.q}|${item.answer.r}`;
-  return String(item.answer);
+function canonicalSig(a) {
+  if (a && typeof a === "object") {
+    if ("w" in a) return `${a.w} ${a.n}/${a.d}`;
+    if ("n" in a && "d" in a) return `${a.n}/${a.d}`;
+    if ("q" in a && "r" in a) return `${a.q}|${a.r}`;
+  }
+  return String(a);
+}
+function answerSig(item) { return canonicalSig(item.answer); }
+// A choice widget's options are raw value shapes from the same domain as
+// answers (a plain string like "<", or a fraction object), so the same
+// canonicalization doubles as each option's submission key.
+function optionSig(o) { return canonicalSig(o); }
+function fractionHtml(n, d) {
+  return `<span class="frac-inline"><span class="fi-n">${n}</span><span class="fi-d">${d}</span></span>`;
+}
+function optionLabelHtml(o) {
+  if (o && typeof o === "object" && "n" in o && "d" in o) return fractionHtml(o.n, o.d);
+  return esc(o);
+}
+// Escapes a value for use as `onclick="fn('...')"`: JS-string-escape first
+// (backslash, single quote), then HTML-attribute-escape (&, ") so it's safe
+// inside the double-quoted attribute it's embedded in.
+function jsAttrEscape(s) {
+  return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/&/g,"&amp;").replace(/"/g,"&quot;");
+}
+// Display string for an answer of any shape: 12, "4 r2", "3/4", "2 1/3", ">".
+function formatAnswer(item) {
+  const a = item.answer;
+  if (item.type === "numeric2" && a && typeof a === "object") return `${a.q} r${a.r}`;
+  if (a && typeof a === "object") {
+    if ("w" in a) return `${a.w} ${a.n}/${a.d}`;
+    if ("n" in a && "d" in a) return `${a.n}/${a.d}`;
+  }
+  return String(a);
 }
 // Greedy "spread the most common answer out first" ordering — the standard
 // approach for arranging items so no two adjacent ones match, when a perfect
@@ -817,8 +1073,8 @@ function showSessionDetail(id, returnTo) {
     ${s.results.map(r => `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
         <span style="font-size:20px">${r.correct?"&#9989;":"&#10060;"}</span>
-        <span style="flex:1;font-size:16px">${esc(r.prompt)}</span>
-        ${!r.correct ? `<span class="muted" style="font-size:14px">answer: ${esc(String(r.answer))}</span>` : ""}
+        <span style="flex:1;font-size:16px">${esc(r.promptText || r.prompt)}</span>
+        ${!r.correct ? `<span class="muted" style="font-size:14px">answer: ${esc(formatAnswer(r))}</span>` : ""}
       </div>`).join("")}
   </div>
   <div class="center"><button class="big outline" onclick="go('${returnTo==='history'?'history':'home'}')">&larr; Back</button></div>`;
@@ -958,7 +1214,7 @@ function startSession(mode) {
   // session is a genuine shuffle across categories, not one after another.
   const freshItems = Array.from({ length: freshCount }, () => buildUniqueProblem(cats[randInt(0, cats.length - 1)], usedKeys));
   const queue = orderNoAdjacentAnswers([...freshItems, ...reviewItems]);
-  S = { mode, queue, idx: 0, attempts: 0, results: [], focusName: focus.name, categories: cats, typed: "", typedQ: "", typedR: "", activeField: "q", startTime: null };
+  S = { mode, queue, idx: 0, attempts: 0, results: [], focusName: focus.name, categories: cats, typed: "", fields: {}, activeField: null, lastHint: null, startTime: null };
   const C = cheers();
   const cheer = C[Math.floor(Math.random() * C.length)];
   const label = mode === "drill" ? "&#9201;&#65039; Drill time" : "&#127919; Practice time";
@@ -973,37 +1229,72 @@ function startSession(mode) {
 }
 function beginSession() { S.startTime = Date.now(); renderProblem(); }
 
-function resetTyped() { S.typed = ""; S.typedQ = ""; S.typedR = ""; S.activeField = "q"; }
+function resetTyped() { S.typed = ""; S.fields = {}; S.activeField = null; S.lastHint = null; }
+// v6.3 §9.2: right value, wrong form gets its own hint instead of the
+// generic "not quite" message — shown in Practice only, since Drill stays
+// one-shot and silent.
+function nearMiss(p, given) {
+  if (p.category === "fraction-simplify") {
+    const gn = Number(given.n), gd = Number(given.d);
+    if (gd && gn * p.answer.d === p.answer.n * gd && !(gn === p.answer.n && gd === p.answer.d)) {
+      return "That's the same amount — but it can go smaller.";
+    }
+  } else if (p.category === "fraction-mixed" && p.subgroup === "improper-to-mixed") {
+    if (Number(given.n) === p.answer.n && Number(given.d) === p.answer.d && Number(given.w) !== p.answer.w) {
+      return "The fraction part is right — check the whole number.";
+    }
+  }
+  return null;
+}
 
+// Shared box markup for one field of a multi-field widget (numeric2's
+// quotient/remainder, a fraction's numerator/denominator, a mixed number's
+// whole part). extraClass lets a layout size a specific box differently
+// (e.g. the narrower whole-number box in the mixed layout).
+function fieldBoxHtml(f, extraClass) {
+  return `<div class="num2field ${extraClass||""} ${S.activeField===f.id?'active':''}" onclick="setField('${f.id}')"><div class="lbl">${esc(f.label)}</div><div style="font-size:28px;font-weight:700">${esc(S.fields[f.id]) || " "}</div></div>`;
+}
 function renderProblem(state) {
   if (!S) return; // navigation happened before this deferred callback fired
   const p = S.queue[S.idx];
   const fb = state || "";
   const locked = fb === "correct" || fb === "wrong-locked" || fb === "reveal";
   const isDrill = S.mode === "drill";
+  const isChoice = !!p.options;
+
+  if (p.fields && p.fields.length) {
+    if (S.activeField === null || !p.fields.some(f => f.id === S.activeField)) S.activeField = p.fields[0].id;
+    p.fields.forEach(f => { if (S.fields[f.id] === undefined) S.fields[f.id] = ""; });
+  }
 
   let widgetHtml = "";
-  if (p.type === "comparison") {
+  if (isChoice) {
+    const opts = p.optionsOrdered ? p.options : shuffle(p.options);
     widgetHtml = `
       <div id="numDisplay" style="max-width:280px">${esc(p.prompt)}</div>
       <div class="cmp-row">
-        <button ${locked?"disabled":""} onclick="submitCompare('<')">&lt;</button>
-        <button ${locked?"disabled":""} onclick="submitCompare('=')">=</button>
-        <button ${locked?"disabled":""} onclick="submitCompare('&gt;')">&gt;</button>
+        ${opts.map(o => `<button ${locked?"disabled":""} onclick="submitChoice('${jsAttrEscape(optionSig(o))}')">${optionLabelHtml(o)}</button>`).join("")}
       </div>`;
-  } else if (p.type === "numeric2") {
+  } else if (p.fields && p.fields.length) {
+    let inner;
+    if (p.layout === "fraction") {
+      const [nF, dF] = p.fields;
+      inner = `<div class="frac-wrap">${fieldBoxHtml(nF)}<div class="frac-rule"></div>${fieldBoxHtml(dF)}</div>`;
+    } else if (p.layout === "mixed") {
+      const [wF, nF, dF] = p.fields;
+      inner = `<div class="mixed-wrap">${fieldBoxHtml(wF, "whole")}<div class="frac-wrap">${fieldBoxHtml(nF)}<div class="frac-rule"></div>${fieldBoxHtml(dF)}</div></div>`;
+    } else {
+      inner = `<div class="num2wrap">${p.fields.map(f => fieldBoxHtml(f)).join("")}</div>`;
+    }
     widgetHtml = `
       <div style="font-size:24px;font-weight:700;text-align:center;margin-bottom:14px">${p.prompt}</div>
-      <div class="num2wrap">
-        <div class="num2field ${S.activeField==='q'?'active':''}" onclick="setField('q')"><div class="lbl">Quotient</div><div style="font-size:28px;font-weight:700">${esc(S.typedQ||"&nbsp;")}</div></div>
-        <div class="num2field ${S.activeField==='r'?'active':''}" onclick="setField('r')"><div class="lbl">Remainder</div><div style="font-size:28px;font-weight:700">${esc(S.typedR||"&nbsp;")}</div></div>
-      </div>
-      ${numpadHtml(locked)}`;
+      ${inner}
+      ${numpadHtml(locked, p.allowDecimal)}`;
   } else {
     widgetHtml = `
       <div style="font-size:24px;font-weight:700;text-align:center;margin-bottom:14px">${p.prompt}</div>
       <div id="numDisplay" class="${isDrill ? "" : (fb==="correct"?"ok":fb==="wrong"?"bad":"")}">${esc(S.typed || "\u00A0")}</div>
-      ${numpadHtml(locked)}`;
+      ${numpadHtml(locked, p.allowDecimal)}`;
   }
 
   app.innerHTML = `
@@ -1016,10 +1307,10 @@ function renderProblem(state) {
       <div class="feedback">${
         isDrill && (fb==="correct"||fb==="wrong-locked") ? '<span style="color:var(--muted)">&#10004;&#65039; Answer saved. On to the next one!</span>' :
         fb==="correct" ? '<span style="color:var(--green)">&#9989; Yes! That\'s it!</span>' :
-        fb==="wrong" ? '<span style="color:var(--danger)">Not quite — give it another try. You\'ve got this!</span>' :
-        fb==="reveal" ? `<span style="color:var(--accent)">Answer: ${p.type==="numeric2" ? `${p.answer.q} r${p.answer.r}` : esc(String(p.answer))}</span>` : ""
+        fb==="wrong" ? `<span style="color:var(--danger)">${esc(S.lastHint || "Not quite — give it another try. You've got this!")}</span>` :
+        fb==="reveal" ? `<span style="color:var(--accent)">Answer: ${esc(formatAnswer(p))}</span>` : ""
       }</div>
-      ${p.type !== "comparison" ? `
+      ${!isChoice ? `
       <div class="row" style="margin-top:10px;justify-content:center">
         ${locked
           ? (isDrill ? "" : '<button class="big green" onclick="nextProblem()">Next &rarr;</button>')
@@ -1029,20 +1320,26 @@ function renderProblem(state) {
     </div>`;
 }
 
-function numpadHtml(locked) {
+function currentTypedValue() {
+  const p = S.queue[S.idx];
+  return (p.fields && p.fields.length) ? (S.fields[S.activeField] || "") : (S.typed || "");
+}
+function numpadHtml(locked, allowDecimal) {
   const rows = [["7","8","9"],["4","5","6"],["1","2","3"]];
+  const hasDot = allowDecimal && currentTypedValue().indexOf(".") !== -1;
   return `<div class="numpad">
     ${rows.map(row => row.map(d => `<button ${locked?"disabled":""} onclick="kbType('${d}')">${d}</button>`).join("")).join("")}
     <button ${locked?"disabled":""} onclick="kbBack()">&#9003;</button>
     <button ${locked?"disabled":""} onclick="kbType('0')">0</button>
+    ${allowDecimal ? `<button ${locked||hasDot?"disabled":""} onclick="kbType('.')">.</button>` : ""}
     <button class="wide" ${locked?"disabled":""} onclick="kbClear()">clear</button>
   </div>`;
 }
 function setField(f) { S.activeField = f; renderProblem(); }
 function kbType(d) {
   const p = S.queue[S.idx];
-  if (p.type === "numeric2") {
-    if (S.activeField === "q") S.typedQ = (S.typedQ||"") + d; else S.typedR = (S.typedR||"") + d;
+  if (p.fields && p.fields.length) {
+    S.fields[S.activeField] = (S.fields[S.activeField]||"") + d;
   } else {
     S.typed = (S.typed||"") + d;
   }
@@ -1050,8 +1347,8 @@ function kbType(d) {
 }
 function kbBack() {
   const p = S.queue[S.idx];
-  if (p.type === "numeric2") {
-    if (S.activeField === "q") S.typedQ = (S.typedQ||"").slice(0,-1); else S.typedR = (S.typedR||"").slice(0,-1);
+  if (p.fields && p.fields.length) {
+    S.fields[S.activeField] = (S.fields[S.activeField]||"").slice(0,-1);
   } else {
     S.typed = (S.typed||"").slice(0,-1);
   }
@@ -1059,37 +1356,43 @@ function kbBack() {
 }
 function kbClear() {
   const p = S.queue[S.idx];
-  if (p.type === "numeric2") { S.typedQ = ""; S.typedR = ""; } else { S.typed = ""; }
+  if (p.fields && p.fields.length) {
+    p.fields.forEach(f => { S.fields[f.id] = ""; });
+  } else {
+    S.typed = "";
+  }
   renderProblem();
 }
 
 function checkAnswer(p, given) {
   if (p.type === "numeric2") return Number(given.q) === Number(p.answer.q) && Number(given.r) === Number(p.answer.r);
-  if (p.type === "comparison") return given === p.answer;
+  if (p.options) return given === answerSig(p);
+  if (p.fields && p.fields.length) return p.fields.every(f => Number(given[f.id]) === Number(p.answer[f.id]));
   return Number(given) === Number(p.answer);
 }
 function submitNumeric() {
   const p = S.queue[S.idx];
   let given;
-  if (p.type === "numeric2") {
-    if (!S.typedQ || !S.typedR) return;
-    given = { q: S.typedQ, r: S.typedR };
+  if (p.fields && p.fields.length) {
+    if (p.fields.some(f => !S.fields[f.id])) return;
+    given = {};
+    p.fields.forEach(f => { given[f.id] = S.fields[f.id]; });
   } else {
     if (!S.typed) return;
     given = S.typed;
   }
   handleAnswer(p, given);
 }
-function submitCompare(sym) {
+function submitChoice(value) {
   const p = S.queue[S.idx];
   if (S.attempts === undefined) S.attempts = 0;
-  handleAnswer(p, sym);
+  handleAnswer(p, value);
 }
 function handleAnswer(p, given) {
   clearSessionTimer(); // any new answer supersedes a pending callback
   const correct = checkAnswer(p, given);
   S.attempts++;
-  const rec = { key: p.key, category: p.category, subgroup: p.subgroup, prompt: p.prompt, answer: p.answer, type: p.type, fromReview: !!p.fromReview };
+  const rec = { ...problemDescriptor(p), fromReview: !!p.fromReview };
   if (S.mode === "drill") {
     S.results.push({ ...rec, correct, attempts: 1 });
     resetTyped();
@@ -1101,7 +1404,9 @@ function handleAnswer(p, given) {
       resetTyped();
       renderProblem("correct");
     } else {
+      const hint = nearMiss(p, given);
       resetTyped();
+      S.lastHint = hint;
       renderProblem("wrong");
       sessionTimer = setTimeout(() => renderProblem(), 1300);
     }
@@ -1109,7 +1414,7 @@ function handleAnswer(p, given) {
 }
 function revealAnswer() {
   const p = S.queue[S.idx];
-  S.results.push({ key: p.key, category: p.category, subgroup: p.subgroup, prompt: p.prompt, answer: p.answer, type: p.type, fromReview: !!p.fromReview, correct: false, attempts: S.attempts });
+  S.results.push({ ...problemDescriptor(p), fromReview: !!p.fromReview, correct: false, attempts: S.attempts });
   renderProblem("reveal");
 }
 function nextProblem() {
@@ -1166,16 +1471,16 @@ function finishSession() {
           if ((rf.streak||0) >= masteryRequiredFor(r.category, r.subgroup)) {
             data.reviewFacts = data.reviewFacts.filter(x => x !== rf);
             data.graduated.push({
-              key: rf.key, category: rf.category, subgroup: rf.subgroup, date: new Date().toISOString(),
-              prompt: rf.prompt, answer: rf.answer, type: rf.type,
+              ...problemDescriptor(rf),
+              date: new Date().toISOString(),
               sessionsAtGraduation: countCategorySessions(data, rf.category),
             });
           }
         }
-      } else if (!r.correct && GRID_CATS[r.category]) {
-        // Only bounded-fact-space categories keep a per-fact review pool.
+      } else if (!r.correct && catMeta(r.category).reviewable) {
+        // Only reviewable categories (v6.2 §5.6) keep a per-fact review pool.
         if (!data.reviewFacts.some(x => x.key === r.key && x.category === r.category)) {
-          data.reviewFacts.push({ key: r.key, category: r.category, subgroup: r.subgroup, prompt: r.prompt, answer: r.answer, type: r.type, streak: 0 });
+          data.reviewFacts.push({ ...problemDescriptor(r), streak: 0 });
         }
       }
     });
@@ -1189,7 +1494,7 @@ function finishSession() {
       if (g.resurfaceEligible === false) { stillGraduated.push(g); return; }
       const sessionsSince = countCategorySessions(data, g.category) - (g.sessionsAtGraduation || 0);
       if (sessionsSince >= resurfaceAfterFor(g.category)) {
-        data.reviewFacts.push({ key: g.key, category: g.category, subgroup: g.subgroup, prompt: g.prompt, answer: g.answer, type: g.type, streak: 0 });
+        data.reviewFacts.push({ ...problemDescriptor(g), streak: 0 });
       } else {
         stillGraduated.push(g);
       }
@@ -1322,7 +1627,7 @@ function renderParent(view) {
     <div class="card">
       <div style="font-weight:700;margin-bottom:10px">Per-category overrides</div>
       <select onchange="selectMasteryCat(this.value)">
-        ${CATS.map(c => `<option value="${c.id}" ${c.id===cat?"selected":""}>${esc(c.label)}</option>`).join("")}
+        ${catsByStrand().map(g => `<optgroup label="${esc(g.strand)}">${g.cats.map(c => `<option value="${c.id}" ${c.id===cat?"selected":""}>${esc(c.label)}</option>`).join("")}</optgroup>`).join("")}
       </select>
       <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
         <div style="font-weight:700;margin-bottom:2px">${esc(meta.label)}</div>
@@ -1381,7 +1686,7 @@ function renderParent(view) {
       if (reviewFacts.length) {
         html += `<div style="font-weight:700;margin-bottom:2px">Facts in review (mixed into sessions, never scored against)</div>
         <div class="muted" style="margin-bottom:6px">Dots show progress toward graduation (first-try correct in a row — the goal varies by category and subcategory; see the Mastery tab).</div>
-        ${reviewFacts.map(r => { const st=r.streak||0; const req=masteryRequiredFor(r.category, r.subgroup); return `<span class="chip">${esc(r.prompt)} <span style="color:var(--green);letter-spacing:.1em">${"&#9679;".repeat(st)}${"&#9675;".repeat(Math.max(0,req-st))}</span></span>`; }).join("")}`;
+        ${reviewFacts.map(r => { const st=r.streak||0; const req=masteryRequiredFor(r.category, r.subgroup); return `<span class="chip">${esc(r.promptText || r.prompt)} <span style="color:var(--green);letter-spacing:.1em">${"&#9679;".repeat(st)}${"&#9675;".repeat(Math.max(0,req-st))}</span></span>`; }).join("")}`;
       }
       if (graduated.length) {
         html += `<div style="font-weight:700;margin:12px 0 6px;color:var(--green)">&#127891; Graduated facts</div>
@@ -1409,7 +1714,7 @@ function renderParent(view) {
       const dur = formatDuration(s.elapsedMs);
       html += `<details><summary><strong>${s.mode==="drill"?"Drill":"Practice"}</strong> &middot; ${esc(sessionCategoryLabel(s))} &middot; ${new Date(s.date).toLocaleString()} &middot; ${s.score}/${s.total}${dur?` &middot; ${dur}`:""}</summary>
         <div style="font-size:14px;padding-top:6px;color:var(--body-text)">
-        ${s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.prompt)}</div>`).join("")}
+        ${s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.promptText || r.prompt)}</div>`).join("")}
         <div style="margin-top:8px"><button class="danger" onclick="deleteSession(${s.id})">Delete this session</button></div>
         </div></details>`;
     });
@@ -1431,7 +1736,10 @@ function renderParent(view) {
         <input type="text" id="newFocusName" placeholder="Focus area name (e.g., Mixed review)" style="max-width:320px">
         <div class="muted" style="margin:8px 0 4px">Pick one category, or several for mixed review practice:</div>
         <div style="max-height:220px;overflow-y:auto;border:2px solid var(--border);border-radius:10px;padding:8px 12px;max-width:320px;background:var(--input-bg)">
-          ${CATS.map(c => `<label style="padding:3px 0;font-size:14px;font-weight:400"><input type="checkbox" class="newFocusCatChk" value="${c.id}"> ${esc(c.label)} (${c.band})</label>`).join("")}
+          ${catsByStrand().map((g,i) => `
+            <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:${i?10:0}px 0 4px">${esc(g.strand)}</div>
+            ${g.cats.map(c => `<label style="padding:3px 0;font-size:14px;font-weight:400"><input type="checkbox" class="newFocusCatChk" value="${c.id}"> ${esc(c.label)} (${c.band})</label>`).join("")}
+          `).join("")}
         </div>
         <button onclick="createFocus()" style="margin-top:8px">Create focus area</button>
       </div>
