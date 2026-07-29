@@ -1,0 +1,12 @@
+name = "star-homeschool"
+main = "./dist/worker/index.js"
+compatibility_date = "2026-07-29"
+
+[assets]
+directory = "./"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "star-homeschool"
+database_id = "7f41d38c-79ed-4b29-800a-0d5ea0943127"
