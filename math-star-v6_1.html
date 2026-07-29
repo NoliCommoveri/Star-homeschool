@@ -1187,6 +1187,7 @@ function pickProfile(key) {
   }
   parentUnlocked = false;
   applyTheme();
+  syncPush();
   go("home");
 }
 
@@ -1763,6 +1764,7 @@ function finishSession() {
     data.lastPracticeDate = todayStr;
   }
   const saved = persist();
+  syncPush();
   app.innerHTML = `
     ${saved ? "" : `<div class="card" style="background:var(--gold-soft);border:2px solid var(--gold)">
       <div style="font-weight:700;margin-bottom:4px">&#9888;&#65039; This session couldn't be saved</div>
@@ -1849,6 +1851,10 @@ function renderParent(view) {
         </div>
         <button class="outline" style="border-color:var(--danger);color:var(--danger)" onclick="deleteProfile()">Delete profile&hellip;</button>
       </div>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:10px">Sync to my phone</div>
+      ${syncSettingsHtml()}
     </div>
     <div class="muted center" style="font-size:12px;margin-top:4px">Math Star ${APP_VERSION}</div>`;
   } else if (view === "mastery") {
@@ -2132,7 +2138,125 @@ function deleteSession(id) {
   if (!s) return;
   if (!confirm(`Delete this session from ${new Date(s.date).toLocaleString()}? This can't be undone.`)) return;
   data.sessions = data.sessions.filter(x => x.id !== id);
-  persist(); renderParent("results");
+  persist();
+  syncDelete([id]);
+  renderParent("results");
+}
+
+// ---------- Sync (docs/parent-sync-spec.md §7, §8) ----------
+// Identical in both app files (§3 rule 5) — same function/field names,
+// differing only in SYNC_APP. Fire-and-forget: nothing here ever blocks a
+// session or a render, and a sync failure is never visible to the child (§3).
+const SYNC_APP = "math"; // "spelling" in Spelling Star
+
+function syncReady() { return !!(data.sync && data.sync.enabled && data.sync.deviceToken); }
+function syncEndpoint() { return (data.sync && data.sync.endpoint) || "/api"; }
+
+async function syncApi(path, body) {
+  const res = await fetch(syncEndpoint() + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.sync.deviceToken },
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+  let json = null;
+  try { json = await res.json(); } catch(e) {}
+  if (!res.ok) throw new Error((json && json.error) || ("sync failed (" + res.status + ")"));
+  return json;
+}
+
+// Any session not yet acked gets pushed. The server's upsert is idempotent
+// (§6.4), so re-sending an already-accepted session is harmless — that's
+// what lets the client be careless about retries (§8).
+function syncPush() {
+  if (!syncReady()) return;
+  const acked = new Set(data.sync.ackedIds || []);
+  const pending = data.sessions.filter(s => !acked.has(s.id));
+  if (!pending.length) return;
+  syncApi("/sync", { app: SYNC_APP, childId: data.sync.childId, childName: data.childName, sessions: pending })
+    .then(res => {
+      if (!res || !Array.isArray(res.accepted) || !res.accepted.length) return;
+      const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
+      // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
+      data.sync.ackedIds = [...merged].slice(-300);
+      data.sync.lastPushAt = Date.now();
+      persist();
+    })
+    .catch(() => { /* best-effort — the next session or boot retries (§8) */ });
+}
+
+// Best-effort (§8): if this fails, the session just reappears in the parent
+// dashboard; "Resync now" in Settings is the manual recovery.
+function syncDelete(ids) {
+  if (!syncReady() || !ids.length) return;
+  syncApi("/delete", { app: SYNC_APP, childId: data.sync.childId, sessionIds: ids }).catch(() => {});
+}
+
+async function connectSync() {
+  const code = document.getElementById("syncCodeIn").value.trim().toUpperCase();
+  const endpointIn = document.getElementById("syncEndpointIn").value.trim();
+  const msg = document.getElementById("syncMsg");
+  if (!code) { msg.textContent = "Enter the code shown on your phone."; return; }
+  msg.textContent = "Connecting…";
+  const endpoint = endpointIn || "/api";
+  const deviceId = (data.sync && data.sync.deviceId) || crypto.randomUUID();
+  try {
+    const res = await fetch(endpoint + "/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ code, deviceId, role: "child", label: data.childName + "'s device" }),
+    });
+    let json = null;
+    try { json = await res.json(); } catch(e) {}
+    if (!res.ok) throw new Error((json && json.error) || "Could not connect — check the code and try again.");
+    data.sync = {
+      enabled: true, endpoint,
+      childId: (data.sync && data.sync.childId) || crypto.randomUUID(),
+      deviceId, deviceToken: json.token, ackedIds: [], lastPushAt: null,
+    };
+    persist();
+    renderParent("settings");
+    syncPush();
+  } catch (err) {
+    // §7: redeeming a pairing code is not idempotent, so a network error here
+    // must be treated as "unknown, generate a new code" — never auto-retried
+    // with the same single-use code.
+    msg.textContent = err.message + " If it keeps failing, generate a fresh code on your phone and try again.";
+  }
+}
+function disableSync() { if (!data.sync) return; data.sync.enabled = false; persist(); renderParent("settings"); }
+function enableSync() { if (!data.sync) return; data.sync.enabled = true; persist(); renderParent("settings"); syncPush(); }
+function resyncNow() {
+  if (!data.sync || !data.sync.deviceToken) return;
+  data.sync.ackedIds = []; // safe: /api/sync is an idempotent upsert (§6.4)
+  persist();
+  syncPush();
+}
+
+function syncSettingsHtml() {
+  const s = data.sync;
+  if (s && s.deviceToken) {
+    return `
+      <div class="muted">${s.enabled ? "Sending results to your phone." : "Sync is paused on this device."}</div>
+      <div class="muted" style="margin-bottom:10px">Last sent: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
+      <div class="row">
+        ${s.enabled ? `<button class="outline" onclick="disableSync()">Pause sync</button>` : `<button onclick="enableSync()">Resume sync</button>`}
+        <button class="outline" onclick="resyncNow()">Resync now</button>
+      </div>
+      <div class="muted" style="margin-top:8px">To stop this device permanently, revoke it from the parent dashboard on your phone (Devices tab).</div>`;
+  }
+  return `
+    <p class="muted">On your phone, open the parent dashboard &rarr; Devices &rarr; "Add a device" &rarr; "Child's tablet," then type the code it shows here.</p>
+    <label for="syncCodeIn">Pairing code</label>
+    <input type="text" id="syncCodeIn" placeholder="6-character code" maxlength="6" style="text-transform:uppercase;text-align:center;font-size:22px;letter-spacing:.25em">
+    <details style="margin:6px 0">
+      <summary class="muted" style="cursor:pointer">Advanced: custom sync server</summary>
+      <label for="syncEndpointIn" style="margin-top:6px">Sync server URL (leave blank for the default)</label>
+      <input type="text" id="syncEndpointIn" placeholder="https://your-worker.workers.dev/api">
+    </details>
+    <button onclick="connectSync()">Connect</button>
+    <div class="muted" id="syncMsg" style="color:var(--danger);min-height:16px"></div>`;
 }
 
 // ---------- Boot ----------
@@ -2141,7 +2265,7 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
 (function boot() {
   const profiles = listProfiles();
   if (profiles.length === 0) return renderSetup(1);
-  if (profiles.length === 1) { data = load(profiles[0].key); if (data) { applyTheme(); return go("home"); } }
+  if (profiles.length === 1) { data = load(profiles[0].key); if (data) { applyTheme(); syncPush(); return go("home"); } }
   renderPicker();
 })();
 </script>
