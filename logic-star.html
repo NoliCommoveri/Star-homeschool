@@ -1,0 +1,2237 @@
+<!DOCTYPE html>
+<!-- Logic Star v1.0 — deduction practice for roughly ages 9-14. Four modes:
+     Logic Grid (generated grid-logic puzzles with a full marking grid),
+     Dragon Isle (truth-teller / fibber puzzles), Number Patterns, and
+     Number Boxes (sudoku). Every puzzle is generated on the device and
+     checked for a single solution before it is shown; the grid puzzles are
+     additionally checked to be solvable by elimination alone, so no round
+     ever needs a guess. Profiles, parent PIN, difficulty tiers, progress
+     tracking, and CSV export mirror Math Star, Spelling Star, and Geography
+     Star. See docs/logic-star-spec.md. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logic Star</title>
+<style>
+  :root {
+    --bg: #FDF6EC; --text: #2A3A50; --card: #FFFFFF; --card-shadow: rgba(42,58,80,.10);
+    --accent: #2A5D9F; --accent-soft: #E3EDF9; --green: #2E8B57; --green-soft: #DCEBDD; --green-dark: #2E6B45;
+    --danger: #C4553B; --danger-soft: #F5DCD5; --gold: #E8A013; --gold-soft: #FBEBC8;
+    --muted: #6B7686; --border: #C9CDD4; --line: #EDE4D3; --input-bg: #FFFDF8;
+    --eyebrow: #B0763A; --body-text: #4A5568;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: 'Lexend', 'Trebuchet MS', 'Comic Sans MS', sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .eyebrow { font-size: 13px; font-weight: 600; color: var(--eyebrow); letter-spacing: .12em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: 30px; font-weight: 800; }
+  .card { background: var(--card); border-radius: 20px; padding: 24px; box-shadow: 0 2px 10px var(--card-shadow); margin-bottom: 16px; }
+  button { font-family: inherit; font-weight: 600; font-size: 15px; padding: 10px 18px; border-radius: 14px; border: none; background: var(--accent); color: #fff; cursor: pointer; letter-spacing: .02em; }
+  button.big { font-size: 20px; padding: 16px 28px; }
+  button.outline { background: transparent; border: 2.5px solid var(--accent); color: var(--accent); }
+  button.green { background: var(--green); }
+  button.link { background: none; color: var(--muted); font-size: 13px; text-decoration: underline; padding: 4px; }
+  button:disabled { background: var(--border); color: #fff; cursor: default; }
+  button.outline:disabled { background: transparent; border-color: var(--border); color: var(--muted); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row.center { justify-content: center; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .center { text-align: center; }
+  input[type=text] { font-family: inherit; font-size: 20px; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--input-bg); color: var(--text); text-align: center; width: 140px; }
+  input[type=text].wide-input, input[type=password].wide-input { width: 240px; }
+  input[type=password], input[type=number] { font-family: inherit; font-size: 16px; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--input-bg); color: var(--text); }
+
+  /* ---- mode menu ---- */
+  .mode-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .mode-card { display: flex; align-items: flex-start; gap: 14px; background: var(--card); border-radius: 18px; padding: 18px; box-shadow: 0 2px 10px var(--card-shadow); text-align: left; border: 1px solid var(--line); color: var(--text); font-weight: 600; }
+  .mode-card .icon { flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .mode-card h3 { margin: 0 0 3px; font-size: 16px; font-weight: 800; }
+  .mode-card p { margin: 0; font-size: 13px; color: var(--muted); font-weight: 400; }
+  .mode-card .badge { margin-left: auto; font-size: 12px; color: var(--green-dark); background: var(--green-soft); border-radius: 10px; padding: 2px 8px; font-weight: 700; }
+  .level-row { display: flex; flex-direction: column; gap: 10px; max-width: 380px; margin: 0 auto; }
+  .level-row button { text-align: left; padding: 14px 18px; }
+  .level-row button small { display: block; font-weight: 400; font-size: 13px; opacity: .85; margin-top: 2px; }
+
+  /* ---- gameplay chrome ---- */
+  .prompt { font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 4px; }
+  .progress-line { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .feedback { min-height: 30px; text-align: center; font-size: 16px; font-weight: 700; margin-top: 12px; }
+  .feedback.ok { color: var(--green-dark); }
+  .feedback.bad { color: var(--danger); }
+  .feedback.hint { color: var(--eyebrow); }
+  .end-card { text-align: center; }
+  .end-card .big-score { font-size: 44px; font-weight: 800; margin: 8px 0; }
+  .story { font-size: 15px; color: var(--body-text); margin-bottom: 10px; }
+  .clue-list { margin: 0; padding-left: 24px; }
+  .clue-list li { font-size: 15px; line-height: 1.45; margin: 7px 0; cursor: pointer; }
+  .clue-list li.used { color: var(--muted); text-decoration: line-through; }
+  .solution-table { border-collapse: collapse; margin: 10px auto 0; font-size: 14px; }
+  .solution-table th, .solution-table td { padding: 5px 10px; border-top: 1px solid var(--line); text-align: left; }
+  .solution-table th { color: var(--eyebrow); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; border-top: none; }
+
+  /* ---- logic grid ---- */
+  .lg-wrap { overflow-x: auto; padding-bottom: 6px; }
+  table.lg { border-collapse: collapse; margin: 0 auto; }
+  table.lg th, table.lg td { padding: 0; }
+  .lg-cat { font-size: 11px; font-weight: 800; color: var(--eyebrow); text-transform: uppercase; letter-spacing: .06em; padding-bottom: 4px; }
+  .lg-vcol { height: 96px; vertical-align: bottom; padding-bottom: 4px; }
+  .lg-vcol span { display: block; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; font-weight: 600; white-space: nowrap; margin: 0 auto; }
+  .lg-rowcat span { display: block; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 800; color: var(--eyebrow); text-transform: uppercase; letter-spacing: .06em; margin: 0 auto; }
+  .lg-vrow { font-size: 12px; font-weight: 600; text-align: right; padding-right: 8px !important; white-space: nowrap; }
+  .lg-cell { width: 30px; height: 30px; border: 1px solid var(--line); background: var(--input-bg); font-size: 15px; font-weight: 800; color: var(--danger); border-radius: 0; padding: 0; }
+  .lg-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .lg-cell.yes { background: var(--green-soft); color: var(--green-dark); }
+  .lg-cell.locked { background: var(--gold-soft); color: var(--eyebrow); cursor: default; }
+  .lg-cell.bad { background: var(--danger-soft); }
+  .lg-blank { width: 30px; height: 30px; background: var(--bg); }
+  .lg-bl { border-left: 2px solid var(--border); }
+  .lg-bt { border-top: 2px solid var(--border); }
+
+  /* Phones: shrink the grid so more of it fits before the sideways scroll. */
+  @media (max-width: 560px) {
+    .card { padding: 18px; }
+    .lg-cell, .lg-blank { width: 26px; height: 26px; }
+    .lg-cell { font-size: 13px; }
+    .lg-vcol { height: 84px; }
+    .lg-vrow { font-size: 11px; padding-right: 6px !important; }
+  }
+
+  /* ---- dragon isle ---- */
+  .say { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; }
+  .say .who { font-weight: 800; font-size: 15px; }
+  .say .quote { font-size: 17px; margin-top: 2px; }
+  .pickrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pickrow button { font-size: 14px; padding: 8px 14px; background: transparent; border: 2.5px solid var(--border); color: var(--muted); }
+  .pickrow button:hover { border-color: var(--accent); }
+  .pickrow button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .say.right { border-color: var(--green); background: var(--green-soft); }
+  .say.wrongpick { border-color: var(--danger); background: var(--danger-soft); }
+
+  /* ---- number patterns ---- */
+  .seq { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 14px 0 4px; }
+  .seq div { min-width: 62px; padding: 14px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; font-size: 22px; font-weight: 800; text-align: center; }
+  .seq div.blank { border: 2.5px dashed var(--accent); color: var(--accent); }
+
+  /* ---- sudoku ---- */
+  .sud { display: grid; margin: 0 auto; width: max-content; border: 2.5px solid var(--text); }
+  .sud button { border: 1px solid var(--border); background: var(--input-bg); color: var(--accent); font-weight: 700; border-radius: 0; padding: 0; }
+  .sud button.given { background: #F1EADC; color: var(--text); font-weight: 800; }
+  .sud button.sel { background: var(--accent-soft); }
+  .sud button.bad { background: var(--danger-soft); color: var(--danger); }
+  .sud button.bx { border-right: 2.5px solid var(--text); }
+  .sud button.by { border-bottom: 2.5px solid var(--text); }
+  .pad { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .pad button { min-width: 46px; height: 46px; font-size: 19px; background: var(--card); color: var(--text); border: 2.5px solid var(--border); }
+  .pad button:hover { border-color: var(--accent); }
+
+  /* ---- parent dashboard ---- */
+  .stat-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .stat-table th { text-align: center; padding: 4px 8px; font-size: 12px; color: var(--eyebrow); text-transform: uppercase; letter-spacing: .06em; }
+  .stat-table th:first-child, .stat-table td:first-child { text-align: left; font-weight: 600; }
+  .stat-table td { text-align: center; padding: 5px 8px; border-top: 1px solid var(--line); }
+  label.toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--body-text); cursor: pointer; padding: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Logic Star</div>
+      <h1 id="greeting">Puzzles &amp; Deduction 🧩</h1>
+    </div>
+    <button class="outline" id="homeBtn" style="display:none">Menu</button>
+  </header>
+  <div id="app"></div>
+</div>
+
+<script>
+const APP_VERSION = "v1.0";
+const app = document.getElementById("app");
+const homeBtn = document.getElementById("homeBtn");
+homeBtn.addEventListener("click", () => goHome());
+
+/* ===================== PUZZLE ENGINE =====================
+   Generators and solvers for all four modes. Nothing here touches the DOM. */
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function sample(arr, n) { return shuffle(arr).slice(0, Math.min(n, arr.length)); }
+function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+function plural(n, word) { return n === 1 ? word : word + "s"; }
+function feet(n) { return n === 1 ? "foot" : "feet"; }
+
+/* ===================== GRID LOGIC: THEMES ===================== */
+/* Every non-subject category supplies four bits of wording so any two
+   categories can be combined into a readable clue:
+     verb/negVerb + obj(v)  ->  predicate  ("built the volcano")
+     ref(v)                 ->  person-shaped noun phrase ("the volcano builder")
+     short(v)               ->  grid axis label ("volcano")
+   Ordered categories add numeric values plus comparison wording. */
+
+const NAME_POOL = [
+  "Ava", "Ben", "Chloe", "Diego", "Ella", "Finn", "Grace", "Hugo",
+  "Iris", "Jonah", "Kira", "Leo", "Maya", "Noah", "Priya", "Quinn",
+  "Rosa", "Sam", "Tessa", "Omar",
+];
+const THEMES = [
+  {
+    id: "dinodig",
+    title: "The Fossil Dig",
+    story: (n) => `${n} kids spent the week digging at a fossil site.`,
+    cats: [
+      {
+        key: "fossil", label: "Fossil",
+        values: ["T. rex", "Triceratops", "Stegosaurus", "Velociraptor", "Ankylosaurus", "Brachiosaurus"],
+        verb: "uncovered", negVerb: "didn't uncover",
+        obj: (v) => `the ${v} fossil`, ref: (v) => `the ${v} digger`, short: (v) => v,
+      },
+      {
+        key: "tool", label: "Tool",
+        values: ["brush", "chisel", "sifter", "trowel", "rock pick", "scanner"],
+        verb: "worked with", negVerb: "didn't work with",
+        obj: (v) => `the ${v}`, ref: (v) => `the digger using the ${v}`, short: (v) => v,
+      },
+      {
+        key: "depth", label: "Depth", ordered: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "dug", negVerb: "didn't dig",
+        obj: (v) => `${v} ${feet(v)} down`, ref: (v) => `the digger ${v} ${feet(v)} down`,
+        short: (v) => `${v} ft`,
+        lessText: "dug shallower than",
+        diffText: (d) => `dug exactly ${d} ${feet(d)} shallower than`,
+      },
+    ],
+  },
+  {
+    id: "dragons",
+    title: "The Dragon Sanctuary",
+    story: (n) => `${n} keepers each look after one dragon at the sanctuary.`,
+    cats: [
+      {
+        key: "dragon", label: "Dragon",
+        values: ["Ember", "Cinder", "Nimbus", "Sable", "Thistle", "Pyrite"],
+        verb: "looks after", negVerb: "doesn't look after",
+        obj: (v) => v, ref: (v) => `${v}'s keeper`, short: (v) => v,
+      },
+      {
+        key: "scales", label: "Scales",
+        values: ["crimson", "emerald", "silver", "midnight", "amber", "ivory"],
+        verb: "cares for", negVerb: "doesn't care for",
+        obj: (v) => `the ${v}-scaled dragon`, ref: (v) => `the ${v}-scaled dragon's keeper`, short: (v) => v,
+      },
+      {
+        key: "feeding", label: "Feeding", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "fed", negVerb: "didn't feed",
+        obj: (v) => `${ordinal(v)}`, ref: (v) => `the ${ordinal(v)} keeper to feed`, short: (v) => ordinal(v),
+        lessText: "fed before",
+        diffText: (d) => `fed exactly ${d} ${plural(d, "turn")} before`,
+      },
+    ],
+  },
+  {
+    id: "ridinglesson",
+    title: "Riding Lesson Day",
+    story: (n) => `${n} riders had lessons at the barn on the same morning.`,
+    cats: [
+      {
+        key: "horse", label: "Horse",
+        values: ["Comet", "Willow", "Biscuit", "Domino", "Juniper", "Pepper"],
+        verb: "rode", negVerb: "didn't ride",
+        obj: (v) => v, ref: (v) => `${v}'s rider`, short: (v) => v,
+      },
+      {
+        key: "skill", label: "Skill",
+        values: ["trotting", "jumping", "barrel racing", "dressage", "cantering", "trail work"],
+        verb: "practiced", negVerb: "didn't practice",
+        obj: (v) => v, ref: (v) => `the rider practicing ${v}`, short: (v) => v,
+      },
+      {
+        key: "turn", label: "Turn", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "went", negVerb: "didn't go",
+        obj: (v) => `${ordinal(v)}`, ref: (v) => `the ${ordinal(v)} rider of the day`, short: (v) => ordinal(v),
+        lessText: "rode before",
+        diffText: (d) => `rode exactly ${d} ${plural(d, "turn")} before`,
+      },
+    ],
+  },
+  {
+    id: "trailride",
+    title: "The Trail Ride",
+    story: (n) => `${n} friends took horses out on the mountain trail.`,
+    cats: [
+      {
+        key: "horse", label: "Horse",
+        values: ["Shadow", "Clover", "Rusty", "Freckles", "Mesa", "Ranger"],
+        verb: "rode", negVerb: "didn't ride",
+        obj: (v) => v, ref: (v) => `${v}'s rider`, short: (v) => v,
+      },
+      {
+        key: "snack", label: "Snack",
+        values: ["granola bars", "apples", "trail mix", "jerky", "oranges", "crackers"],
+        verb: "packed", negVerb: "didn't pack",
+        obj: (v) => v, ref: (v) => `the rider who packed ${v}`, short: (v) => v,
+      },
+      {
+        key: "miles", label: "Miles", ordered: true, values: [2, 4, 6, 8, 10, 12],
+        verb: "rode", negVerb: "didn't ride",
+        obj: (v) => `${v} miles`, ref: (v) => `the rider who did ${v} miles`, short: (v) => `${v} mi`,
+        lessText: "rode fewer miles than",
+        diffText: (d) => `rode exactly ${d} fewer miles than`,
+      },
+    ],
+  },
+  {
+    id: "tournament",
+    title: "Game Night Tournament",
+    story: (n) => `${n} players met up for a game tournament.`,
+    cats: [
+      {
+        key: "game", label: "Game",
+        values: ["racing game", "puzzle game", "platformer", "farming sim", "block builder", "rhythm game"],
+        verb: "played", negVerb: "didn't play",
+        obj: (v) => `the ${v}`, ref: (v) => `the ${v} player`, short: (v) => v,
+      },
+      {
+        key: "character", label: "Character",
+        values: ["knight", "ninja", "robot", "wizard", "fox", "pilot"],
+        verb: "picked", negVerb: "didn't pick",
+        obj: (v) => `the ${v}`, ref: (v) => `the one playing the ${v}`, short: (v) => v,
+      },
+      {
+        key: "score", label: "Score", ordered: true, values: [100, 200, 300, 400, 500, 600],
+        verb: "scored", negVerb: "didn't score",
+        obj: (v) => `${v} points`, ref: (v) => `the player who scored ${v}`, short: (v) => String(v),
+        lessText: "scored fewer points than",
+        diffText: (d) => `scored exactly ${d} fewer points than`,
+      },
+    ],
+  },
+  {
+    id: "gamejam",
+    title: "The Game Jam",
+    story: (n) => `${n} kids each built a small video game at the game jam.`,
+    cats: [
+      {
+        key: "genre", label: "Game type",
+        values: ["maze game", "space shooter", "pet sim", "card battler", "quiz game", "side-scroller"],
+        verb: "made", negVerb: "didn't make",
+        obj: (v) => `the ${v}`, ref: (v) => `the ${v} maker`, short: (v) => v,
+      },
+      {
+        key: "sprite", label: "Main sprite",
+        values: ["slime", "dragon", "cat", "robot", "bird", "ghost"],
+        verb: "drew", negVerb: "didn't draw",
+        obj: (v) => `the ${v} sprite`, ref: (v) => `the one who drew the ${v} sprite`, short: (v) => v,
+      },
+      {
+        key: "demo", label: "Demo", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "demoed", negVerb: "didn't demo",
+        obj: (v) => `${ordinal(v)}`, ref: (v) => `the ${ordinal(v)} kid to demo`, short: (v) => ordinal(v),
+        lessText: "demoed before",
+        diffText: (d) => `demoed exactly ${d} ${plural(d, "slot")} before`,
+      },
+    ],
+  },
+  {
+    id: "artstudio",
+    title: "Studio Afternoon",
+    story: (n) => `${n} artists shared the studio all afternoon.`,
+    cats: [
+      {
+        key: "medium", label: "Medium",
+        values: ["watercolor", "charcoal", "clay", "acrylic", "colored pencil", "collage"],
+        verb: "worked in", negVerb: "didn't work in",
+        obj: (v) => v, ref: (v) => `the ${v} artist`, short: (v) => v,
+      },
+      {
+        key: "subject", label: "Subject",
+        values: ["a horse", "a dragon", "a mountain", "a self-portrait", "a spaceship", "a still life"],
+        verb: "drew", negVerb: "didn't draw",
+        obj: (v) => v, ref: (v) => `the one who drew ${v}`, short: (v) => v.replace(/^an? /, ""),
+      },
+      {
+        key: "easel", label: "Easel", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "used", negVerb: "didn't use",
+        obj: (v) => `easel ${v}`, ref: (v) => `the artist at easel ${v}`, short: (v) => `#${v}`,
+        lessText: "sat at a lower-numbered easel than",
+        diffText: (d) => `sat exactly ${d} ${plural(d, "easel")} to the left of`,
+      },
+    ],
+  },
+  {
+    id: "artshow",
+    title: "The Co-op Art Show",
+    story: (n) => `${n} artists each hung one piece in the co-op art show.`,
+    cats: [
+      {
+        key: "piece", label: "Piece",
+        values: ["dragon painting", "clay bowl", "horse sketch", "mosaic", "linocut", "photo collage"],
+        verb: "showed", negVerb: "didn't show",
+        obj: (v) => `the ${v}`, ref: (v) => `the ${v} artist`, short: (v) => v,
+      },
+      {
+        key: "wall", label: "Wall",
+        values: ["north", "south", "east", "west", "front", "back"],
+        verb: "hung on", negVerb: "didn't hang on",
+        obj: (v) => `the ${v} wall`, ref: (v) => `the artist on the ${v} wall`, short: (v) => v,
+      },
+      {
+        key: "ribbon", label: "Ribbon", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "won", negVerb: "didn't win",
+        obj: (v) => `the ${ordinal(v)}-place ribbon`, ref: (v) => `the ${ordinal(v)}-place artist`,
+        short: (v) => ordinal(v),
+        lessText: "placed ahead of",
+        diffText: (d) => `placed exactly ${d} ${plural(d, "spot")} ahead of`,
+      },
+    ],
+  },
+  {
+    id: "roadtrip",
+    title: "The Road Trip",
+    story: (n) => `${n} cousins each planned one day of the same road trip.`,
+    cats: [
+      {
+        key: "stop", label: "Stop",
+        values: ["the Grand Canyon", "the redwoods", "the Badlands", "the Everglades", "Yellowstone", "Acadia"],
+        verb: "picked", negVerb: "didn't pick",
+        obj: (v) => v, ref: (v) => `the cousin who picked ${v}`, short: (v) => v.replace(/^the /, ""),
+      },
+      {
+        key: "souvenir", label: "Souvenir",
+        values: ["a magnet", "a patch", "a postcard", "a fossil", "a sticker", "a keychain"],
+        verb: "brought home", negVerb: "didn't bring home",
+        obj: (v) => v, ref: (v) => `the cousin who brought home ${v}`, short: (v) => v.replace(/^an? /, ""),
+      },
+      {
+        key: "day", label: "Day", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "took", negVerb: "didn't take",
+        obj: (v) => `day ${v}`, ref: (v) => `the cousin who took day ${v}`, short: (v) => `day ${v}`,
+        lessText: "took an earlier day than",
+        diffText: (d) => `took a day exactly ${d} before`,
+      },
+    ],
+  },
+  {
+    id: "coopday",
+    title: "Co-op Workshop Day",
+    story: (n) => `${n} kids each led one workshop at co-op.`,
+    cats: [
+      {
+        key: "workshop", label: "Workshop",
+        values: ["chess", "robotics", "baking", "sign language", "animation", "astronomy"],
+        verb: "led", negVerb: "didn't lead",
+        obj: (v) => `the ${v} workshop`, ref: (v) => `the ${v} leader`, short: (v) => v,
+      },
+      {
+        key: "room", label: "Room",
+        values: ["gym", "kitchen", "library", "garden", "loft", "back porch"],
+        verb: "used", negVerb: "didn't use",
+        obj: (v) => `the ${v}`, ref: (v) => `the one in the ${v}`, short: (v) => v,
+      },
+      {
+        // Kept on a 24-hour scale so "started before" sorts correctly; only
+        // the display drops back to clock time.
+        key: "hour", label: "Start", ordered: true, contiguous: true, values: [9, 10, 11, 12, 13, 14],
+        verb: "started", negVerb: "didn't start",
+        obj: (v) => `at ${v > 12 ? v - 12 : v} o'clock`, ref: (v) => `the ${v > 12 ? v - 12 : v} o'clock leader`,
+        short: (v) => `${v > 12 ? v - 12 : v}:00`,
+        lessText: "started before",
+        diffText: (d) => `started exactly ${d} ${plural(d, "hour")} before`,
+      },
+    ],
+  },
+  {
+    id: "aquarium",
+    title: "Aquarium Volunteers",
+    story: (n) => `${n} volunteers each looked after one animal at the aquarium.`,
+    cats: [
+      {
+        key: "animal", label: "Animal",
+        values: ["otter", "penguin", "sea turtle", "octopus", "seal", "moon jelly"],
+        verb: "looked after", negVerb: "didn't look after",
+        obj: (v) => `the ${v}`, ref: (v) => `the ${v} volunteer`, short: (v) => v,
+      },
+      {
+        key: "job", label: "Job",
+        values: ["feeding", "tank cleaning", "record keeping", "training", "giving tours", "taking photos"],
+        verb: "signed up for", negVerb: "didn't sign up for",
+        obj: (v) => v, ref: (v) => `the volunteer doing ${v}`, short: (v) => v,
+      },
+      {
+        key: "shift", label: "Shift", ordered: true, contiguous: true, values: [1, 2, 3, 4, 5, 6],
+        verb: "took", negVerb: "didn't take",
+        obj: (v) => `shift ${v}`, ref: (v) => `the volunteer on shift ${v}`, short: (v) => `#${v}`,
+        lessText: "worked an earlier shift than",
+        diffText: (d) => `worked exactly ${d} ${plural(d, "shift")} earlier than`,
+      },
+    ],
+  },
+];
+
+/* ===================== GRID LOGIC: SOLVER ===================== */
+/* State is the classic pairwise possibility grid: poss[a][b][i][j] is 1 while
+   value i of category a could still pair with value j of category b. The
+   solver only ever uses eliminations a child could make by hand, so a puzzle
+   it can finish is a puzzle that needs no guessing. */
+
+function makeState(K, N) {
+  const st = {};
+  for (let a = 0; a < K; a++) {
+    for (let b = a + 1; b < K; b++) {
+      st[a + "-" + b] = Array.from({ length: N }, () => new Uint8Array(N).fill(1));
+    }
+  }
+  return st;
+}
+function cloneState(st) {
+  const out = {};
+  Object.keys(st).forEach((k) => { out[k] = st[k].map((row) => row.slice()); });
+  return out;
+}
+function getP(st, a, b, i, j) { return a < b ? st[a + "-" + b][i][j] : st[b + "-" + a][j][i]; }
+function setP(st, a, b, i, j, v) { if (a < b) st[a + "-" + b][i][j] = v; else st[b + "-" + a][j][i] = v; }
+
+// Value indices of category `o` still open for entity e = {c, v}.
+function openIn(st, e, o, N) {
+  if (e.c === o) return [e.v];
+  const out = [];
+  for (let q = 0; q < N; q++) if (getP(st, e.c, o, e.v, q)) out.push(q);
+  return out;
+}
+
+function applyClue(st, clue, N, cats) {
+  let changed = false;
+  const kill = (a, b, i, j) => { if (getP(st, a, b, i, j)) { setP(st, a, b, i, j, 0); changed = true; } };
+
+  if (clue.type === "is") {
+    const { a, b } = clue;
+    for (let j = 0; j < N; j++) if (j !== b.v) kill(a.c, b.c, a.v, j);
+    for (let i = 0; i < N; i++) if (i !== a.v) kill(a.c, b.c, i, b.v);
+  } else if (clue.type === "isNot") {
+    kill(clue.a.c, clue.b.c, clue.a.v, clue.b.v);
+  } else if (clue.type === "either") {
+    const { a, b, opts } = clue;
+    for (let j = 0; j < N; j++) if (!opts.includes(j)) kill(a.c, b.c, a.v, j);
+  } else if (clue.type === "less" || clue.type === "diff") {
+    const { a, b, o } = clue;
+    const vals = cats[o].values;
+    const ok = clue.type === "less"
+      ? (p, q) => vals[p] < vals[q]
+      : (p, q) => vals[q] - vals[p] === clue.d;
+    const openA = openIn(st, a, o, N);
+    const openB = openIn(st, b, o, N);
+    if (a.c !== o) openA.forEach((p) => { if (!openB.some((q) => ok(p, q))) kill(a.c, o, a.v, p); });
+    if (b.c !== o) openB.forEach((q) => { if (!openA.some((p) => ok(p, q))) kill(b.c, o, b.v, q); });
+    if (a.c !== b.c) kill(a.c, b.c, a.v, b.v);
+  }
+  return changed;
+}
+
+// Returns "solved", "stuck", or "broken".
+function propagate(st, K, N, clues, cats) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const clue of clues) if (applyClue(st, clue, N, cats)) changed = true;
+
+    // A row (or column) with one survivor is an assignment: clear its column
+    // (or row) everywhere else in the same pair.
+    for (let a = 0; a < K; a++) {
+      for (let b = a + 1; b < K; b++) {
+        for (let i = 0; i < N; i++) {
+          const open = [];
+          for (let j = 0; j < N; j++) if (getP(st, a, b, i, j)) open.push(j);
+          if (!open.length) return "broken";
+          if (open.length === 1) {
+            for (let k = 0; k < N; k++) {
+              if (k !== i && getP(st, a, b, k, open[0])) { setP(st, a, b, k, open[0], 0); changed = true; }
+            }
+          }
+        }
+        for (let j = 0; j < N; j++) {
+          const open = [];
+          for (let i = 0; i < N; i++) if (getP(st, a, b, i, j)) open.push(i);
+          if (!open.length) return "broken";
+          if (open.length === 1) {
+            for (let k = 0; k < N; k++) {
+              if (k !== j && getP(st, a, b, open[0], k)) { setP(st, a, b, open[0], k, 0); changed = true; }
+            }
+          }
+        }
+      }
+    }
+
+    // Cross-elimination through a middle category — the "if A can't reach any
+    // B that reaches C, then A isn't C" step every grid solver does by eye.
+    for (let a = 0; a < K; a++) {
+      for (let c = 0; c < K; c++) {
+        if (c === a) continue;
+        for (let b = 0; b < K; b++) {
+          if (b === a || b === c) continue;
+          for (let i = 0; i < N; i++) {
+            for (let k = 0; k < N; k++) {
+              if (!getP(st, a, c, i, k)) continue;
+              let reachable = false;
+              for (let j = 0; j < N && !reachable; j++) {
+                if (getP(st, a, b, i, j) && getP(st, b, c, j, k)) reachable = true;
+              }
+              if (!reachable) { setP(st, a, c, i, k, 0); changed = true; }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (let a = 0; a < K; a++) {
+    for (let b = a + 1; b < K; b++) {
+      for (let i = 0; i < N; i++) {
+        let count = 0;
+        for (let j = 0; j < N; j++) if (getP(st, a, b, i, j)) count++;
+        if (count !== 1) return "stuck";
+      }
+    }
+  }
+  return "solved";
+}
+
+function deductionSolves(clues, K, N, cats) {
+  return propagate(makeState(K, N), K, N, clues, cats) === "solved";
+}
+
+/* Brute-force count of full assignments satisfying every clue — a safety net
+   used by the tests and by generation's final check. assign[c][s] = value
+   index of category c held by subject s. */
+function countSolutions(clues, K, N, cats, limit = 2) {
+  const assign = [Array.from({ length: N }, (_, s) => s)];
+  let found = 0;
+
+  const entitySubject = (e, upTo) => {
+    if (e.c === 0) return e.v;
+    if (e.c > upTo) return -1;
+    return assign[e.c].indexOf(e.v);
+  };
+  const clueHolds = (clue, upTo) => {
+    if (clue.type === "less" || clue.type === "diff") {
+      if (clue.a.c > upTo || clue.b.c > upTo || clue.o > upTo) return true;
+      const sa = entitySubject(clue.a, upTo), sb = entitySubject(clue.b, upTo);
+      const pa = cats[clue.o].values[assign[clue.o][sa]];
+      const pb = cats[clue.o].values[assign[clue.o][sb]];
+      return clue.type === "less" ? pa < pb : pb - pa === clue.d;
+    }
+    if (clue.a.c > upTo || clue.b.c > upTo) return true;
+    const sa = entitySubject(clue.a, upTo), sb = entitySubject(clue.b, upTo);
+    if (clue.type === "is") return sa === sb;
+    if (clue.type === "isNot") return sa !== sb;
+    if (clue.type === "either") return clue.opts.includes(assign[clue.b.c][sa]);
+    return true;
+  };
+
+  const permutations = (n) => {
+    const out = [];
+    const walk = (cur, left) => {
+      if (!left.length) { out.push(cur.slice()); return; }
+      left.forEach((v, idx) => walk(cur.concat(v), left.slice(0, idx).concat(left.slice(idx + 1))));
+    };
+    walk([], Array.from({ length: n }, (_, i) => i));
+    return out;
+  };
+  const perms = permutations(N);
+
+  const walk = (c) => {
+    if (found >= limit) return;
+    if (c === K) { found++; return; }
+    for (const p of perms) {
+      assign[c] = p;
+      if (clues.every((cl) => clueHolds(cl, c))) walk(c + 1);
+      if (found >= limit) return;
+    }
+    assign[c] = null;
+  };
+  walk(1);
+  return found;
+}
+
+/* ===================== GRID LOGIC: GENERATOR ===================== */
+
+function clueText(clue, cats) {
+  const refOf = (e) => cats[e.c].ref(cats[e.c].values[e.v]);
+  const objOf = (e) => cats[e.c].obj(cats[e.c].values[e.v]);
+  if (clue.type === "is") return cap(`${refOf(clue.a)} ${cats[clue.b.c].verb} ${objOf(clue.b)}.`);
+  if (clue.type === "isNot") return cap(`${refOf(clue.a)} ${cats[clue.b.c].negVerb} ${objOf(clue.b)}.`);
+  if (clue.type === "either") {
+    const c = cats[clue.b.c];
+    const [x, y] = shuffle(clue.opts);
+    return cap(`${refOf(clue.a)} ${c.verb} either ${c.obj(c.values[x])} or ${c.obj(c.values[y])}.`);
+  }
+  if (clue.type === "less") return cap(`${refOf(clue.a)} ${cats[clue.o].lessText} ${refOf(clue.b)}.`);
+  if (clue.type === "diff") return cap(`${refOf(clue.a)} ${cats[clue.o].diffText(clue.d)} ${refOf(clue.b)}.`);
+  return "";
+}
+
+function buildCluePool(cats, K, N, assign, opts) {
+  const pool = [];
+  const subjectOf = (c, v) => (c === 0 ? v : assign[c].indexOf(v));
+  const orderedIdx = cats.findIndex((c, i) => i > 0 && c.ordered);
+
+  for (let a = 0; a < K; a++) {
+    for (let b = a + 1; b < K; b++) {
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N; j++) {
+          const same = subjectOf(a, i) === subjectOf(b, j);
+          const A = { c: a, v: i }, B = { c: b, v: j };
+          if (same) {
+            if (opts.allowDirect || a !== 0) pool.push({ type: "is", a: A, b: B });
+            // "either X or Y" — one true option paired with a decoy.
+            if (opts.allowEither) {
+              const decoy = pick(Array.from({ length: N }, (_, x) => x).filter((x) => x !== j));
+              pool.push({ type: "either", a: A, b: B, opts: [j, decoy] });
+            }
+          } else {
+            pool.push({ type: "isNot", a: A, b: B });
+          }
+        }
+      }
+    }
+  }
+
+  if (opts.allowOrder && orderedIdx > 0) {
+    const posOf = (e) => cats[orderedIdx].values[assign[orderedIdx][subjectOf(e.c, e.v)]];
+    const ents = [];
+    for (let c = 0; c < K; c++) {
+      if (c === orderedIdx) continue;
+      for (let v = 0; v < N; v++) ents.push({ c, v });
+    }
+    ents.forEach((X) => {
+      ents.forEach((Y) => {
+        if (X.c === Y.c && X.v === Y.v) return;
+        if (subjectOf(X.c, X.v) === subjectOf(Y.c, Y.v)) return; // same person: nothing to compare
+        const pa = posOf(X), pb = posOf(Y);
+        if (pa < pb) {
+          pool.push({ type: "less", a: X, b: Y, o: orderedIdx });
+          const d = pb - pa;
+          if (d <= opts.maxDiff) pool.push({ type: "diff", a: X, b: Y, o: orderedIdx, d });
+        }
+      });
+    });
+  }
+  return pool;
+}
+
+const DIFFICULTY = {
+  easy:   { n: 3, cats: 3, allowDirect: true,  allowOrder: false, allowEither: false, maxDiff: 1 },
+  medium: { n: 4, cats: 3, allowDirect: true,  allowOrder: true,  allowEither: true,  maxDiff: 2 },
+  hard:   { n: 4, cats: 4, allowDirect: false, allowOrder: true,  allowEither: true,  maxDiff: 2 },
+  expert: { n: 5, cats: 4, allowDirect: false, allowOrder: true,  allowEither: true,  maxDiff: 3 },
+};
+
+function generateGridPuzzle(level) {
+  const cfg = DIFFICULTY[level] || DIFFICULTY.medium;
+  const N = cfg.n;
+
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const theme = pick(THEMES);
+    // Category 0 is always the people; pick the rest from the theme, keeping
+    // the ordered one when ordering clues are in play.
+    const others = shuffle(theme.cats.slice());
+    if (cfg.allowOrder) {
+      const ord = theme.cats.find((c) => c.ordered);
+      if (ord) {
+        const rest = others.filter((c) => c !== ord);
+        others.length = 0;
+        others.push(ord, ...rest);
+      }
+    }
+    const chosen = others.slice(0, cfg.cats - 1);
+    if (chosen.length < cfg.cats - 1) continue;
+
+    const subjectCat = {
+      key: "person", label: "Who", values: sample(NAME_POOL, N),
+      ref: (v) => v, short: (v) => v, obj: (v) => v, verb: "is", negVerb: "is not",
+    };
+    const cats = [subjectCat].concat(shuffle(chosen).map((c) => Object.assign({}, c, {
+      // Rank-style scales (1st, 2nd, ...) read wrong with gaps, so they take
+      // the first N values; measured scales (miles, points) can skip around.
+      values: c.ordered && c.contiguous ? c.values.slice(0, N) : sample(c.values, N),
+    })));
+    cats.forEach((c) => { if (c.ordered) c.values.sort((x, y) => x - y); });
+    const K = cats.length;
+
+    const assign = [Array.from({ length: N }, (_, s) => s)];
+    for (let c = 1; c < K; c++) assign.push(shuffle(Array.from({ length: N }, (_, i) => i)));
+
+    const pool = shuffle(buildCluePool(cats, K, N, assign, cfg));
+    const clues = [];
+    let solved = false;
+    for (const clue of pool) {
+      clues.push(clue);
+      if (clues.length >= 4 && deductionSolves(clues, K, N, cats)) { solved = true; break; }
+    }
+    if (!solved) continue;
+
+    // Trim: drop any clue the deduction path doesn't need.
+    for (const clue of shuffle(clues.slice())) {
+      const trial = clues.filter((c) => c !== clue);
+      if (trial.length >= 3 && deductionSolves(trial, K, N, cats)) {
+        clues.splice(clues.indexOf(clue), 1);
+      }
+    }
+    if (countSolutions(clues, K, N, cats) !== 1) continue;
+
+    return {
+      theme: { id: theme.id, title: theme.title, story: theme.story(N) },
+      level, n: N, cats, assign,
+      clues: shuffle(clues).map((c) => Object.assign({}, c, { text: clueText(c, cats) })),
+    };
+  }
+  return null;
+}
+
+/* ===================== TRUTH ISLAND (knights & knaves) ===================== */
+/* TRUTH-TELLER statements are always true, FIBBER statements always false. */
+
+const ISLAND_NAMES = ["Ash", "Basil", "Cobalt", "Dune", "Flint", "Ivy", "Juno", "Kelp", "Onyx", "Rune"];
+
+function statementValue(stmt, types) {
+  switch (stmt.kind) {
+    case "isType": return types[stmt.target] === stmt.t;
+    case "same": return types[stmt.x] === types[stmt.y];
+    case "diff": return types[stmt.x] !== types[stmt.y];
+    case "atLeastOneFibber": return stmt.who.some((i) => types[i] === "fibber");
+    case "allTruth": return stmt.who.every((i) => types[i] === "truth");
+    case "countFibbers": return types.filter((t) => t === "fibber").length === stmt.k;
+    default: return false;
+  }
+}
+
+function statementText(stmt, names) {
+  const label = (t) => (t === "truth" ? "a truth-teller" : "a fibber");
+  switch (stmt.kind) {
+    case "isType":
+      return stmt.target === stmt.speaker ? `I am ${label(stmt.t)}.` : `${names[stmt.target]} is ${label(stmt.t)}.`;
+    case "same":
+      return stmt.x === stmt.speaker
+        ? `${names[stmt.y]} and I are the same kind.`
+        : `${names[stmt.x]} and ${names[stmt.y]} are the same kind.`;
+    case "diff":
+      return stmt.x === stmt.speaker
+        ? `${names[stmt.y]} and I are different kinds.`
+        : `${names[stmt.x]} and ${names[stmt.y]} are different kinds.`;
+    case "atLeastOneFibber": {
+      // Speaker goes last so it reads "Basil and me", not "me and Basil".
+      const who = stmt.who.filter((i) => i !== stmt.speaker).map((i) => names[i]);
+      if (stmt.who.includes(stmt.speaker)) who.push("me");
+      return `At least one of ${who.join(" and ")} is a fibber.`;
+    }
+    case "allTruth": {
+      const who = stmt.who.filter((i) => i !== stmt.speaker).map((i) => names[i]);
+      const both = stmt.who.length === 2 ? "both" : "all";
+      if (stmt.who.includes(stmt.speaker)) return `${who.join(" and ")} and I are ${both} honest.`;
+      return `${who.join(" and ")} are ${both} honest.`;
+    }
+    case "countFibbers":
+      if (stmt.k === 0) return "None of us are fibbers.";
+      if (stmt.k === 1) return "Exactly one of us is a fibber.";
+      return `Exactly ${stmt.k} of us are fibbers.`;
+    default: return "";
+  }
+}
+
+function islandSolutionCount(statements, n, limit = 2) {
+  let found = 0, only = null;
+  for (let mask = 0; mask < (1 << n) && found < limit; mask++) {
+    const types = [];
+    for (let i = 0; i < n; i++) types.push(mask & (1 << i) ? "fibber" : "truth");
+    const ok = statements.every((s) => statementValue(s, types) === (types[s.speaker] === "truth"));
+    if (ok) { found++; only = types; }
+  }
+  return { count: found, types: only };
+}
+
+function generateIslandPuzzle(level) {
+  const n = level === "easy" ? 2 : level === "medium" ? 3 : level === "hard" ? 3 : 4;
+  const forms = level === "easy"
+    ? ["isType", "same", "diff"]
+    : level === "medium"
+      ? ["isType", "same", "diff", "atLeastOneFibber"]
+      : ["isType", "same", "diff", "atLeastOneFibber", "allTruth", "countFibbers"];
+
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const names = sample(ISLAND_NAMES, n);
+    const types = Array.from({ length: n }, () => (Math.random() < 0.5 ? "truth" : "fibber"));
+    const statements = [];
+    let ok = true;
+
+    for (let s = 0; s < n && ok; s++) {
+      const candidates = [];
+      const others = Array.from({ length: n }, (_, i) => i).filter((i) => i !== s);
+      forms.forEach((kind) => {
+        if (kind === "isType") {
+          [s].concat(others).forEach((target) => {
+            ["truth", "fibber"].forEach((t) => candidates.push({ kind, speaker: s, target, t }));
+          });
+        } else if (kind === "same" || kind === "diff") {
+          others.forEach((y) => candidates.push({ kind, speaker: s, x: s, y }));
+          if (n >= 3) {
+            others.forEach((x) => others.forEach((y) => { if (x < y) candidates.push({ kind, speaker: s, x, y }); }));
+          }
+        } else if (kind === "atLeastOneFibber") {
+          others.forEach((y) => candidates.push({ kind, speaker: s, who: [s, y] }));
+        } else if (kind === "allTruth") {
+          others.forEach((y) => candidates.push({ kind, speaker: s, who: [s, y] }));
+        } else if (kind === "countFibbers") {
+          for (let k = 0; k <= n; k++) candidates.push({ kind, speaker: s, k });
+        }
+      });
+      // Keep only statements consistent with the speaker's own type, and skip
+      // "I am a truth-teller" style claims that carry no information.
+      const usable = shuffle(candidates).filter((c) => {
+        if (c.kind === "isType" && c.target === c.speaker) return false;
+        return statementValue(c, types) === (types[s] === "truth");
+      });
+      if (!usable.length) { ok = false; break; }
+      statements.push(usable[0]);
+    }
+    if (!ok) continue;
+
+    const res = islandSolutionCount(statements, n);
+    if (res.count !== 1) continue;
+    return {
+      level, n, names, types,
+      lines: statements.map((s) => ({ speaker: s.speaker, text: statementText(s, names) })),
+    };
+  }
+  return null;
+}
+
+/* ===================== NUMBER PATTERNS ===================== */
+
+function generatePattern(level) {
+  const families = {
+    easy: ["addConst", "subConst", "addConst", "skipCount"],
+    medium: ["addConst", "subConst", "multConst", "addGrowing", "alternate"],
+    hard: ["multConst", "addGrowing", "alternate", "squares", "fib", "twoStep"],
+    expert: ["addGrowing", "alternate", "squares", "fib", "twoStep", "triangular"],
+  };
+  const fam = pick(families[level] || families.medium);
+  const len = 5;
+  let seq = [], rule = "";
+
+  if (fam === "addConst" || fam === "skipCount") {
+    const d = fam === "skipCount" ? pick([2, 5, 10]) : randInt(2, 9);
+    let x = randInt(1, 12);
+    for (let i = 0; i < len + 1; i++) { seq.push(x); x += d; }
+    rule = `Add ${d} each time.`;
+  } else if (fam === "subConst") {
+    const d = randInt(2, 9);
+    let x = randInt(len * d + 2, len * d + 30);
+    for (let i = 0; i < len + 1; i++) { seq.push(x); x -= d; }
+    rule = `Subtract ${d} each time.`;
+  } else if (fam === "multConst") {
+    const m = pick([2, 3, 4]);
+    let x = randInt(1, 5);
+    for (let i = 0; i < len + 1; i++) { seq.push(x); x *= m; }
+    rule = `Multiply by ${m} each time.`;
+  } else if (fam === "addGrowing") {
+    const start = randInt(1, 9), step = randInt(1, 4);
+    let x = start, add = randInt(1, 4);
+    for (let i = 0; i < len + 1; i++) { seq.push(x); x += add; add += step; }
+    rule = `The amount you add grows by ${step} every step.`;
+  } else if (fam === "alternate") {
+    const up = randInt(4, 12), down = randInt(1, 3);
+    let x = randInt(2, 15);
+    for (let i = 0; i < len + 1; i++) { seq.push(x); x += i % 2 === 0 ? up : -down; }
+    rule = `Add ${up}, then subtract ${down}, over and over.`;
+  } else if (fam === "squares") {
+    const start = randInt(1, 5);
+    for (let i = 0; i < len + 1; i++) seq.push((start + i) * (start + i));
+    rule = `Square numbers: ${start}×${start}, ${start + 1}×${start + 1}, and so on.`;
+  } else if (fam === "triangular") {
+    const start = randInt(1, 4);
+    for (let i = 0; i < len + 1; i++) { const k = start + i; seq.push((k * (k + 1)) / 2); }
+    rule = "Triangular numbers — add 1, then 2, then 3, and so on.";
+  } else if (fam === "fib") {
+    let a = randInt(1, 5), b = randInt(2, 7);
+    for (let i = 0; i < len + 1; i++) { seq.push(a); const t = a + b; a = b; b = t; }
+    rule = "Each number is the sum of the two before it.";
+  } else {
+    const m = pick([2, 3]), add = randInt(1, 5);
+    let x = randInt(1, 4);
+    for (let i = 0; i < len + 1; i++) { seq.push(x); x = x * m + add; }
+    rule = `Multiply by ${m}, then add ${add}.`;
+  }
+
+  const answer = seq[seq.length - 1];
+  return { level, shown: seq.slice(0, len), answer, rule };
+}
+
+/* ===================== SUDOKU ===================== */
+
+const SUDOKU_SHAPES = {
+  easy: { size: 4, bw: 2, bh: 2, clues: 8 },
+  medium: { size: 6, bw: 3, bh: 2, clues: 16 },
+  hard: { size: 6, bw: 3, bh: 2, clues: 12 },
+  expert: { size: 9, bw: 3, bh: 3, clues: 30 },
+};
+
+function sudokuPeers(size, bw, bh) {
+  const peers = [];
+  for (let i = 0; i < size * size; i++) {
+    const r = Math.floor(i / size), c = i % size;
+    const set = new Set();
+    for (let k = 0; k < size; k++) { set.add(r * size + k); set.add(k * size + c); }
+    const br = Math.floor(r / bh) * bh, bc = Math.floor(c / bw) * bw;
+    for (let dr = 0; dr < bh; dr++) for (let dc = 0; dc < bw; dc++) set.add((br + dr) * size + bc + dc);
+    set.delete(i);
+    peers.push(Array.from(set));
+  }
+  return peers;
+}
+
+function sudokuSolve(grid, size, peers, limit = 2) {
+  let count = 0;
+  const first = () => {
+    let best = -1, bestOpts = null;
+    for (let i = 0; i < grid.length; i++) {
+      if (grid[i]) continue;
+      const used = new Set(peers[i].map((p) => grid[p]).filter(Boolean));
+      const opts = [];
+      for (let v = 1; v <= size; v++) if (!used.has(v)) opts.push(v);
+      if (!opts.length) return { i: -1, opts: [] };
+      if (!bestOpts || opts.length < bestOpts.length) { best = i; bestOpts = opts; }
+      if (opts.length === 1) break;
+    }
+    return { i: best, opts: bestOpts };
+  };
+  const walk = () => {
+    if (count >= limit) return;
+    const { i, opts } = first();
+    if (i === -1 && (!opts || !opts.length)) {
+      if (grid.every(Boolean)) count++;
+      return;
+    }
+    for (const v of shuffle(opts)) {
+      grid[i] = v;
+      walk();
+      grid[i] = 0;
+      if (count >= limit) return;
+    }
+  };
+  walk();
+  return count;
+}
+
+function generateSudoku(level) {
+  const shape = SUDOKU_SHAPES[level] || SUDOKU_SHAPES.medium;
+  const { size, bw, bh } = shape;
+  const peers = sudokuPeers(size, bw, bh);
+  const solution = new Array(size * size).fill(0);
+
+  const fill = (idx) => {
+    if (idx === solution.length) return true;
+    const used = new Set(peers[idx].map((p) => solution[p]).filter(Boolean));
+    for (const v of shuffle(Array.from({ length: size }, (_, i) => i + 1))) {
+      if (used.has(v)) continue;
+      solution[idx] = v;
+      if (fill(idx + 1)) return true;
+      solution[idx] = 0;
+    }
+    return false;
+  };
+  fill(0);
+
+  const puzzle = solution.slice();
+  for (const i of shuffle(Array.from({ length: size * size }, (_, k) => k))) {
+    if (puzzle.filter(Boolean).length <= shape.clues) break;
+    const saved = puzzle[i];
+    puzzle[i] = 0;
+    const trial = puzzle.slice();
+    if (sudokuSolve(trial, size, peers) !== 1) puzzle[i] = saved;
+  }
+  return { level, size, bw, bh, puzzle, solution };
+}
+
+
+/* ===================== PROFILES / STORAGE ===================== */
+/* Mirrors Math Star, Spelling Star, and Geography Star: one localStorage
+   record per child, guarded by a parent PIN, never leaving the device. */
+
+const STORAGE_PREFIX = "logicstar-";
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function nameToKey(name) {
+  const s = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return STORAGE_PREFIX + (s || "child");
+}
+function listProfiles() {
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(STORAGE_PREFIX)) continue;
+    const bareName = k.slice(STORAGE_PREFIX.length) || "profile";
+    try {
+      const d = JSON.parse(localStorage.getItem(k));
+      if (d && d.childName && d.pin) { out.push({ key: k, name: d.childName, corrupted: false }); continue; }
+      out.push({ key: k, name: bareName, corrupted: true });
+    } catch (e) {
+      out.push({ key: k, name: bareName, corrupted: true });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const TIERS = {
+  a910:  { label: "Ages 9–10",   levels: ["easy", "medium"], def: "easy" },
+  a1112: { label: "Ages 11–12",  levels: ["easy", "medium", "hard"], def: "medium" },
+  a1314: { label: "Ages 13–14",  levels: ["medium", "hard", "expert"], def: "hard" },
+  open:  { label: "Let them pick", levels: ["easy", "medium", "hard", "expert"], def: "medium" },
+};
+const LEVEL_LABEL = { easy: "Warm-up", medium: "Steady", hard: "Tricky", expert: "Brain-bender" };
+const LEVEL_ORDER = ["easy", "medium", "hard", "expert"];
+
+function freshData(childName, pin, tier) {
+  return {
+    childName, pin, tier: TIERS[tier] ? tier : "a1112",
+    autoX: true, showTimer: true,
+    stats: {}, sessionLog: [], solvedTotal: 0,
+  };
+}
+let KEY = null;
+let data = null;
+let lastLoadError = null;
+function load(key) {
+  lastLoadError = null;
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { lastLoadError = "corrupted"; return null; }
+  if (!d || !d.childName || !d.pin) { lastLoadError = "corrupted"; return null; }
+  KEY = key;
+  if (!TIERS[d.tier]) d.tier = "a1112";
+  if (d.autoX === undefined) d.autoX = true;
+  if (d.showTimer === undefined) d.showTimer = true;
+  if (!d.stats) d.stats = {};
+  if (!d.sessionLog) d.sessionLog = [];
+  if (!d.solvedTotal) d.solvedTotal = 0;
+  // Same reliability cap as the other Star apps — CSV export is the long-term
+  // record, the device only keeps recent rounds so it stays quick.
+  if (d.sessionLog.length > 500) d.sessionLog = d.sessionLog.slice(d.sessionLog.length - 500);
+  return d;
+}
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; }
+}
+function applyIdentity() {
+  document.getElementById("greeting").textContent = data ? `Hi, ${data.childName}! 🧩` : "Puzzles & Deduction 🧩";
+}
+
+function levelsForChild() {
+  const tier = TIERS[data.tier] || TIERS.a1112;
+  return tier.levels.slice();
+}
+function defaultLevel() { return (TIERS[data.tier] || TIERS.a1112).def; }
+
+function recordRound(mode, level, res) {
+  if (!data) return;
+  const byMode = (data.stats[mode] = data.stats[mode] || {});
+  const s = (byMode[level] = byMode[level] || { played: 0, solved: 0, hints: 0, bestMs: 0, score: 0, questions: 0 });
+  s.played++;
+  if (res.solved) s.solved++;
+  s.hints += res.hints || 0;
+  s.score += res.score || 0;
+  s.questions += res.total || 0;
+  if (res.solved && res.ms && (!s.bestMs || res.ms < s.bestMs)) s.bestMs = res.ms;
+  if (res.solved) data.solvedTotal++;
+  data.sessionLog.push({
+    date: Date.now(), mode, level, solved: !!res.solved,
+    score: res.score || 0, total: res.total || 0, hints: res.hints || 0,
+    seconds: Math.round((res.ms || 0) / 1000),
+  });
+  if (data.sessionLog.length > 500) data.sessionLog = data.sessionLog.slice(data.sessionLog.length - 500);
+  persist();
+}
+
+/* ===================== SMALL DOM HELPERS ===================== */
+
+function el(tag, attrs, text) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+let tickHandle = null;
+function clearScreen() {
+  if (tickHandle) { clearInterval(tickHandle); tickHandle = null; }
+  app.innerHTML = "";
+}
+function timeText(ms) {
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60), s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+// Live clock shown during a puzzle; parents can switch it off for children
+// who find a running timer stressful.
+function attachTimer(startedAt) {
+  const box = el("div", { class: "progress-line" }, "0:00");
+  if (!data.showTimer) { box.style.visibility = "hidden"; }
+  tickHandle = setInterval(() => { box.textContent = timeText(Date.now() - startedAt); }, 1000);
+  return box;
+}
+
+/* ===================== MODE MENU ===================== */
+
+const MODES = [
+  { id: "grid", title: "Logic Grid", icon: "🧩", desc: "Clues plus a grid — work out who did what." },
+  { id: "island", title: "Dragon Isle", icon: "🐉", desc: "Some dragons always tell the truth. Some never do." },
+  { id: "pattern", title: "Number Patterns", icon: "🔢", desc: "Find the rule, then finish the sequence." },
+  { id: "sudoku", title: "Number Boxes", icon: "🎲", desc: "Sudoku — every row, column, and box." },
+];
+const MODE_TITLES = {};
+MODES.forEach((m) => { MODE_TITLES[m.id] = m.title; });
+
+function goHome() { if (!data) return renderPicker(); renderHome(); }
+
+function solvedCount(mode) {
+  const byMode = data.stats[mode] || {};
+  return Object.keys(byMode).reduce((sum, lvl) => sum + (byMode[lvl].solved || 0), 0);
+}
+
+function renderHome() {
+  homeBtn.style.display = "none";
+  clearScreen();
+
+  if (data.solvedTotal) {
+    app.appendChild(el("p", { class: "muted center", style: "margin:0 0 14px" },
+      `${data.solvedTotal} ${plural(data.solvedTotal, "puzzle")} solved so far.`));
+  }
+
+  const grid = el("div", { class: "mode-grid" });
+  MODES.forEach((m) => {
+    const card = el("button", { class: "mode-card", type: "button" });
+    const icon = el("div", { class: "icon" }, m.icon);
+    const body = el("div");
+    body.appendChild(el("h3", {}, m.title));
+    body.appendChild(el("p", {}, m.desc));
+    card.appendChild(icon);
+    card.appendChild(body);
+    const solved = solvedCount(m.id);
+    if (solved) card.appendChild(el("div", { class: "badge" }, `${solved} ✓`));
+    card.addEventListener("click", () => startMode(m.id));
+    grid.appendChild(card);
+  });
+  app.appendChild(grid);
+
+  const linkRow = el("div", { class: "center", style: "margin-top:18px" });
+  if (listProfiles().filter((p) => !p.corrupted).length > 1) {
+    const b = el("button", { class: "link" }, "Switch child");
+    b.addEventListener("click", () => { parentUnlocked = false; renderPicker(); });
+    linkRow.appendChild(b);
+  }
+  const pb = el("button", { class: "link" }, "Parent dashboard");
+  pb.addEventListener("click", parentGate);
+  linkRow.appendChild(pb);
+  app.appendChild(linkRow);
+}
+
+// A child on a tier with more than one level picks how hard this round is;
+// single-level tiers skip straight into the puzzle.
+function startMode(id) {
+  homeBtn.style.display = "";
+  const levels = levelsForChild();
+  if (levels.length === 1) return playMode(id, levels[0]);
+
+  clearScreen();
+  const card = el("div", { class: "card center" });
+  card.appendChild(el("div", { class: "eyebrow" }, MODE_TITLES[id]));
+  card.appendChild(el("div", { style: "font-weight:700;font-size:18px;margin:4px 0 16px" }, "How hard?"));
+  const rows = el("div", { class: "level-row" });
+  levels.forEach((lvl) => {
+    const b = el("button", { class: lvl === defaultLevel() ? "" : "outline" });
+    b.appendChild(el("strong", {}, LEVEL_LABEL[lvl]));
+    b.appendChild(el("small", {}, levelBlurb(id, lvl)));
+    b.addEventListener("click", () => playMode(id, lvl));
+    rows.appendChild(b);
+  });
+  card.appendChild(rows);
+  app.appendChild(card);
+}
+
+function levelBlurb(mode, level) {
+  if (mode === "grid") {
+    const c = DIFFICULTY[level];
+    return `${c.n} people, ${c.cats - 1} things to work out`;
+  }
+  if (mode === "island") {
+    const n = level === "easy" ? 2 : level === "expert" ? 4 : 3;
+    return `${n} dragons per puzzle`;
+  }
+  if (mode === "sudoku") {
+    const s = SUDOKU_SHAPES[level];
+    return `${s.size}×${s.size} grid, ${s.clues} numbers to start`;
+  }
+  return { easy: "Adding and skip counting", medium: "Adding, subtracting, times tables",
+           hard: "Growing steps, squares, doubling", expert: "Anything goes" }[level];
+}
+
+function playMode(id, level) {
+  homeBtn.style.display = "";
+  if (id === "grid") playGrid(level);
+  else if (id === "island") playIsland(level);
+  else if (id === "pattern") playPattern(level);
+  else if (id === "sudoku") playSudoku(level);
+}
+
+/* ===================== PROFILE PICKER / SETUP ===================== */
+
+function renderPicker() {
+  homeBtn.style.display = "none";
+  document.getElementById("greeting").textContent = "Welcome! 👋";
+  const profiles = listProfiles();
+  const healthy = profiles.filter((p) => !p.corrupted);
+  const damaged = profiles.filter((p) => p.corrupted);
+  clearScreen();
+
+  const card = el("div", { class: "card center", style: "max-width:420px;margin:0 auto;padding:32px" });
+  card.appendChild(el("div", { style: "font-size:34px;margin-bottom:10px" }, "🧩"));
+  card.appendChild(el("div", { style: "font-weight:700;font-size:18px;margin-bottom:16px" }, "Who's puzzling today?"));
+  const list = el("div", { style: "display:flex;flex-direction:column;gap:12px;align-items:center" });
+  healthy.forEach((p) => {
+    const b = el("button", { class: "big", style: "width:260px" }, p.name);
+    b.addEventListener("click", () => pickProfile(p.key));
+    list.appendChild(b);
+  });
+  const addBtn = el("button", { class: "outline", style: "width:260px" }, "+ Add a new child");
+  addBtn.addEventListener("click", () => renderSetup(1));
+  list.appendChild(addBtn);
+  card.appendChild(list);
+  app.appendChild(card);
+
+  if (damaged.length) {
+    const dcard = el("div", { class: "card", style: "max-width:420px;margin:16px auto 0;background:var(--gold-soft);border:2px solid var(--gold)" });
+    dcard.appendChild(el("div", { style: "font-weight:700;margin-bottom:6px" }, "⚠️ Damaged profile data found"));
+    dcard.appendChild(el("div", { class: "muted", style: "font-size:14px;margin-bottom:10px" },
+      "This device has saved data that can't be read (often from an interrupted save). It can't be recovered automatically."));
+    damaged.forEach((p) => {
+      const row = el("div", { style: "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)" });
+      row.appendChild(el("span", {}, p.name));
+      const rm = el("button", { class: "link", style: "color:var(--danger)" }, "Remove & start fresh");
+      rm.addEventListener("click", () => discardCorruptedProfile(p.key));
+      row.appendChild(rm);
+      dcard.appendChild(row);
+    });
+    app.appendChild(dcard);
+  }
+}
+function discardCorruptedProfile(key) {
+  if (!confirm("This permanently deletes the damaged data at this profile so you can set it up fresh under the same name. This can't be undone. Continue?")) return;
+  try { localStorage.removeItem(key); } catch (e) {}
+  renderPicker();
+}
+function pickProfile(key) {
+  data = load(key);
+  if (!data) {
+    if (lastLoadError === "corrupted") alert("This profile's data couldn't be read — it looks like it was damaged.");
+    return renderPicker();
+  }
+  parentUnlocked = false;
+  applyIdentity();
+  renderHome();
+}
+
+const setup = { pin: null, name: null };
+function renderSetup(step) {
+  homeBtn.style.display = "none";
+  document.getElementById("greeting").textContent = "Welcome! 👋";
+  parentUnlocked = false;
+  clearScreen();
+  const card = el("div", { class: "card center", style: "padding:36px;max-width:420px;margin:0 auto" });
+
+  if (step === 1) {
+    card.innerHTML = `
+      <div style="font-size:34px;margin-bottom:10px">🔒</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 1 of 3 — Set a parent PIN</div>
+      <div class="muted" style="margin-bottom:14px">You'll need this PIN to open the parent dashboard, where you set the difficulty and see results.</div>
+      <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="New PIN (at least 4 digits)" class="wide-input" style="text-align:center;font-size:22px;letter-spacing:.3em">
+      <input type="password" id="pinIn2" inputmode="numeric" maxlength="8" placeholder="Repeat PIN" class="wide-input" style="text-align:center;font-size:22px;letter-spacing:.3em;margin-top:8px;display:block">
+      <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+      <button class="big" id="setupNext">Continue →</button>`;
+    app.appendChild(card);
+    document.getElementById("setupNext").addEventListener("click", setupPin);
+    document.getElementById("pinIn").focus();
+  } else if (step === 2) {
+    card.innerHTML = `
+      <div style="font-size:34px;margin-bottom:10px">👋</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 3 — Who's puzzling?</div>
+      <div class="muted" style="margin-bottom:14px">This name appears throughout the app.</div>
+      <input type="text" id="nameIn" class="wide-input" placeholder="Child's first name" style="text-align:center;font-size:20px">
+      <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+      <button class="big" id="setupNext">Continue →</button>`;
+    app.appendChild(card);
+    document.getElementById("setupNext").addEventListener("click", setupName);
+    document.getElementById("nameIn").focus();
+  } else {
+    card.innerHTML = `
+      <div style="font-size:34px;margin-bottom:10px">🎓</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 3 of 3 — Starting difficulty</div>
+      <div class="muted" style="margin-bottom:16px">Each setting offers a few levels to choose from. You can change this anytime.</div>
+      <div class="level-row">
+        ${Object.keys(TIERS).map((t) => `<button class="outline" data-tier="${t}"><strong>${TIERS[t].label}</strong><small>${TIERS[t].levels.map((l) => LEVEL_LABEL[l]).join(" · ")}</small></button>`).join("")}
+      </div>`;
+    app.appendChild(card);
+    card.querySelectorAll("[data-tier]").forEach((b) => b.addEventListener("click", () => setupFinish(b.getAttribute("data-tier"))));
+  }
+}
+function setupPin() {
+  const v = document.getElementById("pinIn").value.trim();
+  const v2 = document.getElementById("pinIn2").value.trim();
+  const msg = document.getElementById("setupMsg");
+  if (v.length < 4) { msg.textContent = "PIN must be at least 4 digits."; return; }
+  if (v !== v2) { msg.textContent = "PINs don't match — try again."; return; }
+  setup.pin = v; renderSetup(2);
+}
+function setupName() {
+  const v = document.getElementById("nameIn").value.trim();
+  const msg = document.getElementById("setupMsg");
+  if (!v) { msg.textContent = "Please enter a name."; return; }
+  setup.name = v; renderSetup(3);
+}
+function setupFinish(tier) {
+  KEY = nameToKey(setup.name);
+  const existing = localStorage.getItem(KEY);
+  if (existing && !confirm(`This device already has saved data for a child named "${setup.name}". Continue and use that existing data?`)) return;
+  if (existing) { data = load(KEY); }
+  else { data = freshData(setup.name, setup.pin, tier); persist(); }
+  applyIdentity();
+  renderHome();
+}
+
+/* ===================== PARENT DASHBOARD ===================== */
+
+let parentUnlocked = false;
+function parentGate() {
+  homeBtn.style.display = "";
+  if (parentUnlocked) return renderParent("settings");
+  clearScreen();
+  const card = el("div", { class: "card center", style: "padding:36px;max-width:400px;margin:0 auto" });
+  card.innerHTML = `
+    <div style="font-size:34px;margin-bottom:10px">🔒</div>
+    <div style="font-weight:700;font-size:18px;margin-bottom:6px">Parents only</div>
+    <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="Enter PIN" class="wide-input" style="text-align:center;font-size:22px;letter-spacing:.3em">
+    <div id="pinMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+    <button class="big" id="pinSubmitBtn">Unlock</button>`;
+  app.appendChild(card);
+  const pi = document.getElementById("pinIn");
+  pi.focus();
+  pi.addEventListener("keydown", (e) => { if (e.key === "Enter") pinSubmit(); });
+  document.getElementById("pinSubmitBtn").addEventListener("click", pinSubmit);
+}
+function pinSubmit() {
+  const v = document.getElementById("pinIn").value.trim();
+  if (v === data.pin) { parentUnlocked = true; renderParent("settings"); }
+  else { document.getElementById("pinMsg").textContent = "That's not the right PIN."; document.getElementById("pinIn").value = ""; }
+}
+
+function renderParent(view) {
+  if (!parentUnlocked) return parentGate();
+  homeBtn.style.display = "";
+  clearScreen();
+  const tabRow = el("div", { class: "row", style: "margin-bottom:16px" });
+  [["settings", "Settings"], ["progress", "Progress"]].forEach(([id, label]) => {
+    const b = el("button", { class: view === id ? "" : "outline" }, label);
+    b.addEventListener("click", () => renderParent(id));
+    tabRow.appendChild(b);
+  });
+  const csvBtn = el("button", { class: "outline" }, "Export CSV");
+  csvBtn.addEventListener("click", exportCSV);
+  tabRow.appendChild(csvBtn);
+  app.appendChild(tabRow);
+  app.appendChild(view === "progress" ? renderProgressPanel() : renderSettingsPanel());
+}
+
+function renderSettingsPanel() {
+  const container = el("div", {});
+  const card = el("div", { class: "card" });
+  card.innerHTML = `
+    <div style="font-weight:700;margin-bottom:10px">Settings</div>
+    <div style="font-weight:600;margin-bottom:6px">Difficulty</div>
+    <div class="row" style="margin-bottom:6px">
+      ${Object.keys(TIERS).map((t) => `<button class="${data.tier === t ? "" : "outline"}" data-tier="${t}">${esc(TIERS[t].label)}</button>`).join("")}
+    </div>
+    <div class="muted" style="margin-bottom:14px">Now offering: ${(TIERS[data.tier] || TIERS.a1112).levels.map((l) => LEVEL_LABEL[l]).join(", ")}.</div>
+    <label class="toggle"><input type="checkbox" id="autoXChk" ${data.autoX ? "checked" : ""}> Auto-fill the ✗ marks when ${esc(data.childName)} places a ✓ on the logic grid</label>
+    <label class="toggle"><input type="checkbox" id="timerChk" ${data.showTimer ? "checked" : ""}> Show a running timer during puzzles</label>
+    <div style="margin-top:18px;font-weight:600">Child's display name</div>
+    <input type="text" id="renameIn" class="wide-input" value="${esc(data.childName)}">
+    <button class="outline" id="renameBtn">Save name</button>
+    <div style="margin-top:18px" class="row">
+      <button class="outline" id="changePinBtn">Change PIN</button>
+      <button class="outline" id="addChildBtn">Add another child on this device</button>
+    </div>
+    <div class="muted" style="margin-top:18px">This device keeps the most recent 500 rounds so it stays fast. Use Export CSV above to save the full history somewhere permanent.</div>`;
+  container.appendChild(card);
+
+  const danger = el("div", { class: "card", style: "border:2px solid var(--danger)" });
+  danger.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;color:var(--danger)">Danger zone</div>
+    <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600">Reset progress</div>
+        <div class="muted" style="font-size:13px">Clears every puzzle count and the round history for ${esc(data.childName)}. Keeps their name, PIN, and settings.</div>
+      </div>
+      <button class="outline" id="resetBtn" style="border-color:var(--danger);color:var(--danger)">Reset progress…</button>
+    </div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600">Delete profile</div>
+        <div class="muted" style="font-size:13px">Permanently removes ${esc(data.childName)}'s entire profile from this device.</div>
+      </div>
+      <button class="outline" id="deleteBtn" style="border-color:var(--danger);color:var(--danger)">Delete profile…</button>
+    </div>`;
+  container.appendChild(danger);
+  container.appendChild(el("div", { class: "muted center", style: "font-size:12px;margin-top:4px" }, `Logic Star ${APP_VERSION}`));
+
+  container.querySelectorAll("[data-tier]").forEach((b) => b.addEventListener("click", () => setSetting("tier", b.getAttribute("data-tier"))));
+  container.querySelector("#autoXChk").addEventListener("change", (e) => setSetting("autoX", e.target.checked));
+  container.querySelector("#timerChk").addEventListener("change", (e) => setSetting("showTimer", e.target.checked));
+  container.querySelector("#renameBtn").addEventListener("click", renameChild);
+  container.querySelector("#changePinBtn").addEventListener("click", changePin);
+  container.querySelector("#addChildBtn").addEventListener("click", () => renderSetup(1));
+  container.querySelector("#resetBtn").addEventListener("click", resetProfile);
+  container.querySelector("#deleteBtn").addEventListener("click", deleteProfile);
+  return container;
+}
+
+function renderProgressPanel() {
+  const container = el("div", {});
+  const card = el("div", { class: "card" });
+  const rows = MODES.map((m) => {
+    const byMode = data.stats[m.id] || {};
+    const cells = LEVEL_ORDER.map((lvl) => {
+      const s = byMode[lvl];
+      if (!s || !s.played) return "<td>—</td>";
+      // Patterns and Dragon Isle score several questions per round, so a
+      // question count says more than "rounds solved" does.
+      const extra = m.id === "pattern" || m.id === "island"
+        ? `${s.score}/${s.questions} right`
+        : `${s.solved}/${s.played} solved`;
+      return `<td>${extra}${s.bestMs ? `<div class="muted" style="font-size:11px">best ${timeText(s.bestMs)}</div>` : ""}</td>`;
+    }).join("");
+    return `<tr><td>${esc(m.title)}</td>${cells}</tr>`;
+  }).join("");
+  card.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px">Progress by level</div>
+    <div class="muted" style="margin-bottom:12px">Puzzles finished without giving up count as solved.</div>
+    <div style="overflow-x:auto"><table class="stat-table">
+      <thead><tr><th>Mode</th>${LEVEL_ORDER.map((l) => `<th>${LEVEL_LABEL[l]}</th>`).join("")}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  container.appendChild(card);
+
+  const recent = data.sessionLog.slice(-12).reverse();
+  const hist = el("div", { class: "card" });
+  hist.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px">Recent rounds</div>
+    <div class="muted" style="margin-bottom:12px">Newest first. Hints are counted, not penalised.</div>
+    ${recent.length ? `<div style="overflow-x:auto"><table class="stat-table">
+      <thead><tr><th>When</th><th>Mode</th><th>Level</th><th>Result</th><th>Hints</th><th>Time</th></tr></thead>
+      <tbody>${recent.map((r) => {
+        const d = new Date(r.date);
+        const result = r.total > 1 ? `${r.score}/${r.total}` : (r.solved ? "solved" : "gave up");
+        return `<tr><td>${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</td><td>${esc(MODE_TITLES[r.mode] || r.mode)}</td><td>${LEVEL_LABEL[r.level] || r.level}</td><td>${result}</td><td>${r.hints || 0}</td><td>${r.seconds ? timeText(r.seconds * 1000) : "—"}</td></tr>`;
+      }).join("")}</tbody></table></div>` : `<div class="muted">No rounds yet.</div>`}`;
+  container.appendChild(hist);
+  return container;
+}
+
+function setSetting(field, value) { data[field] = value; persist(); renderParent("settings"); }
+function renameChild() {
+  const v = document.getElementById("renameIn").value.trim();
+  if (!v) { alert("Name can't be empty."); return; }
+  data.childName = v; persist(); applyIdentity(); renderParent("settings");
+}
+function changePin() {
+  const cur = prompt("Enter current PIN:");
+  if (cur === null) return;
+  if (cur !== data.pin) { alert("Wrong PIN."); return; }
+  const np = prompt("New PIN (at least 4 digits):");
+  if (!np || np.trim().length < 4) { alert("PIN must be at least 4 digits."); return; }
+  data.pin = np.trim(); persist(); alert("PIN updated.");
+}
+function resetProfile() {
+  const kept = { childName: data.childName, pin: data.pin, tier: data.tier, autoX: data.autoX, showTimer: data.showTimer };
+  if (!confirm(`This clears ALL of ${kept.childName}'s progress back to zero. Name, PIN, and settings are kept. This can't be undone. Continue?`)) return;
+  data = Object.assign(freshData(kept.childName, kept.pin, kept.tier), kept);
+  persist();
+  applyIdentity();
+  renderParent("settings");
+}
+function deleteProfile() {
+  const name = data.childName;
+  const enteredPin = prompt(`Type ${name}'s PIN to permanently delete this profile:`);
+  if (enteredPin === null) return;
+  if (enteredPin !== data.pin) { alert("Wrong PIN — nothing was deleted."); return; }
+  if (!confirm(`This permanently deletes ${name}'s entire profile — progress, settings, and PIN. This can't be undone. Continue?`)) return;
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  data = null; KEY = null; parentUnlocked = false;
+  applyIdentity();
+  if (listProfiles().length === 0) renderSetup(1); else renderPicker();
+}
+function exportCSV() {
+  const rows = [["child", "date", "time", "mode", "level", "result", "score", "outof", "hints", "seconds"]];
+  data.sessionLog.forEach((s) => {
+    const d = new Date(s.date);
+    rows.push([
+      data.childName, d.toLocaleDateString(), d.toLocaleTimeString(),
+      MODE_TITLES[s.mode] || s.mode, LEVEL_LABEL[s.level] || s.level,
+      s.solved ? "solved" : "unsolved", s.score, s.total, s.hints, s.seconds,
+    ]);
+  });
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${nameToKey(data.childName).replace(STORAGE_PREFIX, "")}-logic-results.csv`;
+  a.click();
+}
+
+/* ===================== SHARED ROUND CHROME ===================== */
+
+function buildingCard(then) {
+  clearScreen();
+  const card = el("div", { class: "card center" });
+  card.appendChild(el("div", { style: "font-size:30px" }, "🧩"));
+  card.appendChild(el("div", { class: "muted", style: "margin-top:8px" }, "Building a fresh puzzle…"));
+  app.appendChild(card);
+  // Let the browser paint the placeholder before the generator blocks the
+  // thread — the hardest grids take a moment on an old tablet.
+  setTimeout(then, 30);
+}
+
+function renderEnd(mode, level, res, replayFn, extraNode) {
+  recordRound(mode, level, res);
+  clearScreen();
+  const card = el("div", { class: "card end-card" });
+  card.appendChild(el("div", { class: "eyebrow" }, `${MODE_TITLES[mode]} · ${LEVEL_LABEL[level]}`));
+  card.appendChild(el("h2", {}, res.headline || (res.solved ? "Solved it!" : "Round complete")));
+  if (res.total > 1) card.appendChild(el("div", { class: "big-score" }, `${res.score} / ${res.total}`));
+  else card.appendChild(el("div", { class: "big-score" }, res.solved ? "✓" : "—"));
+
+  const bits = [];
+  if (res.ms) bits.push(`Time ${timeText(res.ms)}`);
+  if (res.hints) bits.push(`${res.hints} ${plural(res.hints, "hint")} used`);
+  if (bits.length) card.appendChild(el("p", { class: "muted" }, bits.join(" · ")));
+  if (res.note) card.appendChild(el("p", { class: "muted" }, res.note));
+  if (extraNode) card.appendChild(extraNode);
+
+  const row = el("div", { class: "row center", style: "margin-top:16px" });
+  const again = el("button", { class: "big" }, "Another one");
+  again.addEventListener("click", replayFn);
+  const menu = el("button", { class: "outline" }, "Back to menu");
+  menu.addEventListener("click", goHome);
+  row.appendChild(again); row.appendChild(menu);
+  card.appendChild(row);
+  app.appendChild(card);
+}
+
+/* ===================== MODE 1: LOGIC GRID ===================== */
+
+function playGrid(level) {
+  buildingCard(() => {
+    const puz = generateGridPuzzle(level) || generateGridPuzzle("medium");
+    if (!puz) { clearScreen(); app.appendChild(el("div", { class: "card center" }, "Couldn't build a puzzle — please try again.")); return; }
+    runGrid(puz, level);
+  });
+}
+
+function runGrid(puz, level) {
+  const { cats, n } = puz;
+  const K = cats.length;
+  const startedAt = Date.now();
+  let hints = 0, finished = false;
+
+  // marks[blockKey] = Int8Array(n*n): 0 blank, 1 = ✗, 2 = ✓. locked cells
+  // came from a hint and can't be changed.
+  const marks = {}, locked = {};
+  for (let i = 0; i < K; i++) {
+    for (let j = i + 1; j < K; j++) {
+      marks[i + "-" + j] = new Int8Array(n * n);
+      locked[i + "-" + j] = new Int8Array(n * n);
+    }
+  }
+  // A block can be drawn either way round — people-over-horses in the top band,
+  // horses-over-people further down — so every accessor takes (rowCat, colCat)
+  // and transposes into the single stored copy of that pair.
+  const blockKey = (a, b) => (a < b ? a + "-" + b : b + "-" + a);
+  const cellIdx = (a, b, r, c) => (a < b ? r * n + c : c * n + r);
+  const at = (a, b, r, c) => marks[blockKey(a, b)][cellIdx(a, b, r, c)];
+  const setAt = (a, b, r, c, v) => { marks[blockKey(a, b)][cellIdx(a, b, r, c)] = v; };
+  const isLocked = (a, b, r, c) => marks[blockKey(a, b)] && locked[blockKey(a, b)][cellIdx(a, b, r, c)];
+  const lock = (a, b, r, c) => { locked[blockKey(a, b)][cellIdx(a, b, r, c)] = 1; };
+
+  clearScreen();
+
+  const storyCard = el("div", { class: "card" });
+  storyCard.appendChild(el("div", { class: "eyebrow" }, puz.theme.title));
+  storyCard.appendChild(el("p", { class: "story" }, `${puz.theme.story} Use the clues to work out who goes with what. Tap a clue once you've used it.`));
+  const list = el("ol", { class: "clue-list" });
+  puz.clues.forEach((clue) => {
+    const li = el("li", {}, clue.text);
+    li.addEventListener("click", () => li.classList.toggle("used"));
+    list.appendChild(li);
+  });
+  storyCard.appendChild(list);
+  app.appendChild(storyCard);
+
+  const gridCard = el("div", { class: "card" });
+  gridCard.appendChild(el("div", { class: "muted", style: "margin-bottom:10px" },
+    "Tap a box to cycle it: blank → ✗ → ✓."));
+  const wrap = el("div", { class: "lg-wrap" });
+  const table = el("table", { class: "lg" });
+  const cellEls = {};
+
+  // Classic logic-grid staircase: the people band spans every column, and each
+  // band below it is one block shorter, anchored to the left. Keeping the
+  // short bands on the left means a phone shows them without scrolling.
+  const colCats = [];
+  for (let j = 1; j <= K - 1; j++) colCats.push(j);
+  const rowCats = [0];
+  for (let i = K - 1; i >= 2; i--) rowCats.push(i);
+  const blockShown = (rowCat, colCat) => (rowCat === 0 ? true : colCat < rowCat);
+  const renderedBlocks = [];
+  rowCats.forEach((i) => colCats.forEach((j) => { if (blockShown(i, j)) renderedBlocks.push([i, j]); }));
+
+  const head1 = el("tr");
+  head1.appendChild(el("th", { colspan: 2 }));
+  colCats.forEach((j) => head1.appendChild(el("th", { class: "lg-cat", colspan: n }, cats[j].label)));
+  table.appendChild(head1);
+
+  const head2 = el("tr");
+  head2.appendChild(el("th", { colspan: 2 }));
+  colCats.forEach((j) => {
+    cats[j].values.forEach((v, c) => {
+      const th = el("th", { class: "lg-vcol" + (c === 0 ? " lg-bl" : "") });
+      th.appendChild(el("span", {}, cats[j].short(v)));
+      head2.appendChild(th);
+    });
+  });
+  table.appendChild(head2);
+
+  rowCats.forEach((i) => {
+    cats[i].values.forEach((rv, r) => {
+      const tr = el("tr");
+      if (r === 0) {
+        const th = el("th", { class: "lg-rowcat", rowspan: n });
+        th.appendChild(el("span", {}, cats[i].label));
+        tr.appendChild(th);
+      }
+      tr.appendChild(el("th", { class: "lg-vrow" + (r === 0 ? " lg-bt" : "") }, cats[i].short(rv)));
+      colCats.forEach((j) => {
+        for (let c = 0; c < n; c++) {
+          const edge = (c === 0 ? " lg-bl" : "") + (r === 0 ? " lg-bt" : "");
+          if (!blockShown(i, j)) { tr.appendChild(el("td", { class: "lg-blank" + edge })); continue; }
+          const td = el("td");
+          const btn = el("button", {
+            class: "lg-cell" + edge, type: "button",
+            "aria-label": `${cats[i].short(rv)} and ${cats[j].short(cats[j].values[c])}`,
+          });
+          btn.addEventListener("click", () => cycleCell(i, j, r, c));
+          cellEls[[i, j, r, c].join("-")] = btn;
+          td.appendChild(btn);
+          tr.appendChild(td);
+        }
+      });
+      table.appendChild(tr);
+    });
+  });
+  wrap.appendChild(table);
+  gridCard.appendChild(wrap);
+  // Big grids scroll sideways inside their own box rather than stretching the
+  // page; say so, but only when there is actually something off-screen.
+  const scrollHint = el("div", { class: "muted center", style: "font-size:12px;margin-top:8px;display:none" },
+    "↔ Swipe the grid sideways to see the rest.");
+  gridCard.appendChild(scrollHint);
+  app.appendChild(gridCard);
+  requestAnimationFrame(() => {
+    if (wrap.scrollWidth > wrap.clientWidth + 2) scrollHint.style.display = "";
+  });
+
+  const feedback = el("div", { class: "feedback" });
+  app.appendChild(feedback);
+  app.appendChild(attachTimer(startedAt));
+
+  const controls = el("div", { class: "row center" });
+  const checkBtn = el("button", {}, "Check my grid");
+  const hintBtn = el("button", { class: "outline" }, "Hint");
+  const clearBtn = el("button", { class: "outline" }, "Clear grid");
+  const giveBtn = el("button", { class: "link" }, "Show me the answer");
+  checkBtn.addEventListener("click", check);
+  hintBtn.addEventListener("click", giveHint);
+  clearBtn.addEventListener("click", () => {
+    Object.keys(marks).forEach((k) => marks[k].forEach((v, idx) => { if (!locked[k][idx]) marks[k][idx] = 0; }));
+    paintAll();
+    feedback.className = "feedback";
+    feedback.textContent = "";
+  });
+  giveBtn.addEventListener("click", () => {
+    if (!confirm("Show the full answer? This round won't count as solved.")) return;
+    finish(false, "Answer shown — try another one.");
+  });
+  controls.appendChild(checkBtn);
+  controls.appendChild(hintBtn);
+  controls.appendChild(clearBtn);
+  app.appendChild(controls);
+  app.appendChild(el("div", { class: "row center", style: "margin-top:6px" })).appendChild(giveBtn);
+
+  function paint(i, j, r, c) {
+    const btn = cellEls[[i, j, r, c].join("-")];
+    if (!btn) return;
+    const v = at(i, j, r, c);
+    btn.textContent = v === 1 ? "✕" : v === 2 ? "✓" : "";
+    btn.classList.toggle("yes", v === 2);
+    btn.classList.toggle("locked", !!isLocked(i, j, r, c));
+    btn.classList.remove("bad");
+  }
+  function paintAll() {
+    renderedBlocks.forEach(([i, j]) => {
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) paint(i, j, r, c);
+    });
+  }
+  function cycleCell(i, j, r, c) {
+    if (finished || isLocked(i, j, r, c)) return;
+    const next = (at(i, j, r, c) + 1) % 3;
+    setAt(i, j, r, c, next);
+    if (next === 2 && data.autoX) autoX(i, j, r, c);
+    paintAll();
+  }
+  // Placing a ✓ rules out the rest of that row and column in the same block.
+  // It overwrites whatever was there: two ✓ marks in one row contradict each
+  // other, so the newest one wins rather than leaving the grid inconsistent.
+  function autoX(i, j, r, c) {
+    for (let k = 0; k < n; k++) {
+      if (k !== c && !isLocked(i, j, r, k)) setAt(i, j, r, k, 1);
+      if (k !== r && !isLocked(i, j, k, c)) setAt(i, j, k, c, 1);
+    }
+  }
+  function giveHint() {
+    if (finished) return;
+    // Reveal a pairing the child hasn't found yet, preferring the rows that
+    // make up the actual answer (person vs. everything else).
+    const options = [];
+    for (let j = 1; j < K; j++) {
+      for (let r = 0; r < n; r++) {
+        const truth = puz.assign[j][r];
+        if (at(0, j, r, truth) !== 2) options.push([j, r, truth]);
+      }
+    }
+    if (!options.length) {
+      feedback.className = "feedback hint";
+      feedback.textContent = "Every row already has a ✓ — press Check my grid.";
+      return;
+    }
+    const [j, r, c] = options[Math.floor(Math.random() * options.length)];
+    setAt(0, j, r, c, 2);
+    lock(0, j, r, c);
+    // A revealed pairing always clears whatever else was marked in its row and
+    // column, even when the auto-✗ helper is switched off — otherwise the hint
+    // would sit next to a ✓ it just disproved.
+    if (data.autoX) autoX(0, j, r, c);
+    else for (let k = 0; k < n; k++) {
+      if (k !== c && !isLocked(0, j, r, k) && at(0, j, r, k) === 2) setAt(0, j, r, k, 0);
+      if (k !== r && !isLocked(0, j, k, c) && at(0, j, k, c) === 2) setAt(0, j, k, c, 0);
+    }
+    hints++;
+    paintAll();
+    feedback.className = "feedback hint";
+    feedback.textContent = `Hint: ${cats[0].values[r]} — ${cats[j].short(cats[j].values[c])}.`;
+  }
+  function check() {
+    if (finished) return;
+    let blanks = 0, wrong = 0;
+    const bad = [];
+    for (let j = 1; j < K; j++) {
+      for (let r = 0; r < n; r++) {
+        let ticks = 0;
+        for (let c = 0; c < n; c++) {
+          if (at(0, j, r, c) !== 2) continue;
+          ticks++;
+          if (c !== puz.assign[j][r]) { wrong++; bad.push([0, j, r, c]); }
+        }
+        if (!ticks) blanks++;
+      }
+    }
+    paintAll();
+    if (wrong) {
+      bad.forEach(([i, j, r, c]) => { const b = cellEls[[i, j, r, c].join("-")]; if (b) b.classList.add("bad"); });
+      feedback.className = "feedback bad";
+      feedback.textContent = `${wrong} ${plural(wrong, "✓ mark")} can't be right — the red ones. Re-read the clues about them.`;
+      return;
+    }
+    if (blanks) {
+      feedback.className = "feedback hint";
+      feedback.textContent = `So far so good — ${blanks} ${plural(blanks, "row")} still ${blanks === 1 ? "needs" : "need"} a ✓.`;
+      return;
+    }
+    finish(true);
+  }
+  function finish(solved, note) {
+    finished = true;
+    const ms = Date.now() - startedAt;
+    renderEnd("grid", level, {
+      solved, hints, ms, score: solved ? 1 : 0, total: 1,
+      headline: solved ? "Solved it! 🎉" : "Here's the answer",
+      note: note || (hints ? null : solved ? "No hints — nicely reasoned." : null),
+    }, () => playGrid(level), solutionTable(puz));
+  }
+}
+
+function solutionTable(puz) {
+  const wrap = el("div", { style: "overflow-x:auto" });
+  const table = el("table", { class: "solution-table" });
+  const head = el("tr");
+  puz.cats.forEach((c) => head.appendChild(el("th", {}, c.label)));
+  table.appendChild(head);
+  for (let s = 0; s < puz.n; s++) {
+    const tr = el("tr");
+    puz.cats.forEach((c, ci) => tr.appendChild(el("td", {}, c.short(c.values[puz.assign[ci][s]]))));
+    table.appendChild(tr);
+  }
+  wrap.appendChild(table);
+  return wrap;
+}
+
+/* ===================== MODE 2: DRAGON ISLE ===================== */
+
+const ISLAND_ROUND = 4;
+
+function playIsland(level) {
+  const startedAt = Date.now();
+  let i = 0, correct = 0;
+
+  function nextPuzzle() {
+    const puz = generateIslandPuzzle(level) || generateIslandPuzzle("medium");
+    clearScreen();
+    const guess = puz.names.map(() => null);
+    let answered = false;
+
+    const intro = el("div", { class: "card" });
+    intro.appendChild(el("div", { class: "eyebrow" }, "Dragon Isle"));
+    intro.appendChild(el("p", { class: "story" },
+      "On Dragon Isle, honest dragons always tell the truth and fibbers always lie. Work out which is which."));
+    app.appendChild(intro);
+    app.appendChild(el("div", { class: "progress-line" }, `Puzzle ${i + 1} of ${ISLAND_ROUND} · ${correct} right so far`));
+
+    const cards = [];
+    puz.lines.forEach((line) => {
+      const card = el("div", { class: "say" });
+      card.appendChild(el("div", { class: "who" }, `${puz.names[line.speaker]} says:`));
+      card.appendChild(el("div", { class: "quote" }, `“${line.text}”`));
+      cards.push(card);
+      app.appendChild(card);
+    });
+
+    // Every dragon needs a verdict, including any who never spoke.
+    const verdicts = el("div", { class: "card" });
+    verdicts.appendChild(el("div", { style: "font-weight:700;margin-bottom:10px" }, "Your verdict"));
+    const buttons = {};
+    puz.names.forEach((name, idx) => {
+      const row = el("div", { style: "display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0" });
+      row.appendChild(el("div", { style: "font-weight:700;min-width:80px" }, name));
+      const pickRow = el("div", { class: "pickrow" });
+      [["truth", "Honest"], ["fibber", "Fibber"]].forEach(([val, label]) => {
+        const b = el("button", { type: "button" }, label);
+        b.addEventListener("click", () => {
+          if (answered) return;
+          guess[idx] = val;
+          Object.keys(buttons[idx]).forEach((k) => buttons[idx][k].classList.toggle("on", k === val));
+          feedback.textContent = "";
+        });
+        buttons[idx] = buttons[idx] || {};
+        buttons[idx][val] = b;
+        pickRow.appendChild(b);
+      });
+      row.appendChild(pickRow);
+      verdicts.appendChild(row);
+    });
+    app.appendChild(verdicts);
+
+    const feedback = el("div", { class: "feedback" });
+    app.appendChild(feedback);
+
+    const controls = el("div", { class: "row center" });
+    const checkBtn = el("button", {}, "Check");
+    checkBtn.addEventListener("click", () => {
+      if (answered) return;
+      if (guess.some((g) => g === null)) {
+        feedback.className = "feedback hint";
+        feedback.textContent = "Give every dragon a verdict first.";
+        return;
+      }
+      answered = true;
+      const right = guess.every((g, idx) => g === puz.types[idx]);
+      if (right) correct++;
+      puz.names.forEach((name, idx) => {
+        const card = cards.find((c, ci) => puz.lines[ci].speaker === idx);
+        if (card) card.classList.add(guess[idx] === puz.types[idx] ? "right" : "wrongpick");
+      });
+      feedback.className = "feedback " + (right ? "ok" : "bad");
+      feedback.textContent = right
+        ? "✓ Exactly right."
+        : "✗ Not quite — " + puz.names.map((nm, idx) => `${nm} is ${puz.types[idx] === "truth" ? "honest" : "a fibber"}`).join(", ") + ".";
+      checkBtn.disabled = true;
+      const nextRow = el("div", { class: "row center", style: "margin-top:14px" });
+      const nb = el("button", { class: "big" }, i + 1 >= ISLAND_ROUND ? "See results" : "Next puzzle →");
+      nb.addEventListener("click", () => {
+        i++;
+        if (i < ISLAND_ROUND) nextPuzzle();
+        else renderEnd("island", level, {
+          solved: correct === ISLAND_ROUND, score: correct, total: ISLAND_ROUND,
+          ms: Date.now() - startedAt, hints: 0,
+          headline: correct === ISLAND_ROUND ? "Perfect round! 🐉" : "Round complete",
+        }, () => playIsland(level));
+      });
+      nextRow.appendChild(nb);
+      app.appendChild(nextRow);
+    });
+    controls.appendChild(checkBtn);
+    app.appendChild(controls);
+  }
+  nextPuzzle();
+}
+
+/* ===================== MODE 3: NUMBER PATTERNS ===================== */
+
+const PATTERN_ROUND = 8;
+
+function playPattern(level) {
+  const startedAt = Date.now();
+  let i = 0, correct = 0;
+
+  function nextQuestion() {
+    const q = generatePattern(level);
+    clearScreen();
+    app.appendChild(el("div", { class: "prompt" }, "What comes next?"));
+    app.appendChild(el("div", { class: "progress-line" }, `${i + 1} of ${PATTERN_ROUND} · ${correct} right so far`));
+
+    const seq = el("div", { class: "seq" });
+    q.shown.forEach((v) => seq.appendChild(el("div", {}, String(v))));
+    seq.appendChild(el("div", { class: "blank" }, "?"));
+    app.appendChild(seq);
+
+    const inputRow = el("div", { class: "row center", style: "margin-top:10px" });
+    const input = el("input", { type: "text", inputmode: "numeric", "aria-label": "Next number" });
+    const submit = el("button", {}, "Check");
+    inputRow.appendChild(input);
+    inputRow.appendChild(submit);
+    app.appendChild(inputRow);
+
+    const feedback = el("div", { class: "feedback" });
+    app.appendChild(feedback);
+    let answered = false;
+
+    function submitAnswer() {
+      if (answered) return;
+      const raw = input.value.trim();
+      if (!raw) return;
+      const val = Number(raw);
+      if (!Number.isFinite(val)) { feedback.className = "feedback hint"; feedback.textContent = "Numbers only, please."; return; }
+      answered = true;
+      const ok = val === q.answer;
+      if (ok) correct++;
+      input.disabled = true;
+      submit.disabled = true;
+      seq.lastChild.classList.remove("blank");
+      seq.lastChild.textContent = String(q.answer);
+      feedback.className = "feedback " + (ok ? "ok" : "bad");
+      feedback.textContent = `${ok ? "✓" : "✗"} ${q.answer}. ${q.rule}`;
+      const row = el("div", { class: "row center", style: "margin-top:12px" });
+      const nb = el("button", { class: "big" }, i + 1 >= PATTERN_ROUND ? "See results" : "Next →");
+      nb.addEventListener("click", () => {
+        i++;
+        if (i < PATTERN_ROUND) nextQuestion();
+        else renderEnd("pattern", level, {
+          solved: correct === PATTERN_ROUND, score: correct, total: PATTERN_ROUND,
+          ms: Date.now() - startedAt, hints: 0,
+          headline: correct === PATTERN_ROUND ? "Every one! 🎉" : "Round complete",
+        }, () => playPattern(level));
+      });
+      row.appendChild(nb);
+      app.appendChild(row);
+      // Focus moves to Next a beat later: focusing it immediately lets the
+      // same Enter keypress that submitted the answer also skip the feedback.
+      setTimeout(() => nb.focus(), 300);
+    }
+    submit.addEventListener("click", submitAnswer);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submitAnswer(); });
+    input.focus();
+  }
+  nextQuestion();
+}
+
+/* ===================== MODE 4: NUMBER BOXES (SUDOKU) ===================== */
+
+function playSudoku(level) {
+  buildingCard(() => runSudoku(generateSudoku(level), level));
+}
+
+function runSudoku(puz, level) {
+  const { size, bw, bh } = puz;
+  const startedAt = Date.now();
+  const cellPx = size <= 4 ? 54 : size <= 6 ? 46 : 36;
+  const grid = puz.puzzle.slice();
+  const given = puz.puzzle.map((v) => !!v);
+  let selected = grid.findIndex((v, idx) => !given[idx]);
+  let hints = 0, finished = false;
+
+  clearScreen();
+  app.appendChild(el("div", { class: "prompt" }, `Fill every row, column, and box with 1–${size}`));
+  app.appendChild(el("div", { class: "progress-line" }, "No number may repeat in a row, a column, or a heavy-outlined box."));
+
+  const board = el("div", { class: "sud", style: `grid-template-columns: repeat(${size}, ${cellPx}px)` });
+  board.style.fontSize = cellPx > 44 ? "24px" : "20px";
+  const cells = [];
+  for (let idx = 0; idx < size * size; idx++) {
+    const r = Math.floor(idx / size), c = idx % size;
+    const cls = ["", (c + 1) % bw === 0 && c !== size - 1 ? "bx" : "", (r + 1) % bh === 0 && r !== size - 1 ? "by" : ""].join(" ");
+    const b = el("button", { type: "button", class: cls, style: `width:${cellPx}px;height:${cellPx}px`, "aria-label": `row ${r + 1} column ${c + 1}` });
+    b.addEventListener("click", () => { if (!finished && !given[idx]) { selected = idx; paint(); } });
+    cells.push(b);
+    board.appendChild(b);
+  }
+  app.appendChild(board);
+
+  const pad = el("div", { class: "pad" });
+  for (let v = 1; v <= size; v++) {
+    const b = el("button", { type: "button" }, String(v));
+    b.addEventListener("click", () => place(v));
+    pad.appendChild(b);
+  }
+  const eraser = el("button", { type: "button" }, "Erase");
+  eraser.addEventListener("click", () => place(0));
+  pad.appendChild(eraser);
+  app.appendChild(pad);
+
+  const feedback = el("div", { class: "feedback" });
+  app.appendChild(feedback);
+  app.appendChild(attachTimer(startedAt));
+
+  const controls = el("div", { class: "row center" });
+  const checkBtn = el("button", {}, "Check");
+  const hintBtn = el("button", { class: "outline" }, "Hint");
+  const giveBtn = el("button", { class: "link" }, "Show me the answer");
+  checkBtn.addEventListener("click", check);
+  hintBtn.addEventListener("click", () => {
+    if (finished) return;
+    const blanks = grid.map((v, idx) => (v ? -1 : idx)).filter((idx) => idx >= 0);
+    if (!blanks.length) { feedback.className = "feedback hint"; feedback.textContent = "The grid is full — press Check."; return; }
+    const idx = blanks[Math.floor(Math.random() * blanks.length)];
+    grid[idx] = puz.solution[idx];
+    given[idx] = true;
+    hints++;
+    paint();
+    feedback.className = "feedback hint";
+    feedback.textContent = "Hint placed.";
+  });
+  giveBtn.addEventListener("click", () => {
+    if (!confirm("Show the full answer? This round won't count as solved.")) return;
+    for (let idx = 0; idx < grid.length; idx++) grid[idx] = puz.solution[idx];
+    paint();
+    finish(false, "Answer shown — try another one.");
+  });
+  controls.appendChild(checkBtn);
+  controls.appendChild(hintBtn);
+  app.appendChild(controls);
+  app.appendChild(el("div", { class: "row center", style: "margin-top:6px" })).appendChild(giveBtn);
+
+  board.addEventListener("keydown", (e) => {
+    if (finished) return;
+    const r = Math.floor(selected / size), c = selected % size;
+    if (e.key === "ArrowRight") { selected = r * size + Math.min(size - 1, c + 1); paint(); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { selected = r * size + Math.max(0, c - 1); paint(); e.preventDefault(); }
+    else if (e.key === "ArrowDown") { selected = Math.min(size - 1, r + 1) * size + c; paint(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { selected = Math.max(0, r - 1) * size + c; paint(); e.preventDefault(); }
+    else if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") { place(0); e.preventDefault(); }
+    else if (/^[1-9]$/.test(e.key) && Number(e.key) <= size) { place(Number(e.key)); e.preventDefault(); }
+  });
+
+  function place(v) {
+    if (finished || selected < 0 || given[selected]) return;
+    grid[selected] = v;
+    feedback.textContent = "";
+    paint();
+    if (grid.every(Boolean)) check();
+  }
+  function paint() {
+    cells.forEach((b, idx) => {
+      b.textContent = grid[idx] ? String(grid[idx]) : "";
+      b.classList.toggle("given", given[idx]);
+      b.classList.toggle("sel", idx === selected && !finished);
+      b.classList.remove("bad");
+    });
+  }
+  function check() {
+    if (finished) return;
+    const wrong = [];
+    let blanks = 0;
+    grid.forEach((v, idx) => {
+      if (!v) { blanks++; return; }
+      if (v !== puz.solution[idx]) wrong.push(idx);
+    });
+    paint();
+    if (wrong.length) {
+      wrong.forEach((idx) => cells[idx].classList.add("bad"));
+      feedback.className = "feedback bad";
+      feedback.textContent = `${wrong.length} ${plural(wrong.length, "number")} in red ${wrong.length === 1 ? "doesn't" : "don't"} work.`;
+      return;
+    }
+    if (blanks) {
+      feedback.className = "feedback hint";
+      feedback.textContent = `Everything so far is right — ${blanks} ${plural(blanks, "square")} to go.`;
+      return;
+    }
+    finish(true);
+  }
+  function finish(solved, note) {
+    finished = true;
+    paint();
+    renderEnd("sudoku", level, {
+      solved, hints, ms: Date.now() - startedAt, score: solved ? 1 : 0, total: 1,
+      headline: solved ? "Solved it! 🎉" : "Here's the answer",
+      note: note || (solved && !hints ? "No hints — well done." : null),
+    }, () => playSudoku(level));
+  }
+
+  board.setAttribute("tabindex", "0");
+  paint();
+}
+
+/* ===================== BOOT ===================== */
+
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+(function boot() {
+  const profiles = listProfiles();
+  if (profiles.length === 0) return renderSetup(1);
+  if (profiles.length === 1 && !profiles[0].corrupted) {
+    data = load(profiles[0].key);
+    if (data) { applyIdentity(); return renderHome(); }
+  }
+  renderPicker();
+})();
+</script>
+</body>
+</html>
