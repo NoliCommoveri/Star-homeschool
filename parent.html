@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parent Dashboard — Star</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="theme-color" content="#2A5D9F">
+<style>
+  :root {
+    --bg: #FDF6EC; --text: #2A3A50; --card: #FFFFFF; --card-shadow: rgba(42,58,80,.10);
+    --accent: #2A5D9F; --accent-soft: #E3EDF9; --green: #2E8B57; --green-soft: #DCEBDD; --green-dark: #2E6B45;
+    --danger: #C4553B; --gold: #E8A013; --gold-soft: #FBEBC8;
+    --soft: #F2EBDD; --muted: #6B7686; --border: #C9CDD4; --line: #EDE4D3;
+    --input-bg: #FFFDF8; --eyebrow: #B0763A; --body-text: #4A5568;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: 'Lexend', 'Trebuchet MS', 'Comic Sans MS', sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .eyebrow { font-size: 13px; font-weight: 600; color: var(--eyebrow); letter-spacing: .12em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: 26px; font-weight: 800; }
+  h2 { margin: 0 0 4px; font-size: 19px; font-weight: 800; }
+  nav.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .card { background: var(--card); border-radius: 20px; padding: 22px; box-shadow: 0 2px 10px var(--card-shadow); margin-bottom: 16px; border: 1px solid var(--line); }
+  button { font-family: inherit; font-weight: 600; font-size: 14px; padding: 9px 16px; border-radius: 12px; border: none; background: var(--accent); color: #fff; cursor: pointer; letter-spacing: .02em; }
+  button.big { font-size: 18px; padding: 14px 26px; }
+  button.outline { background: transparent; border: 2px solid var(--accent); color: var(--accent); }
+  button.outline.active { background: var(--accent); color: #fff; }
+  button.danger { background: var(--danger); }
+  button.link { background: none; color: var(--muted); font-size: 13px; text-decoration: underline; padding: 4px; }
+  button:disabled { background: var(--border); color: #fff; cursor: default; border-color: var(--border); }
+  input[type=text], input[type=password], select {
+    font-family: inherit; font-size: 15px; padding: 10px 12px; border-radius: 10px;
+    border: 2px solid var(--border); width: 100%; margin-bottom: 10px; background: var(--input-bg); color: var(--text);
+  }
+  label { font-size: 13px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 4px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .error { color: var(--danger); font-size: 13px; margin: 6px 0; min-height: 16px; }
+  .center { text-align: center; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 260px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--accent-soft); }
+  .badge { display: inline-block; border-radius: 8px; padding: 2px 9px; font-size: 12px; font-weight: 700; }
+  .badge.ok { background: var(--green-soft); color: var(--green-dark); }
+  .badge.warn { background: var(--gold-soft); color: #7A5300; }
+  .badge.off { background: var(--border); color: #fff; }
+  .code-display { font-size: 40px; font-weight: 800; letter-spacing: .18em; text-align: center; padding: 18px; background: var(--soft); border-radius: 16px; margin: 12px 0; }
+  .sparkline { display: block; }
+  .trouble-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .trouble-item:last-child { border-bottom: none; }
+  .miss-count { color: var(--danger); font-weight: 700; font-size: 13px; }
+  .overlay { position: fixed; inset: 0; background: rgba(42,58,80,.45); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; z-index: 10; }
+  .overlay .card { max-width: 480px; width: 100%; margin: 0; }
+  .result-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .result-row:last-child { border-bottom: none; }
+  .mark-ok { color: var(--green-dark); font-weight: 800; }
+  .mark-bad { color: var(--danger); font-weight: 800; }
+  .empty { text-align: center; padding: 30px 10px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Star</div>
+      <h1>Parent Dashboard</h1>
+    </div>
+    <nav class="tabs" id="topNav" style="display:none"></nav>
+  </header>
+  <div id="app"></div>
+</div>
+
+<script>
+// ============================================================================
+// parent.html — read-only dashboard for the Parent Sync backend
+// (docs/parent-sync-spec.md §9, built per §11 Phase 1 step 3). Talks only to
+// same-origin /api/*; never touches the child apps' localStorage.
+//
+// Trouble-item ranking here uses only what /api/sessions returns, i.e. the
+// synced results[]. §9 also describes excluding words a child has already
+// graduated out of reviewWords, but graduation state lives in localStorage
+// and is never synced (only sessions are), so that exclusion isn't available
+// here — this ranks purely on recency-weighted miss count across synced
+// history, which is the best signal actually on the server.
+// ============================================================================
+
+const API = '/api';
+const SYNC_KEY = 'star-parent-sync';
+const APPS = [
+  { id: 'spelling', label: 'Spelling Star' },
+  { id: 'math', label: 'Math Star' },
+];
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function loadSync() {
+  try { return JSON.parse(localStorage.getItem(SYNC_KEY)); } catch { return null; }
+}
+function saveSync(obj) { localStorage.setItem(SYNC_KEY, JSON.stringify(obj)); }
+function clearSync() { localStorage.removeItem(SYNC_KEY); }
+
+const state = { sync: loadSync(), view: 'dashboard', children: [], sessionsByKey: {}, loading: false, error: '' };
+
+async function api(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth && state.sync) headers.Authorization = 'Bearer ' + state.sync.token;
+  const res = await fetch(API + path, { method, headers, cache: 'no-store', body: body ? JSON.stringify(body) : undefined });
+  let data = null;
+  try { data = await res.json(); } catch { /* empty body */ }
+  if (!res.ok) throw new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+  return data;
+}
+
+function fmtRelative(ms) {
+  if (!ms) return 'never';
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return 'just now';
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return mins + ' min ago';
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + ' hr' + (hours === 1 ? '' : 's') + ' ago';
+  const days = Math.floor(hours / 24);
+  return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+}
+function fmtDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function pct(score, total) {
+  if (!total) return null;
+  return Math.round((score / total) * 100);
+}
+
+// ---------- Boot / auth screens ----------
+function boot() {
+  if (state.sync) { renderShell(); showView('dashboard'); }
+  else renderSetup();
+}
+
+function renderSetup() {
+  document.getElementById('topNav').style.display = 'none';
+  document.getElementById('app').innerHTML = `
+    <div class="row">
+      <div class="col card">
+        <h2>Create a family</h2>
+        <p class="muted">First time setting this up? Enter the signup secret your Cloudflare deployment was configured with (spec §5, §6).</p>
+        <form id="createForm">
+          <label for="secretIn">Signup secret</label>
+          <input type="password" id="secretIn" placeholder="Signup secret" required>
+          <label for="createLabelIn">This phone's name (optional)</label>
+          <input type="text" id="createLabelIn" placeholder="e.g. Mom's phone" maxlength="60">
+          <button class="big" type="submit" style="width:100%">Create family</button>
+        </form>
+        <div class="error" id="createErr"></div>
+      </div>
+      <div class="col card">
+        <h2>Add this phone</h2>
+        <p class="muted">Already have a family set up on another phone? Open Devices there, tap "Add a device," pick "Another parent phone," and enter the code it shows here.</p>
+        <form id="joinForm">
+          <label for="codeIn">Pairing code</label>
+          <input type="text" id="codeIn" placeholder="6-character code" maxlength="6" style="text-transform:uppercase;text-align:center;font-size:22px;letter-spacing:.25em" required>
+          <label for="joinLabelIn">This phone's name (optional)</label>
+          <input type="text" id="joinLabelIn" placeholder="e.g. Dad's phone" maxlength="60">
+          <button class="big" type="submit" style="width:100%">Join family</button>
+        </form>
+        <div class="error" id="joinErr"></div>
+      </div>
+    </div>`;
+
+  document.getElementById('createForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('createErr');
+    errEl.textContent = '';
+    try {
+      const deviceId = crypto.randomUUID();
+      const data = await api('/family', {
+        method: 'POST', auth: false,
+        body: { signupSecret: document.getElementById('secretIn').value, deviceId, label: document.getElementById('createLabelIn').value.trim() || undefined },
+      });
+      saveSync({ token: data.token, familyId: data.familyId, deviceId, role: 'parent' });
+      state.sync = loadSync();
+      renderShell(); showView('dashboard');
+    } catch (err) { errEl.textContent = err.message; }
+  });
+
+  document.getElementById('joinForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('joinErr');
+    errEl.textContent = '';
+    try {
+      const deviceId = crypto.randomUUID();
+      const code = document.getElementById('codeIn').value.trim().toUpperCase();
+      const data = await api('/pair', {
+        method: 'POST', auth: false,
+        body: { code, deviceId, role: 'parent', label: document.getElementById('joinLabelIn').value.trim() || undefined },
+      });
+      saveSync({ token: data.token, familyId: null, deviceId, role: 'parent' });
+      state.sync = loadSync();
+      renderShell(); showView('dashboard');
+    } catch (err) { errEl.textContent = err.message; }
+  });
+}
+
+function signOut() {
+  if (!confirm('Sign out of the parent dashboard on this phone? This only forgets it locally — to actually cut this phone off, use Revoke in Devices first.')) return;
+  clearSync();
+  state.sync = null; state.children = []; state.sessionsByKey = {};
+  boot();
+}
+
+// ---------- Shell / tabs ----------
+function renderShell() {
+  const nav = document.getElementById('topNav');
+  nav.style.display = 'flex';
+  nav.innerHTML = `
+    <button class="outline" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
+    <button class="outline" id="navDevices" onclick="showView('devices')">Devices</button>
+    <button class="link" onclick="signOut()">Sign out</button>`;
+}
+
+function showView(view) {
+  state.view = view;
+  document.getElementById('navDashboard')?.classList.toggle('active', view === 'dashboard');
+  document.getElementById('navDevices')?.classList.toggle('active', view === 'devices');
+  if (view === 'dashboard') renderDashboard();
+  else renderDevices();
+}
+
+// ---------- Dashboard ----------
+async function renderDashboard() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const { children } = await api('/children');
+    state.children = children;
+
+    if (!children.length) {
+      app.innerHTML = `<div class="card empty">No children synced yet.<br><br>
+        <button onclick="showView('devices')">Go to Devices to add one</button></div>`;
+      return;
+    }
+
+    const since = Date.now() - 90 * 86400000;
+    const cells = []; // { child, app, sessions }
+    for (const child of children) {
+      for (const a of APPS) {
+        const key = child.id + ':' + a.id;
+        const { sessions } = await api(`/sessions?childId=${encodeURIComponent(child.id)}&app=${a.id}&since=${since}`);
+        sessions.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
+        state.sessionsByKey[key] = sessions;
+        cells.push({ child, app: a, sessions });
+      }
+    }
+
+    const weekAgo = Date.now() - 7 * 86400000;
+    const gridRows = children.map((child) => {
+      const cols = APPS.map((a) => {
+        const sessions = state.sessionsByKey[child.id + ':' + a.id];
+        const recent = sessions.filter((s) => Date.parse(s.date) >= weekAgo);
+        const lastActive = sessions.length ? Date.parse(sessions[sessions.length - 1].date) : null;
+        return `<td>${recent.length ? `${recent.length} session${recent.length === 1 ? '' : 's'}<br><span class="muted">${fmtRelative(lastActive)}</span>` : '<span class="muted">—</span>'}</td>`;
+      }).join('');
+      return `<tr><td><strong>${esc(child.name || 'Unnamed')}</strong></td>${cols}</tr>`;
+    }).join('');
+
+    const cards = cells
+      .filter((c) => c.sessions.length)
+      .map((c) => renderChildAppCard(c.child, c.app, c.sessions))
+      .join('');
+
+    app.innerHTML = `
+      <div class="card">
+        <h2>Last 7 days</h2>
+        <table>
+          <thead><tr><th>Child</th>${APPS.map((a) => `<th>${a.label}</th>`).join('')}</tr></thead>
+          <tbody>${gridRows}</tbody>
+        </table>
+      </div>
+      ${cards || '<div class="card empty">No sessions synced yet — once a child device is paired and used, results show up here.</div>'}`;
+  } catch (err) {
+    app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+function renderChildAppCard(child, app, sessions) {
+  const weekAgo = Date.now() - 7 * 86400000;
+  const recent = sessions.filter((s) => Date.parse(s.date) >= weekAgo);
+  const avgPct = recent.length
+    ? Math.round(recent.reduce((sum, s) => sum + (pct(s.score, s.total) ?? 0), 0) / recent.length)
+    : null;
+  const lastActive = sessions.length ? Date.parse(sessions[sessions.length - 1].date) : null;
+
+  const spark = sessions.slice(-14).map((s) => pct(s.score, s.total) ?? 0);
+  const sparkSvg = spark.length > 1 ? renderSparkline(spark) : '';
+
+  const recentList = sessions.slice(-8).reverse().map((s) => {
+    const scope = app.id === 'spelling' ? s.listName : (s.focusName || (s.categories || []).join(', '));
+    const p = pct(s.score, s.total);
+    return `<tr class="clickable" onclick="openSessionDetail('${child.id}','${app.id}','${esc(s.id)}')">
+      <td>${fmtDate(s.date)}</td><td>${esc(scope || s.mode)}</td>
+      <td>${s.score}/${s.total}${p != null ? ` (${p}%)` : ''}</td></tr>`;
+  }).join('');
+
+  const trouble = app.id === 'spelling'
+    ? rankTrouble(sessions, (r) => r.word, (r) => r.word)
+    : rankTrouble(sessions, (r) => r.category ? (r.category + (r.subgroup ? ' · ' + r.subgroup : '')) : null, (r) => r.category + (r.subgroup ? ' · ' + r.subgroup : ''));
+
+  const troubleHtml = trouble.length
+    ? trouble.map((t) => `<div class="trouble-item"><span>${esc(t.label)}</span><span class="miss-count">${t.misses} miss${t.misses === 1 ? '' : 'es'}</span></div>`).join('')
+    : '<p class="muted">No trouble spots yet — nice!</p>';
+
+  return `
+    <div class="card">
+      <h2>${esc(child.name || 'Unnamed')} — ${esc(app.label)}</h2>
+      <p class="muted">Last active ${fmtRelative(lastActive)}</p>
+      <div class="row">
+        <div class="col">
+          <p><strong>${recent.length}</strong> session${recent.length === 1 ? '' : 's'} in the last 7 days${avgPct != null ? `, averaging <strong>${avgPct}%</strong>` : ''}.</p>
+          ${sparkSvg}
+        </div>
+        <div class="col">
+          <strong>Trouble spots</strong>
+          ${troubleHtml}
+        </div>
+      </div>
+      <details style="margin-top:10px">
+        <summary class="muted" style="cursor:pointer">Recent sessions</summary>
+        <table style="margin-top:8px"><tbody>${recentList}</tbody></table>
+      </details>
+    </div>`;
+}
+
+function renderSparkline(values) {
+  const w = 220, h = 40, max = 100;
+  const pts = values.map((v, i) => {
+    const x = (i / Math.max(values.length - 1, 1)) * w;
+    const y = h - (Math.min(v, max) / max) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg class="sparkline" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// Recency-weighted miss count (§9): misses in the last 7 days count double,
+// misses in the last 30 count 1.3x, older misses count once.
+function rankTrouble(sessions, keyFn, labelFn) {
+  const now = Date.now();
+  const byKey = new Map();
+  for (const s of sessions) {
+    const occurred = Date.parse(s.date) || now;
+    const ageDays = (now - occurred) / 86400000;
+    const recencyMult = ageDays <= 7 ? 2 : ageDays <= 30 ? 1.3 : 1;
+    for (const r of (s.results || [])) {
+      const key = keyFn(r);
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, { label: labelFn(r), misses: 0, weight: 0 });
+      const entry = byKey.get(key);
+      if (!r.correct) { entry.misses += 1; entry.weight += recencyMult; }
+    }
+  }
+  return [...byKey.values()].filter((e) => e.misses > 0).sort((a, b) => b.weight - a.weight).slice(0, 10);
+}
+
+// ---------- Session detail ----------
+function openSessionDetail(childId, appId, sessionId) {
+  const sessions = state.sessionsByKey[childId + ':' + appId] || [];
+  const session = sessions.find((s) => String(s.id) === String(sessionId));
+  if (!session) return;
+  const child = state.children.find((c) => c.id === childId);
+  const scope = appId === 'spelling' ? session.listName : (session.focusName || (session.categories || []).join(', '));
+
+  const rows = (session.results || []).map((r) => {
+    const label = appId === 'spelling'
+      ? esc(r.word)
+      : esc(r.prompt || (r.category + (r.subgroup ? ' · ' + r.subgroup : '')));
+    const answer = appId === 'math' && r.answer != null ? ` <span class="muted">(${esc(String(r.answer))})</span>` : '';
+    return `<div class="result-row"><span>${label}${answer}</span>
+      <span class="${r.correct ? 'mark-ok' : 'mark-bad'}">${r.correct ? '✓' : '✗'} ${r.attempts ? `· ${r.attempts} try${r.attempts === 1 ? '' : 'ies'}` : ''}</span></div>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="card">
+      <h2>${esc(child?.name || 'Session')}</h2>
+      <p class="muted">${fmtDate(session.date)} · ${esc(scope || session.mode)} · ${session.score}/${session.total}</p>
+      <div>${rows || '<p class="muted">No item detail recorded.</p>'}</div>
+      <div class="center" style="margin-top:16px"><button class="outline" onclick="this.closest('.overlay').remove()">Close</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+// ---------- Devices ----------
+let pairingTimer = null;
+
+async function renderDevices() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const { devices } = await api('/devices');
+    const rows = devices.map((d) => {
+      const isSelf = d.id === state.sync.deviceId;
+      const quiet = !d.revoked && d.last_seen && (Date.now() - d.last_seen) > 7 * 86400000;
+      const status = d.revoked
+        ? '<span class="badge off">Revoked</span>'
+        : quiet ? '<span class="badge warn">Quiet 7+ days</span>' : '<span class="badge ok">Active</span>';
+      return `<tr>
+        <td>${esc(d.label || '(unnamed)')}${isSelf ? ' <span class="muted">(this phone)</span>' : ''}</td>
+        <td>${d.role}</td>
+        <td>${fmtRelative(d.last_seen)}</td>
+        <td>${status}</td>
+        <td>${d.revoked || isSelf ? '' : `<button class="danger" onclick="revokeDevice('${d.id}')">Revoke</button>`}</td>
+      </tr>`;
+    }).join('');
+
+    app.innerHTML = `
+      <div class="card">
+        <h2>Add a device</h2>
+        <p class="muted">Generates a 6-character code, valid ~10 minutes, single use.</p>
+        <div class="row">
+          <div class="col">
+            <label for="roleSelect">Device type</label>
+            <select id="roleSelect">
+              <option value="child">Child's tablet</option>
+              <option value="parent">Another parent phone</option>
+            </select>
+          </div>
+        </div>
+        <button onclick="mintPairingCode()">Generate code</button>
+        <div id="pairingCodeArea"></div>
+        <p class="muted" style="margin-top:8px">On the child's tablet: open Spelling Star or Math Star → parent area → "Sync to my phone" → enter the code. On another parent phone: open this page and use "Add this phone."</p>
+      </div>
+      <div class="card">
+        <h2>Devices</h2>
+        <table>
+          <thead><tr><th>Label</th><th>Role</th><th>Last active</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5" class="muted">No devices yet.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+async function mintPairingCode() {
+  clearInterval(pairingTimer);
+  const role = document.getElementById('roleSelect').value;
+  const area = document.getElementById('pairingCodeArea');
+  area.innerHTML = '<p class="muted">Generating…</p>';
+  try {
+    const { code, expiresAt } = await api('/pairing-code', { method: 'POST', body: { role } });
+    area.innerHTML = `<div class="code-display">${esc(code)}</div><p class="center muted" id="pairingCountdown"></p>`;
+    const tick = () => {
+      const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      const el = document.getElementById('pairingCountdown');
+      if (!el) { clearInterval(pairingTimer); return; }
+      if (left <= 0) { el.textContent = 'Expired — generate a new one.'; clearInterval(pairingTimer); return; }
+      el.textContent = `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    };
+    tick();
+    pairingTimer = setInterval(tick, 1000);
+  } catch (err) {
+    area.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  }
+}
+
+async function revokeDevice(deviceId) {
+  if (!confirm('Revoke this device? It will need to be re-paired with a new code to sync again.')) return;
+  try {
+    await api('/devices/revoke', { method: 'POST', body: { deviceId } });
+    renderDevices();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+boot();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}
+</script>
+</body>
+</html>

@@ -1,8 +1,14 @@
-# Parent Sync — Specification (plan only, nothing built)
+# Parent Sync — Specification
 
-Status: **Planning.** No code written. This document is the design for adding
-an optional backend so a parent can see their children's results from their own
-phone. Scope is **Spelling Star and Math Star only**.
+Status: **Phase 1, in progress.** The §6 schema and §6.4 API (`schema.sql`,
+`functions/api/*`) are built per §12 Steps 4 and 7, and `parent.html` (§9,
+§11 step 3) is built and tested end-to-end against a local D1 instance:
+family creation, pairing-code mint/redeem, sync, the dashboard grid/cards/
+trouble-items/session-detail, and device revocation. Only the Spelling/Math
+Star client integration (§11 Phase 1 steps 4-5 — the sync module inside the
+two app files) remains. This document is the design for adding an optional
+backend so a parent can see their children's results from their own phone.
+Scope is **Spelling Star and Math Star only**.
 
 Revised after review: the §6 schema had a dangling `sessions.device_id` with
 nothing to join against, and the authorization boundary was never stated
