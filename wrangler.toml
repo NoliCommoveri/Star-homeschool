@@ -1,5 +1,10 @@
 name = "star-homeschool"
-compatibility_date = "2024-09-23"
+main = "./dist/worker/index.js"
+compatibility_date = "2026-07-29"
+
+[assets]
+directory = "./"
+binding = "ASSETS"
 
 [[d1_databases]]
 binding = "DB"
