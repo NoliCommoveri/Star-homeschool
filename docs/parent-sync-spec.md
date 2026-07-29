@@ -1,8 +1,11 @@
-# Parent Sync — Specification (plan only, nothing built)
+# Parent Sync — Specification
 
-Status: **Planning.** No code written. This document is the design for adding
-an optional backend so a parent can see their children's results from their own
-phone. Scope is **Spelling Star and Math Star only**.
+Status: **Phase 1, in progress.** The §6 schema and §6.4 API (`schema.sql`,
+`functions/api/*`) are built per §12 Steps 4 and 7 and ready to deploy and
+`curl`-test per §12 Step 8. `parent.html` and the Spelling/Math Star client
+integration (§11 Phase 1 steps 3-5) are not started. This document is the
+design for adding an optional backend so a parent can see their children's
+results from their own phone. Scope is **Spelling Star and Math Star only**.
 
 Revised after review: the §6 schema had a dangling `sessions.device_id` with
 nothing to join against, and the authorization boundary was never stated
