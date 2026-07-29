@@ -6,8 +6,15 @@ phone. Scope is **Spelling Star and Math Star only**.
 
 Revised after review: the §6 schema had a dangling `sessions.device_id` with
 nothing to join against, and the authorization boundary was never stated
-(§6.4) — both are fixed here, along with backing storage for pairing codes and
+(§6.5) — both are fixed here, along with backing storage for pairing codes and
 rate limiting. **Do not follow §12 Step 4 from an older copy of this file.**
+
+Revised again after a second review: the six-endpoint API had no way to
+actually *mint* a pairing code past the first device, no way to list or revoke
+a family's devices despite §7 promising both, and `childId` was used
+throughout §6 without ever saying where it comes from (unlike `deviceId`,
+which got its own subsection). All three are fixed here — see §6.2 (child
+identity) and the three new rows in §6.4's endpoint table.
 
 Target files (when built): a new `parent.html`, a new `functions/` directory,
 and additive changes inside `spelling-star-v6_3.html` and `math-star-v6_1.html`.
@@ -173,7 +180,7 @@ deployment serves the apps and `/api` is live at the same origin, a "blank by
 default" endpoint field protects nothing — any visitor's copy of the code can
 find the backend trivially, and you would be running multi-tenant hosting by
 accident. So: family creation lives on its own endpoint, `/api/family`, which
-requires a **signup secret held as a worker environment variable** (§6.3). Your instance is publicly reachable but serves exactly
+requires a **signup secret held as a worker environment variable** (§6.4). Your instance is publicly reachable but serves exactly
 one family, and no amount of poking changes that. Hosting for other families
 later means deliberately changing that setting, having first decided on
 encryption (§10) and a privacy policy — never something you back into.
@@ -209,7 +216,7 @@ D1 / SQLite. Deliberately boring.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE families (
-  id          TEXT PRIMARY KEY,      -- 128-bit random hex; never derived (§6.4)
+  id          TEXT PRIMARY KEY,      -- 128-bit random hex; never derived (§6.5)
   created_at  INTEGER NOT NULL
 );
 
@@ -222,7 +229,7 @@ CREATE TABLE devices (
   created_at  INTEGER NOT NULL,
   last_seen   INTEGER,
   revoked     INTEGER NOT NULL DEFAULT 0,
-  rl_window   INTEGER NOT NULL DEFAULT 0,  -- rate-limit window start, epoch (§6.5)
+  rl_window   INTEGER NOT NULL DEFAULT 0,  -- rate-limit window start, epoch (§6.6)
   rl_count    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_devices_token ON devices(token_hash);
@@ -287,7 +294,30 @@ the server stores it on the `devices` row and thereafter derives it from the
 token. It is never accepted as a per-request parameter, so one device cannot
 claim another's identity.
 
-### 6.2 Envelope and payload
+### 6.2 Child identity
+
+`childId` needs the same treatment as `deviceId` (§6.1) got, and an earlier
+draft of this spec skipped it — `childId` showed up in the `/api/sync` body
+and the `sessions` primary key with no statement of where it comes from.
+
+It is minted the same way: **client-side**, with `crypto.randomUUID()`, the
+first time sync is turned on for that profile, and stored in `data.sync.childId`
+alongside `deviceId`. It is not derived from the child's name or from
+`family_id` — same reasoning as §6.5's non-guessable-ids note.
+
+There is no separate "create a child" call. The `children` row is created
+lazily, inside `/api/sync`'s handler: on each push, upsert `children` by
+`(id)` within the token's `family_id`, setting `name = childName` from the
+request. `INSERT ... ON CONFLICT(id) DO UPDATE SET name = excluded.name` keeps
+this idempotent and also lets a child's display name be edited later by simply
+sending a new `childName` on the next push — no separate rename endpoint
+needed.
+
+Because the upsert is scoped to the token's `family_id` (§6.5 step 4 applies
+here too), a child device cannot create or touch a `children` row outside its
+own family even if it sent a guessed `childId`.
+
+### 6.3 Envelope and payload
 
 Spelling and Math sessions overlap but are not identical, so the row stores a
 **common envelope in columns** and the **app-specific remainder as `payload`**:
@@ -307,19 +337,22 @@ result carries a full problem descriptor (`prompt`, `answer`, sometimes
 allowance — a non-issue, but the reason `payload` is not stored twice or
 indexed.
 
-### 6.3 API
+### 6.4 API
 
-Six endpoints, all JSON. All except `/api/family` are authenticated by
+Nine endpoints, all JSON. All except `/api/family` are authenticated by
 `Authorization: Bearer <device-token>`.
 
 | Endpoint | Auth | Body / query | Role |
 |---|---|---|---|
 | `POST /api/family` | signup secret | `{ signupSecret, deviceId, label }` | — |
+| `POST /api/pairing-code` | token | `{ role, label }` | parent |
 | `POST /api/pair` | pairing code | `{ code, deviceId, role, label }` | — |
 | `POST /api/sync` | token | `{ app, childId, childName, sessions: [...] }` | child |
 | `POST /api/delete` | token | `{ app, childId, sessionIds: [...] }` | child |
 | `GET /api/children` | token | — | parent |
 | `GET /api/sessions` | token | `?childId=&app=&since=` | parent |
+| `GET /api/devices` | token | — | parent |
+| `POST /api/devices/revoke` | token | `{ deviceId }` | parent |
 
 **Family creation and pairing are separate endpoints**, not one endpoint with
 two request shapes. They authenticate against different things — a long-lived
@@ -333,7 +366,29 @@ everywhere else.
 
 `/api/sync` returns the ids it accepted, so the client can mark them acked.
 
-### 6.4 Authorization boundary
+**`/api/pairing-code`** is what §7's "Adding a device" flow actually calls —
+an earlier draft of this spec described the parent page "showing a 6-character
+code" without any endpoint that produces one. It requires a `parent`-role
+token (so a child device's token, which can only append sessions, cannot mint
+codes for new devices), writes one row to `pairing_codes` with `family_id`
+taken from the token, and returns the plaintext code once — the server never
+stores anything but its hash. `role` in the body is the role the *resulting*
+device will get once the code is redeemed (`child` for a tablet, `parent` for
+a second phone); it is copied into `pairing_codes.role` and enforced again at
+redemption in `/api/pair`.
+
+**`/api/devices`** and **`/api/devices/revoke`** back the "revoking one token
+… and nothing else" claim in §7 and the "last heard from per device" mitigation
+in §13 — both required an endpoint that didn't previously exist. `/api/devices`
+returns each device's `id`, `role`, `label`, `created_at`, `last_seen`, and
+`revoked`, scoped to the token's family (§6.5). `/api/devices/revoke` sets
+`revoked = 1` on the named device, again only within the caller's own family —
+a `deviceId` from another family 404s, same as `childId` does elsewhere
+(§6.5 step 4). Revoking is a one-way flip in Phase 1; un-revoking means
+re-pairing, which is deliberate — a revoked token should not become live again
+by accident.
+
+### 6.5 Authorization boundary
 
 The single invariant, stated because it is the one that matters most and is
 easiest to leave implicit:
@@ -347,7 +402,7 @@ Concretely, on every authenticated request:
 1. Hash the bearer token, look up `devices` by `token_hash`, reject if missing
    or `revoked = 1`.
 2. Take `family_id` and `role` from **that row** — never from the request body.
-3. Check `role` against the endpoint (children write, parents read; §6.3).
+3. Check `role` against the endpoint (children write, parents read/manage; §6.4).
 4. Any query naming a `childId` joins `children` and requires
    `children.family_id = <token's family_id>`. A `childId` from another family
    returns 404, not 403 — a 403 would confirm the id exists.
@@ -363,7 +418,7 @@ control. A design that relies on ids being hard to guess is one lucky enumeratio
 away from cross-family reads; a design that filters by the token's family is
 unaffected either way.
 
-### 6.5 Rate limiting
+### 6.6 Rate limiting
 
 A fixed window on the `devices` row: `rl_window` (window start) and `rl_count`.
 Every authenticated request already updates `last_seen`, so the counter rides
@@ -390,7 +445,8 @@ signup secret → `POST /api/family` mints a random family id and returns a pare
 device token, stored in that phone's `localStorage`. The page generates its own
 `deviceId` first (§6.1) and sends it along.
 
-**Adding a device:** parent page shows a **6-character code**, valid ~10
+**Adding a device:** parent page calls `POST /api/pairing-code` (§6.4) with its
+own parent token and shows the returned **6-character code**, valid ~10
 minutes, single use. The server stores only its SHA-256 in `pairing_codes` with
 `expires_at`; redemption sets `used_at` in the same transaction that mints the
 token, so a code cannot be redeemed twice even under concurrent requests.
@@ -399,6 +455,12 @@ token, so a code cannot be redeemed twice even under concurrent requests.
 phone" → type the code → the app generates a `deviceId` with
 `crypto.randomUUID()`, calls `POST /api/pair`, and stores the returned token in
 the profile blob. The `deviceId` is sent exactly here and never again.
+
+Redeeming a code is **not** idempotent the way `/api/sync` is (§6.4): if
+the network drops the response after the server already consumed the code, the
+client has no way to know whether pairing succeeded, and the code — single-use
+— can't be retried. The UI should treat a network error on `/api/pair` as
+"unknown, generate a new code" rather than auto-retrying with the same one.
 
 Expired and used codes should be swept periodically — simplest is a
 `DELETE FROM pairing_codes WHERE expires_at < ?` at the top of `/api/family`,
@@ -410,9 +472,10 @@ are not sent to servers, so the code never lands in a log or `Referer` header.
 Build the typed code first; six characters is not a burden.
 
 Why this shape: a child device's token can only *append* to its own family — it
-cannot read other children's data. A lost tablet means revoking one token from
-the parent page and nothing else. Tokens are stored hashed, so a database dump
-yields no working credentials.
+cannot read other children's data. A lost tablet means revoking one token —
+`GET /api/devices` to find it by `label`, `POST /api/devices/revoke` (§6.4) —
+from the parent page, and nothing else. Tokens are stored hashed, so a database
+dump yields no working credentials.
 
 Profile-blob addition, added tolerantly in `load()` in the same style as every
 other migration in both apps:
@@ -493,6 +556,13 @@ comes straight from the envelope columns with no JSON parsing.
 - Streak / last active.
 
 **Detail view:** one session, item by item, right and wrong, attempts.
+
+**Devices:** one small screen, off the main view. "Add a device" calls
+`POST /api/pairing-code` and shows the resulting 6-character code (§7). A list
+below it, from `GET /api/devices`, shows label, role, last active, and a
+Revoke button per row (§6.4) — this is the whole surface for the "lost
+tablet" story in §7, and the same `last_seen` data drives the quiet-device
+flag in §13.
 
 **Copy discipline:** the apps never show a child a percentage or a grade.
 `parent.html` is parent-only behind a device token, so percentages are fine
@@ -675,7 +745,7 @@ export async function onRequestPost({ request, env }) {
 }
 ```
 
-Six files, one per §6.3 endpoint. Roughly 150-200 lines total.
+Nine files, one per §6.4 endpoint. Roughly 200-260 lines total.
 
 *Gotcha:* **bindings and environment variables only take effect on a deploy made
 after they were added.** If you added them to an existing project, push a commit
@@ -739,15 +809,15 @@ the old URL. Delete the Pages project and you are exactly where you started.
 - **Hosting move.** The one-time URL change and PWA re-install is the biggest
   practical cost. Decide before Phase 1 step 1, because step 1 *is* the move.
   (Alternative: `*.workers.dev` + CORS, keeping GitHub Pages.)
-- **Free-tier drift.** Cloudflare could change terms. The API is five endpoints
+- **Free-tier drift.** Cloudflare could change terms. The API is nine endpoints
   over SQLite; porting is a day, not a rewrite. Keeping the schema plain SQL is
   deliberate for exactly this reason.
 - **Clock skew.** A tablet with a wrong date mints wrong `occurred_at` and odd
   session ids. `received_at` is stored as a cross-check; the dashboard should
   prefer it when the two disagree by more than a day.
 - **Silent sync failure.** Because failures are invisible by design, sync could
-  be dead for weeks unnoticed. Mitigation: the parent page shows "last heard
-  from" per device and flags anything quiet for 7+ days.
+  be dead for weeks unnoticed. Mitigation: the parent page calls `GET
+  /api/devices` (§6.4) and flags anything quiet for 7+ days by `last_seen`.
 - **Open question:** should `parent.html` ship in this public repo? It holds no
   secrets — tokens are per-device and entered at runtime — so yes, but worth
   re-confirming before it ships.
