@@ -1,14 +1,25 @@
 # Parent Sync — Specification
 
-Status: **Phase 1, in progress.** The §6 schema and §6.4 API (`schema.sql`,
-`functions/api/*`) are built per §12 Steps 4 and 7, and `parent.html` (§9,
-§11 step 3) is built and tested end-to-end against a local D1 instance:
-family creation, pairing-code mint/redeem, sync, the dashboard grid/cards/
-trouble-items/session-detail, and device revocation. Only the Spelling/Math
-Star client integration (§11 Phase 1 steps 4-5 — the sync module inside the
-two app files) remains. This document is the design for adding an optional
-backend so a parent can see their children's results from their own phone.
-Scope is **Spelling Star and Math Star only**.
+Status: **Phase 1 complete.** The §6 schema and §6.4 API (`schema.sql`,
+`functions/api/*`) are built per §12 Steps 4 and 7, `parent.html` (§9, §11
+step 3) is built and tested end-to-end against a local D1 instance (family
+creation, pairing-code mint/redeem, sync, the dashboard grid/cards/
+trouble-items/session-detail, and device revocation), and the §8 sync module
+— identical code per §3 rule 5 — is now wired into both `spelling-star-v6_3.html`
+and `math-star-v6_1.html` (§11 Phase 1 steps 4-5): `data.sync` with tolerant
+migration, "Sync to my phone" pairing UI (plus the §5 endpoint-override field)
+behind the existing PIN gate, push after every session-completing `persist()`
+and once on boot/profile-switch, and `/api/delete` on session delete. `sw.js`'s
+`CACHE_VERSION` is bumped (§11 step 6). Verified with a Playwright smoke pass
+against static files: setup wizard through to a completed session with sync
+off (byte-for-byte unaffected), and the Settings sync card rendering and
+failing a pairing attempt gracefully with no uncaught errors. Not yet verified
+against a live `wrangler dev`/D1 instance in this pass — the sandboxed network
+here couldn't complete workerd's local `Request.cf` handshake, so treat the
+next real deploy as the first live check of the full pairing→push→dashboard
+loop. This document is the design for adding an optional backend so a parent
+can see their children's results from their own phone. Scope is **Spelling
+Star and Math Star only**.
 
 Revised after review: the §6 schema had a dangling `sessions.device_id` with
 nothing to join against, and the authorization boundary was never stated
