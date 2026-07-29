@@ -26,6 +26,15 @@ Target files (when built): a new `parent.html`, a new `functions/` directory,
 and additive changes inside `spelling-star-v6_3.html` and `math-star-v6_1.html`.
 No existing behavior changes when sync is off.
 
+Revised again after the live deploy: **Cloudflare Pages no longer exists as a
+separate product** — connecting a repo now always creates a Worker (static
+assets + optional server code), and that Worker does not understand Pages
+Functions' file-based routing from `functions/api/*`, and its dashboard
+binding editor is locked for git-connected projects. §12 Steps 2 and 5-7 are
+rewritten for what actually works today: a committed `wrangler.toml`, a
+committed `.assetsignore`, and a pre-bundled Worker script built from
+`functions/`. **Do not follow an older copy of §12.**
+
 ---
 
 ## 1. Goals
@@ -142,20 +151,26 @@ operational friction is.**
 
 | Option | Free? | Friction | Verdict |
 |---|---|---|---|
-| **Cloudflare Pages + Functions + D1** | Yes, no card. ~100k req/day; D1 ~5 GB. | Deploys on `git push`. ~150 lines of your own code in the repo. Same origin as the apps → no CORS. | **Chosen** |
+| **Cloudflare Workers (static assets) + D1** | Yes, no card. ~100k req/day; D1 ~5 GB. | Deploys on `git push`. ~150 lines of your own code in the repo. Same origin as the apps → no CORS. | **Chosen** |
 | Firebase Firestore (Spark) | Yes, no card. | No server code, but a console to configure, security rules to get right, fiddly token refresh. Usable via REST, so no SDK script tag. | Fallback |
 | Supabase | Free, but **projects pause after ~7 days idle**. | A homeschool app goes quiet over breaks; a paused project is a dead dashboard. | Rejected |
 | GitHub repo as store | — | Needs a write token in client code, in a public repo, holding kids' data. | Never |
 | Apps Script → Sheet | Yes. | Least work, and a spreadsheet the parent already knows. But the deploy URL is a bare secret anyone can POST to, and you get a sheet, not a dashboard. | Escape hatch |
 
-**Chosen: Cloudflare Pages + Pages Functions + D1**, moving hosting for the
-whole repo from GitHub Pages to Cloudflare Pages.
+**Chosen: Cloudflare Workers, static assets + D1**, moving hosting for the
+whole repo from GitHub Pages to Cloudflare. (This was originally written for
+Cloudflare Pages; Pages has since been folded entirely into Workers — see the
+§12 revision note.)
 
 - Same origin means the apps call `/api/...` — no CORS, no second domain, no
   cross-origin cookie questions.
-- Deployment stays "push to `main`". Cloudflare builds nothing (there is no
-  build step); it serves the repo and runs `functions/`. No local `wrangler`,
-  no CI to maintain.
+- Deployment stays "push to `main`". There *is* a build step, just not one
+  Cloudflare runs for you: `functions/api/*` gets bundled locally with
+  `wrangler pages functions build` into a committed `dist/worker/index.js`
+  (§12 Step 7), because a Worker doesn't understand Pages-style file-based
+  routing on its own. Local `wrangler` is needed for that bundling step and
+  for the one-time D1 setup — not for day-to-day deploys, which are still
+  just `git push`.
 - The API is yours, ~150 lines, in the repo, reviewable and diffable — which
   suits a codebase whose ethos is "one file you can read."
 - No inactivity pause, no cold-start a parent would notice.
@@ -181,7 +196,7 @@ apps and backend land on one origin, so there is nothing to configure and no
 CORS. Setup on a child device is a 6-character pairing code and nothing else; no
 URL typing on a tablet keyboard.
 
-**The control point is family creation, not the endpoint.** If your Pages
+**The control point is family creation, not the endpoint.** If your Worker
 deployment serves the apps and `/api` is live at the same origin, a "blank by
 default" endpoint field protects nothing — any visitor's copy of the code can
 find the backend trivially, and you would be running multi-tenant hosting by
@@ -621,9 +636,11 @@ summary on the clipboard or into the OS share sheet. Zero infra, and it proves
 out the summary format before any server exists. Skippable.
 
 **Phase 1 — the real thing (~3-4 sessions).**
-1. Cloudflare Pages set up, repo connected, `main` deploying. Verify all four
-   apps and the PWA still work on the new origin **before** touching app code.
-2. D1 schema + `functions/api/*` + pairing + signup secret. Test with `curl`.
+1. Cloudflare Worker set up (git-connected, static assets + D1), repo
+   connected, `main` deploying. Verify all four apps and the PWA still work on
+   the new origin **before** touching app code.
+2. D1 schema + `functions/api/*` (bundled into a single Worker script, §12
+   Step 7) + pairing + signup secret. Test with `curl`.
 3. `parent.html`: family creation, pairing, the grid, cards, trouble items.
 4. Spelling Star: `data.sync` field with migration, pairing UI in the parent
    area, push on session end and boot, `/api/delete` on session delete.
@@ -645,12 +662,17 @@ everything gets harder once it does.
 ## 12. Step-by-step: standing up the backend
 
 Written to be followed without prior Cloudflare knowledge. **Cloudflare moves
-its dashboard around** (Pages is being folded into Workers), so each step states
-*what you are accomplishing* and gives a CLI equivalent, which changes far less
-than the menus do. If a menu name doesn't match, match on the goal.
+its dashboard around** — Pages has been folded into Workers entirely, so
+"Pages project" in older instructions (including earlier drafts of this file)
+now just means "Worker." Each step states *what you are accomplishing* and
+gives a CLI equivalent, which changes far less than the menus do. If a menu
+name doesn't match, match on the goal.
 
-Nothing here touches the app files. At the end of §12 you have a working,
-empty backend and the four apps still behaving exactly as today.
+This does touch the repo, beyond the app files: `wrangler.toml`,
+`.assetsignore`, and a `dist/worker/index.js` build output all get committed
+in Step 7, because Workers has no dashboard-only way to configure D1 bindings
+or serve `functions/api/*` for a git-connected project. None of it changes
+behavior for the four apps.
 
 ### Step 1 — Cloudflare account
 
@@ -661,25 +683,23 @@ to buy a domain or move your DNS anywhere.
 
 ### Step 2 — Connect the repo
 
-Workers & Pages → Create → Pages → **Connect to Git** → authorize GitHub →
-pick `NoliCommoveri/Star-homeschool`.
+Workers & Pages → Create → connect to Git → authorize GitHub → pick
+`NoliCommoveri/Star-homeschool`, branch `main`. There is no separate "Pages"
+option anymore — connecting a repo always creates a Worker.
 
-Build settings — this is the step people get wrong, because the defaults assume
-a build step this repo does not have:
+Unlike the old Pages flow, there's no dashboard field for build output
+directory or a D1 binding — a git-connected Worker gets **all** of its config
+(what to serve as static assets, what script to run, what it's bound to) from
+a `wrangler.toml` committed to the repo, added in Steps 5 and 7 below. Until
+that file exists, Cloudflare deploys the repo as static-assets-only (no
+server code), which is fine for this step.
 
-| Setting | Value |
-|---|---|
-| Framework preset | **None** |
-| Build command | **leave empty** |
-| Build output directory | **`/`** (repo root) |
-| Production branch | `main` |
-
-Save and deploy. It takes about a minute.
-
-*Checkpoint:* `https://star-homeschool.pages.dev` (or whatever name it assigned)
-loads `index.html`, and all four apps open and work. **Test the PWA install and
-offline mode here too, before going further** — this is the hosting move, and
-it is the one step with a user-visible cost.
+*Checkpoint:* your assigned URL — something like
+`https://star-homeschool.<your-subdomain>.workers.dev`, found via the
+dashboard's **Visit** button — loads `index.html`, and all four apps open and
+work. **Test the PWA install and offline mode here too, before going
+further** — this is the hosting move, and it is the one step with a
+user-visible cost.
 
 ### Step 3 — Create the database
 
@@ -691,56 +711,91 @@ CLI equivalent: `npx wrangler d1 create star-homeschool`
 
 ### Step 4 — Create the schema
 
-Commit the §6 `CREATE TABLE` statements to the repo as `schema.sql`, then either
-paste them into the D1 **Console** tab in the dashboard, or run:
+Commit the §6 `CREATE TABLE` statements to the repo as `schema.sql`, then run:
 
 ```
 npx wrangler d1 execute star-homeschool --remote --file=./schema.sql
 ```
+
+**Don't paste `schema.sql` into the D1 Console tab in the dashboard** — it's a
+plausible-looking option but it silently mishandles multi-statement, commented
+SQL like this file: pasting the whole thing gives a "request malformed" error,
+and stripping the leading comments just moves the failure to "incomplete
+input." The CLI command above sends the file to D1's real batch-exec endpoint
+and works correctly. If you truly have no CLI access, the Console can work
+one statement at a time (no comments, one `CREATE TABLE`/`CREATE INDEX` per
+paste) but there's no reason to do it that way.
 
 The `--remote` flag matters. Without it you write to a local dev copy and the
 real database stays empty — a genuinely confusing failure, because everything
 appears to succeed.
 
 *Checkpoint:* `SELECT name FROM sqlite_master WHERE type='table';` in the D1
-console lists `families`, `devices`, `children`, `pairing_codes`, `sessions`.
+console lists `families`, `devices`, `children`, `pairing_codes`, `sessions`
+(alongside Cloudflare's own internal `_cf_KV` table — that one's not yours,
+ignore it).
 
 Note the `PRAGMA foreign_keys = ON` at the top of the schema: D1 supports
-foreign keys but they are **not enforced by default**, and the §6 schema relies
-on them to keep a session from referencing a device or child that no longer
-exists.
+foreign keys but they are **not enforced by default**. This pragma only
+applies per-connection, though, and a git-deployed Worker never runs it at
+request time — so the §6 schema's reliance on FK enforcement is currently
+theoretical, not actually active in production. Real enforcement would need
+`PRAGMA foreign_keys = ON` run at the top of the request handler itself, not
+just once during schema setup.
 
 ### Step 5 — Bind the database to the site
 
-The Pages project cannot see D1 until you bind it.
+**The dashboard's Bindings tab does not work for this.** If your Worker
+deploys via git (it does — Cloudflare's build log will say something like
+`npx wrangler deploy`), its dashboard binding editor is locked: any binding
+you add there through the UI silently fails to persist, because the real
+source of truth is `wrangler.toml` in the repo, and the dashboard won't let
+the two drift. (You'll know you're in this state if Settings → Variables and
+secrets says "Variables cannot be added to a Worker that only has static
+assets," or if the Bindings tab accepts a new D1 binding but shows "No
+connected bindings" again right after.)
 
-Pages project → Settings → **Functions** → **D1 database bindings** → Add:
+Instead, commit a `wrangler.toml` to the repo:
 
-| Field | Value |
-|---|---|
-| Variable name | **`DB`** |
-| D1 database | `star-homeschool` |
+```toml
+name = "star-homeschool"
+main = "./dist/worker/index.js"
+compatibility_date = "<today's date>"
 
-Add it under **both Production and Preview.** Setting only Production is the
-single most common way to get a "`env.DB` is undefined" error that appears to
-make no sense.
+[assets]
+directory = "./"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "star-homeschool"
+database_id = "<your D1 database's ID>"
+```
+
+Find the database ID on the D1 database's own Overview page in the dashboard,
+or via `npx wrangler d1 list`. `main` points at a build output that doesn't
+exist yet — that's Step 7.
 
 *In code this becomes* `env.DB` inside your function handlers.
 
 ### Step 6 — Set the signup secret
 
-Same Settings area → **Environment variables** → add `SIGNUP_SECRET`, value = a
-long random string you generate. Click **Encrypt** so it is write-only
-afterwards. Again: Production *and* Preview.
+Worker → Settings → **Variables and secrets** → add `SIGNUP_SECRET`, type
+**Secret**, value = a long random string you generate. Unlike the D1 binding,
+this one genuinely works from the dashboard — secrets are stored separately
+from `wrangler.toml` (correctly: never commit a secret value to git) and
+aren't subject to the same config-drift lock. There's no separate
+Production/Preview split to worry about here; a git-connected Worker like
+this one has just the one environment.
 
-This is the §5 gate that keeps your instance serving exactly one family.
+This is the §5 gate that keeps your instance serving exactly one family. Once
+saved, the value is **not viewable again** — copy it somewhere safe (a
+password manager) the moment you create it.
 
-### Step 7 — Write the functions
+### Step 7 — Write the functions, and bundle them into the Worker
 
-Create `functions/api/` in the repo. Pages Functions uses **file-based
-routing**: `functions/api/sync.js` serves `/api/sync`. The `functions/`
-directory is never served as static files, so nothing here is publicly
-readable.
+Create `functions/api/` in the repo, one file per §6.4 endpoint, using Pages
+Functions' file-based-routing shape:
 
 ```js
 // functions/api/sync.js
@@ -753,9 +808,51 @@ export async function onRequestPost({ request, env }) {
 
 Nine files, one per §6.4 endpoint. Roughly 200-260 lines total.
 
-*Gotcha:* **bindings and environment variables only take effect on a deploy made
-after they were added.** If you added them to an existing project, push a commit
-(or hit Retry deployment) or `env.DB` will still be undefined.
+**This file-based routing is a Pages-only convention — a plain Worker (which
+is what git-connected deploys produce now) does not understand `functions/`
+at all**, and will not serve any of it. It needs compiling into a single
+entry script first:
+
+```
+npx wrangler pages functions build --outdir=dist/worker
+```
+
+This bundles all of `functions/api/*.js` into one `dist/worker/index.js` that
+does its own internal routing and falls back to `env.ASSETS.fetch(request)`
+for anything it doesn't handle — which is exactly what `wrangler.toml`'s
+`main` points at in Step 5. **Commit `dist/worker/index.js`.** There's no
+Cloudflare build-command step running this automatically, so it has to be
+regenerated and committed by hand after every change under `functions/`,
+before you push.
+
+Also commit an `.assetsignore` in the repo root, or the `[assets] directory =
+"./"` from Step 5 will upload things that were never meant to be public:
+
+```
+.git/
+.wrangler/
+functions/
+dist/
+docs/
+schema.sql
+wrangler.toml
+.assetsignore
+README.md
+node_modules/
+package.json
+package-lock.json
+```
+
+**The `.git/` line is not optional.** Wrangler's default ignore list only
+covers `.assetsignore`, `_redirects`, and `_headers` — it does *not* skip
+`.git` or `node_modules` on its own. Without `.git/` here, your entire commit
+history — every past version of every file — gets uploaded as publicly
+downloadable static assets alongside your site.
+
+*Gotcha:* **bindings and secrets only take effect on a deploy made after they
+were added.** If you added the D1 binding or `SIGNUP_SECRET` to an existing
+deployment, push a new commit (or hit Retry deployment) or `env.DB`/
+`env.SIGNUP_SECRET` will still be undefined.
 
 ### Step 8 — Deploy and verify
 
@@ -763,24 +860,31 @@ after they were added.** If you added them to an existing project, push a commit
 before involving any app:
 
 ```
-curl -i https://<your-site>.pages.dev/api/children
-# expect 401 — no token. A 404 means routing is wrong;
-# a 500 usually means the D1 binding didn't apply (step 5 or the step 7 gotcha).
+curl -i https://<your-worker>.workers.dev/api/children
+# expect 401 — no token. A 404 means routing never reached the Worker
+# (check that functions/ was actually rebuilt into dist/worker/index.js —
+# see Step 7 — and, if it still 404s, that assets.run_worker_first isn't
+# needed for your setup);
+# a 500 usually means the D1 binding didn't apply (Step 5 or the Step 7 gotcha).
 ```
 
 Then create your family, which is the one call that needs the secret:
 
 ```
-curl -X POST https://<your-site>.pages.dev/api/family \
+curl -X POST https://<your-worker>.workers.dev/api/family \
   -H 'Content-Type: application/json' \
   -d '{"signupSecret":"<the secret>","deviceId":"'"$(uuidgen)"'","label":"curl test"}'
 # expect a device token back
 ```
 
+(On Windows, use `curl.exe` explicitly — PowerShell's built-in `curl` is an
+alias for `Invoke-WebRequest` and doesn't take these flags — and swap in a
+fixed UUID for `deviceId`, since `uuidgen` isn't a Windows command.)
+
 Then confirm the §5 gate actually holds — a wrong secret must fail:
 
 ```
-curl -X POST https://<your-site>.pages.dev/api/family \
+curl -X POST https://<your-worker>.workers.dev/api/family \
   -H 'Content-Type: application/json' \
   -d '{"signupSecret":"wrong","deviceId":"x","label":"x"}'
 # expect 401/403. A 200 here means your instance is open to the world.
@@ -791,9 +895,9 @@ backend is now real, and nothing in the apps has changed.
 
 ### Step 9 — Optional: custom domain
 
-Pages project → Custom domains. If you own a domain, this avoids ever
-re-pointing devices again should the project name change. Skippable; `.pages.dev`
-is perfectly stable.
+Worker → Domains & Routes → **Add**. If you own a domain, this avoids ever
+re-pointing devices again should the project name change. Skippable;
+`.workers.dev` is perfectly stable.
 
 ### Step 10 — Retire the old host
 
@@ -806,7 +910,7 @@ devices are being re-pointed.
 
 Every step is reversible and none of it touches app code. If the hosting move
 goes badly at step 2, GitHub Pages is still live and untouched — just keep using
-the old URL. Delete the Pages project and you are exactly where you started.
+the old URL. Delete the Worker and you are exactly where you started.
 
 ---
 
@@ -837,7 +941,7 @@ the old URL. Delete the Pages project and you are exactly where you started.
 Yes, and free is realistic rather than a technicality — the data volume is
 thousands of times below any free tier's limits.
 
-Cloudflare Pages + Functions + D1, one-way append-only sync from the child
+Cloudflare Workers, static assets + D1, one-way append-only sync from the child
 devices, a read-only `parent.html` on the parent's phone, covering Spelling Star
 and Math Star. Both apps already record everything the dashboard needs, in
 close enough to the same shape that the sync module is identical code in both
