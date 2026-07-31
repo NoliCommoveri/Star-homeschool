@@ -1,7 +1,7 @@
 // Star Apps service worker — offline caching for the app shell.
 // Bump CACHE_VERSION whenever a precached file's content changes so
 // clients pick up the new copy instead of a stale cached one.
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME = `star-apps-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -19,6 +19,11 @@ const PRECACHE_URLS = [
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
+  './parent-manifest.json',
+  './parent-favicon-32.png',
+  './parent-apple-touch-icon.png',
+  './parent-icon-192.png',
+  './parent-icon-512.png',
   './spelling-lists.json'
 ];
 
