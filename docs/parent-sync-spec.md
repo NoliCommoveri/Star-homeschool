@@ -337,6 +337,28 @@ first time sync is turned on for that profile, and stored in `data.sync.childId`
 alongside `deviceId`. It is not derived from the child's name or from
 `family_id` — same reasoning as §6.5's non-guessable-ids note.
 
+**One child, not one child per app.** "That profile" spans both apps, and this
+is the part an earlier draft got wrong: Spelling Star and Math Star keep
+separate profile blobs, so each minted its own `childId` and the same child
+arrived as two `children` rows — two rows in the parent grid (§9), one per app.
+The apps share an origin, so the id is kept in its own `localStorage` entry,
+`starhomeschool-childid-<slug>`, where `<slug>` is the profile-name slug both
+apps already compute the same way. Whichever app pairs first mints it; the
+other adopts it. It stays outside `data.sync` because it outlives any one
+app's profile blob.
+
+An app that already paired under its own id reconciles on its next push:
+adopting the shared id clears `ackedIds`, which re-pushes local history under
+it (safe — §6.4's upsert is idempotent). The rows written under the old id stay
+put; the dashboard folds them in by name (§9) rather than the server rewriting
+history. `/api/delete` therefore tombstones by `device_id` rather than
+`child_id`, so a delete still reaches copies written before the adoption.
+
+This unifies the common case — one tablet, both apps. A child using Spelling on
+one device and Math on another still mints two ids, the same documented
+limitation shape as §8's "same child on two devices," and lands on the same
+dashboard-side merge.
+
 There is no separate "create a child" call. The `children` row is created
 lazily, inside `/api/sync`'s handler: on each push, upsert `children` by
 `(id)` within the token's `family_id`, setting `name = childName` from the
@@ -571,11 +593,52 @@ Not a report card. A parent glances at this between other things, so it answers
 last-active. Answers "has anyone touched Math since Tuesday?" at a glance, and
 comes straight from the envelope columns with no JSON parsing.
 
+One row per child, so `/api/children` rows sharing a name are merged into a
+single dashboard child holding every id it synced under (§6.2) — within one
+family a name is the child. Sessions are fetched per id and deduped on
+`(deviceId, id)`, since a re-push under an adopted id leaves the same session
+under both.
+
+**Session type is part of the answer.** A pretest, a test and a practice run
+all arrive as a row with a score, so a bare count reads as "she did three
+things" when what a parent needs is "the diagnostic, then the test, then a
+practice." Every place the dashboard shows a session it names the kind, using
+the child apps' own words (Spelling Star's Pretest / Test / Practice / Repeat /
+Spot it, Math Star's Drill / Practice): a badge in Recent sessions, a
+count-per-kind breakdown under the 7-day summary, and the badge again in the
+session detail. Unknown modes render their raw `mode` rather than disappearing.
+
+A perfect pretest also writes a `test` session (`promotedFrom`, §2.1) so list
+progression sees a qualifying test. It is bookkeeping, not a second sitting, so
+it is marked `auto` wherever it appears and the detail view says so outright —
+the count stays truthful to what was recorded, and the parent can see why two
+sessions share a timestamp.
+
+**Below the grid: one card, chosen.** Stacking every child × every app made the
+page a scroll to nowhere as soon as a family had more than one of either — the
+grid answers "who did what" and then the reader wants *one* child. So a picker
+sits under the grid: a "View details for:" child dropdown and an app toggle
+carrying each app's session count, driving a single card. The selected child is
+highlighted back in the grid, the app choice survives switching child (a parent
+comparing math across kids shouldn't have to re-pick it), and an app with no
+sessions for that child says so rather than rendering a blank card. Both
+controls are pure repaint — every session for the family is already fetched, so
+switching costs no requests.
+
+**Times are the reader's, not the wire's.** Sessions travel as UTC ISO strings
+and are useless to a parent in that form. Every timestamp renders through
+`toLocale*`, which resolves to whatever phone is looking: dates carry the clock
+time beneath them in Recent sessions, "last active" carries the absolute
+date-time next to the relative one, and the session detail leads with the full
+local date-time. A tablet in another timezone than the phone reads in the
+phone's zone — the right default for the person doing the reading.
+
 **Per child, per app, one card:**
 
 - Last 7 days: sessions, average score, sparkline.
-- Recent sessions: date, scope (list name / focus area), score — honoring the
-  profile's `percent | points` preference in Spelling.
+- Recent sessions: date and local time, type (§9 above), scope (list name /
+  focus area), score — honoring the profile's `percent | points` preference in
+  Spelling.
 - **Trouble items**, the centerpiece:
   - *Spelling* — words ranked by miss count, weighted toward recent misses,
     excluding words already graduated out of `reviewWords`. Top ~10 with counts.

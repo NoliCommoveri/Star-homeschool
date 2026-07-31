@@ -134,8 +134,8 @@ async function onRequestPost2({ request, env }) {
   const deleted = [];
   for (const sessionId of sessionIds) {
     await env.DB.prepare(
-      "UPDATE sessions SET deleted = 1 WHERE child_id = ? AND app = ? AND session_id = ?"
-    ).bind(childId, app, String(sessionId)).run();
+      "UPDATE sessions SET deleted = 1 WHERE device_id = ? AND app = ? AND session_id = ?"
+    ).bind(device.id, app, String(sessionId)).run();
     deleted.push(String(sessionId));
   }
   return json({ deleted });
@@ -363,7 +363,7 @@ async function onRequestPost6({ request, env }) {
 }
 __name(onRequestPost6, "onRequestPost");
 
-// ../.wrangler/tmp/pages-CP4hvC/functionsRoutes-0.29041967604843233.mjs
+// ../.wrangler/tmp/pages-W8MpVv/functionsRoutes-0.4699978642497291.mjs
 var routes = [
   {
     routePath: "/api/devices/revoke",
@@ -430,7 +430,7 @@ var routes = [
   }
 ];
 
-// ../../../../root/.npm/_npx/32026684e21afda6/node_modules/path-to-regexp/dist.es2015/index.js
+// ../../../../root/.npm/_npx/d77349f55c2be1c0/node_modules/path-to-regexp/dist.es2015/index.js
 function lexer(str) {
   var tokens = [];
   var i = 0;
@@ -756,7 +756,7 @@ function pathToRegexp(path, keys, options) {
 }
 __name(pathToRegexp, "pathToRegexp");
 
-// ../../../../root/.npm/_npx/32026684e21afda6/node_modules/wrangler/templates/pages-template-worker.ts
+// ../../../../root/.npm/_npx/d77349f55c2be1c0/node_modules/wrangler/templates/pages-template-worker.ts
 var escapeRegex = /[.+?^${}()|[\]\\]/g;
 function* executeRequest(request) {
   const requestPath = new URL(request.url).pathname;
