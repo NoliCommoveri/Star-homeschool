@@ -59,6 +59,13 @@
   .badge.tone-practice { background: var(--green-soft); color: var(--green-dark); }
   .badge.tone-play { background: var(--soft); color: var(--body-text); }
   .mode-breakdown { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .picker label { font-size: 14px; margin-bottom: 6px; }
+  .picker select { margin-bottom: 12px; }
+  .app-toggle { gap: 8px; }
+  .app-toggle button { flex: 1; min-width: 130px; }
+  .app-toggle .count { font-weight: 700; opacity: .7; font-size: 12px; }
+  tr.selected-row td { background: var(--accent-soft); }
+  tr.selected-row td:first-child { border-left: 3px solid var(--accent); }
   .code-display { font-size: 40px; font-weight: 800; letter-spacing: .18em; text-align: center; padding: 18px; background: var(--soft); border-radius: 16px; margin: 12px 0; }
   .sparkline { display: block; }
   .trouble-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -154,7 +161,10 @@ function loadSync() {
 function saveSync(obj) { localStorage.setItem(SYNC_KEY, JSON.stringify(obj)); }
 function clearSync() { localStorage.removeItem(SYNC_KEY); }
 
-const state = { sync: loadSync(), view: 'dashboard', children: [], sessionsByKey: {}, loading: false, error: '' };
+const state = {
+  sync: loadSync(), view: 'dashboard', children: [], sessionsByKey: {}, loading: false, error: '',
+  detailChildId: null, detailApp: APPS[0].id, // which child/app the detail card below the grid is showing
+};
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -181,6 +191,20 @@ function fmtDate(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return '—';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+// Sessions travel as UTC ISO strings (the tablet's `new Date().toISOString()`,
+// stored as an epoch and handed back the same way), which is the right thing on
+// the wire and the wrong thing to read. toLocale* resolves to whatever phone is
+// looking, so a parent sees the clock time they'd have seen in the room.
+function fmtTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 function pct(score, total) {
   if (!total) return null;
@@ -339,34 +363,76 @@ async function renderDashboard() {
       }
     }
 
-    const weekAgo = Date.now() - 7 * 86400000;
-    const gridRows = children.map((child) => {
-      const cols = APPS.map((a) => {
-        const sessions = state.sessionsByKey[child.id + ':' + a.id];
-        const recent = sessions.filter((s) => Date.parse(s.date) >= weekAgo);
-        const lastActive = sessions.length ? Date.parse(sessions[sessions.length - 1].date) : null;
-        return `<td>${recent.length ? `${recent.length} session${recent.length === 1 ? '' : 's'}<br><span class="muted">${fmtRelative(lastActive)}</span>` : '<span class="muted">—</span>'}</td>`;
-      }).join('');
-      return `<tr><td><strong>${esc(child.name || 'Unnamed')}</strong></td>${cols}</tr>`;
-    }).join('');
-
-    const cards = cells
-      .filter((c) => c.sessions.length)
-      .map((c) => renderChildAppCard(c.child, c.app, c.sessions))
-      .join('');
-
-    app.innerHTML = `
-      <div class="card">
-        <h2>Last 7 days</h2>
-        <table>
-          <thead><tr><th>Child</th>${APPS.map((a) => `<th>${a.label}</th>`).join('')}</tr></thead>
-          <tbody>${gridRows}</tbody>
-        </table>
-      </div>
-      ${cards || '<div class="card empty">No sessions synced yet — once a child device is paired and used, results show up here.</div>'}`;
+    // Land on someone with data rather than an empty card.
+    if (!children.some((c) => c.id === state.detailChildId)) {
+      const busiest = cells.filter((c) => c.sessions.length)[0];
+      state.detailChildId = (busiest ? busiest.child : children[0]).id;
+      if (busiest) state.detailApp = busiest.app.id;
+    }
+    paintDashboard();
   } catch (err) {
     app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
   }
+}
+
+// Repaint only — every session is already in state.sessionsByKey, so switching
+// child or app is instant and costs no requests.
+function paintDashboard() {
+  const weekAgo = Date.now() - 7 * 86400000;
+  const gridRows = state.children.map((child) => {
+    const cols = APPS.map((a) => {
+      const sessions = state.sessionsByKey[child.id + ':' + a.id] || [];
+      const recent = sessions.filter((s) => Date.parse(s.date) >= weekAgo);
+      const lastActive = sessions.length ? Date.parse(sessions[sessions.length - 1].date) : null;
+      return `<td>${recent.length ? `${recent.length} session${recent.length === 1 ? '' : 's'}<br><span class="muted" title="${esc(fmtDateTime(sessions[sessions.length - 1].date))}">${fmtRelative(lastActive)}</span>` : '<span class="muted">—</span>'}</td>`;
+    }).join('');
+    const selected = child.id === state.detailChildId ? ' class="selected-row"' : '';
+    return `<tr${selected}><td><strong>${esc(child.name || 'Unnamed')}</strong></td>${cols}</tr>`;
+  }).join('');
+
+  const child = state.children.find((c) => c.id === state.detailChildId) || state.children[0];
+  const appDef = APPS.find((a) => a.id === state.detailApp) || APPS[0];
+  const sessions = state.sessionsByKey[child.id + ':' + appDef.id] || [];
+
+  const childOptions = state.children
+    .map((c) => `<option value="${esc(c.id)}"${c.id === child.id ? ' selected' : ''}>${esc(c.name || 'Unnamed')}</option>`)
+    .join('');
+
+  // The app toggle carries each app's session count, so switching to an empty
+  // one is a decision rather than a surprise.
+  const appToggle = APPS.map((a) => {
+    const n = (state.sessionsByKey[child.id + ':' + a.id] || []).length;
+    const active = a.id === appDef.id ? ' active' : '';
+    return `<button class="outline${active}" onclick="selectDetailApp('${a.id}')">${esc(a.label)}${n ? ` <span class="count">${n}</span>` : ''}</button>`;
+  }).join('');
+
+  const detail = sessions.length
+    ? renderChildAppCard(child, appDef, sessions)
+    : `<div class="card empty">No ${esc(appDef.label)} sessions for ${esc(child.name || 'this child')} yet.</div>`;
+
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <h2>Last 7 days</h2>
+      <table>
+        <thead><tr><th>Child</th>${APPS.map((a) => `<th>${a.label}</th>`).join('')}</tr></thead>
+        <tbody>${gridRows}</tbody>
+      </table>
+    </div>
+    <div class="card picker">
+      <label for="childSel">View details for:</label>
+      <select id="childSel" onchange="selectDetailChild(this.value)">${childOptions}</select>
+      <div class="row app-toggle">${appToggle}</div>
+    </div>
+    ${detail}`;
+}
+
+function selectDetailChild(id) {
+  state.detailChildId = id;
+  paintDashboard();
+}
+function selectDetailApp(appId) {
+  state.detailApp = appId;
+  paintDashboard();
 }
 
 function renderChildAppCard(child, app, sessions) {
@@ -394,7 +460,7 @@ function renderChildAppCard(child, app, sessions) {
     const scope = app.id === 'spelling' ? s.listName : (s.focusName || (s.categories || []).join(', '));
     const p = pct(s.score, s.total);
     return `<tr class="clickable" onclick="openSessionDetail('${child.id}','${app.id}','${esc(s.id)}')">
-      <td>${fmtDate(s.date)}</td><td>${modeBadge(app.id, s)}</td><td>${esc(scope || '—')}</td>
+      <td>${fmtDate(s.date)}<br><span class="muted">${fmtTime(s.date)}</span></td><td>${modeBadge(app.id, s)}</td><td>${esc(scope || '—')}</td>
       <td>${s.score}/${s.total}${p != null ? ` (${p}%)` : ''}</td></tr>`;
   }).join('');
 
@@ -409,7 +475,7 @@ function renderChildAppCard(child, app, sessions) {
   return `
     <div class="card">
       <h2>${esc(child.name || 'Unnamed')} — ${esc(app.label)}</h2>
-      <p class="muted">Last active ${fmtRelative(lastActive)}</p>
+      <p class="muted">Last active ${fmtRelative(lastActive)}${lastActive ? ` · ${esc(fmtDateTime(sessions[sessions.length - 1].date))}` : ''}</p>
       <div class="row">
         <div class="col">
           <p><strong>${recent.length}</strong> session${recent.length === 1 ? '' : 's'} in the last 7 days${avgPct != null ? `, averaging <strong>${avgPct}%</strong>` : ''}.</p>
@@ -487,7 +553,7 @@ function openSessionDetail(childId, appId, sessionId) {
     <div class="card">
       <h2>${esc(child?.name || 'Session')}</h2>
       <p style="margin:6px 0">${modeBadge(appId, session)}</p>
-      <p class="muted">${fmtDate(session.date)}${scope ? ' · ' + esc(scope) : ''} · ${session.score}/${session.total}</p>
+      <p class="muted">${esc(fmtDateTime(session.date))}${scope ? ' · ' + esc(scope) : ''} · ${session.score}/${session.total}</p>
       ${session.promotedFrom ? '<p class="muted">Recorded automatically from a perfect pretest — the same sitting as that pretest, not a second one.</p>' : ''}
       <div>${rows || '<p class="muted">No item detail recorded.</p>'}</div>
       <div class="center" style="margin-top:16px"><button class="outline" onclick="this.closest('.overlay').remove()">Close</button></div>

@@ -614,11 +614,31 @@ it is marked `auto` wherever it appears and the detail view says so outright —
 the count stays truthful to what was recorded, and the parent can see why two
 sessions share a timestamp.
 
+**Below the grid: one card, chosen.** Stacking every child × every app made the
+page a scroll to nowhere as soon as a family had more than one of either — the
+grid answers "who did what" and then the reader wants *one* child. So a picker
+sits under the grid: a "View details for:" child dropdown and an app toggle
+carrying each app's session count, driving a single card. The selected child is
+highlighted back in the grid, the app choice survives switching child (a parent
+comparing math across kids shouldn't have to re-pick it), and an app with no
+sessions for that child says so rather than rendering a blank card. Both
+controls are pure repaint — every session for the family is already fetched, so
+switching costs no requests.
+
+**Times are the reader's, not the wire's.** Sessions travel as UTC ISO strings
+and are useless to a parent in that form. Every timestamp renders through
+`toLocale*`, which resolves to whatever phone is looking: dates carry the clock
+time beneath them in Recent sessions, "last active" carries the absolute
+date-time next to the relative one, and the session detail leads with the full
+local date-time. A tablet in another timezone than the phone reads in the
+phone's zone — the right default for the person doing the reading.
+
 **Per child, per app, one card:**
 
 - Last 7 days: sessions, average score, sparkline.
-- Recent sessions: date, scope (list name / focus area), score — honoring the
-  profile's `percent | points` preference in Spelling.
+- Recent sessions: date and local time, type (§9 above), scope (list name /
+  focus area), score — honoring the profile's `percent | points` preference in
+  Spelling.
 - **Trouble items**, the centerpiece:
   - *Spelling* — words ranked by miss count, weighted toward recent misses,
     excluding words already graduated out of `reviewWords`. Top ~10 with counts.
