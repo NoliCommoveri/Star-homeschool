@@ -391,9 +391,14 @@ function listProfiles() {
   }
   return out.sort((a,b) => a.name.localeCompare(b.name));
 }
+// Shared with Spelling Star (§3 rule 5) so both apps land on the same slug for
+// the same child — that is what lets them share one childId (see sharedChildId).
+function childSlug(name) {
+  const s = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s || "child";
+}
 function nameToKey(name) {
-  const s = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return "mathstar-" + (s || "child");
+  return "mathstar-" + childSlug(name);
 }
 let KEY = null;
 let data = null;
@@ -2168,12 +2173,45 @@ async function syncApi(path, body) {
 // Any session not yet acked gets pushed. The server's upsert is idempotent
 // (§6.4), so re-sending an already-accepted session is harmless — that's
 // what lets the client be careless about retries (§8).
+// One child, one childId — across both apps (§6.2). Spelling Star and Math Star
+// keep separate profile blobs, so each was minting its own crypto.randomUUID()
+// the first time sync was turned on and the same child arrived in the cloud as
+// two `children` rows, one per app, showing up as two rows in the parent grid.
+// The apps share an origin, so the id lives in its own localStorage entry keyed
+// by the profile slug and whichever app pairs first mints it for both.
+function sharedChildIdKey() { return "starhomeschool-childid-" + childSlug(data.childName); }
+function sharedChildId() {
+  let id = null;
+  try { id = localStorage.getItem(sharedChildIdKey()); } catch(e) {}
+  if (id) return id;
+  id = (data.sync && data.sync.childId) || crypto.randomUUID();
+  try { localStorage.setItem(sharedChildIdKey(), id); } catch(e) {}
+  return id;
+}
+
+// Reconciles this profile's childId with the shared one on the way to every
+// push, so a profile that already paired under its own id moves over. Adopting
+// means re-pushing local history under the new id: /api/sync is an idempotent
+// upsert (§6.4), so clearing ackedIds is safe, and it is what actually merges
+// this app's sessions onto the shared child.
+function syncChildId() {
+  if (!data.sync) return null;
+  const shared = sharedChildId();
+  if (data.sync.childId !== shared) {
+    data.sync.childId = shared;
+    data.sync.ackedIds = [];
+    persist();
+  }
+  return data.sync.childId;
+}
+
 function syncPush() {
   if (!syncReady()) return;
+  const childId = syncChildId();
   const acked = new Set(data.sync.ackedIds || []);
   const pending = data.sessions.filter(s => !acked.has(s.id));
   if (!pending.length) return;
-  syncApi("/sync", { app: SYNC_APP, childId: data.sync.childId, childName: data.childName, sessions: pending })
+  syncApi("/sync", { app: SYNC_APP, childId, childName: data.childName, sessions: pending })
     .then(res => {
       if (!res || !Array.isArray(res.accepted) || !res.accepted.length) return;
       const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
@@ -2189,7 +2227,7 @@ function syncPush() {
 // dashboard; "Resync now" in Settings is the manual recovery.
 function syncDelete(ids) {
   if (!syncReady() || !ids.length) return;
-  syncApi("/delete", { app: SYNC_APP, childId: data.sync.childId, sessionIds: ids }).catch(() => {});
+  syncApi("/delete", { app: SYNC_APP, childId: syncChildId(), sessionIds: ids }).catch(() => {});
 }
 
 async function connectSync() {
@@ -2212,7 +2250,7 @@ async function connectSync() {
     if (!res.ok) throw new Error((json && json.error) || "Could not connect — check the code and try again.");
     data.sync = {
       enabled: true, endpoint,
-      childId: (data.sync && data.sync.childId) || crypto.randomUUID(),
+      childId: sharedChildId(),
       deviceId, deviceToken: json.token, ackedIds: [], lastPushAt: null,
     };
     persist();

@@ -337,6 +337,28 @@ first time sync is turned on for that profile, and stored in `data.sync.childId`
 alongside `deviceId`. It is not derived from the child's name or from
 `family_id` — same reasoning as §6.5's non-guessable-ids note.
 
+**One child, not one child per app.** "That profile" spans both apps, and this
+is the part an earlier draft got wrong: Spelling Star and Math Star keep
+separate profile blobs, so each minted its own `childId` and the same child
+arrived as two `children` rows — two rows in the parent grid (§9), one per app.
+The apps share an origin, so the id is kept in its own `localStorage` entry,
+`starhomeschool-childid-<slug>`, where `<slug>` is the profile-name slug both
+apps already compute the same way. Whichever app pairs first mints it; the
+other adopts it. It stays outside `data.sync` because it outlives any one
+app's profile blob.
+
+An app that already paired under its own id reconciles on its next push:
+adopting the shared id clears `ackedIds`, which re-pushes local history under
+it (safe — §6.4's upsert is idempotent). The rows written under the old id stay
+put; the dashboard folds them in by name (§9) rather than the server rewriting
+history. `/api/delete` therefore tombstones by `device_id` rather than
+`child_id`, so a delete still reaches copies written before the adoption.
+
+This unifies the common case — one tablet, both apps. A child using Spelling on
+one device and Math on another still mints two ids, the same documented
+limitation shape as §8's "same child on two devices," and lands on the same
+dashboard-side merge.
+
 There is no separate "create a child" call. The `children` row is created
 lazily, inside `/api/sync`'s handler: on each push, upsert `children` by
 `(id)` within the token's `family_id`, setting `name = childName` from the
@@ -570,6 +592,12 @@ Not a report card. A parent glances at this between other things, so it answers
 **Top: the grid.** Both children × both apps × last 7 days — sessions done and
 last-active. Answers "has anyone touched Math since Tuesday?" at a glance, and
 comes straight from the envelope columns with no JSON parsing.
+
+One row per child, so `/api/children` rows sharing a name are merged into a
+single dashboard child holding every id it synced under (§6.2) — within one
+family a name is the child. Sessions are fetched per id and deduped on
+`(deviceId, id)`, since a re-push under an adopted id leaves the same session
+under both.
 
 **Per child, per app, one card:**
 

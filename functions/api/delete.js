@@ -27,11 +27,17 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'not found' }, { status: 404 });
   }
 
+  // Scoped to the calling device's own rows rather than to childId: a device
+  // can only ever have pushed rows it owns, and if it has since adopted the
+  // shared childId (§6.2) its earlier copies sit under the id it used before.
+  // Tombstoning by device covers both, so a deleted session cannot come back
+  // to the dashboard through the child's other id. device.id comes from the
+  // token (§6.1), so this stays inside the family either way.
   const deleted = [];
   for (const sessionId of sessionIds) {
     await env.DB.prepare(
-      'UPDATE sessions SET deleted = 1 WHERE child_id = ? AND app = ? AND session_id = ?'
-    ).bind(childId, app, String(sessionId)).run();
+      'UPDATE sessions SET deleted = 1 WHERE device_id = ? AND app = ? AND session_id = ?'
+    ).bind(device.id, app, String(sessionId)).run();
     deleted.push(String(sessionId));
   }
 

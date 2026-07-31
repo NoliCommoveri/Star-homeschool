@@ -238,11 +238,29 @@ function showView(view) {
 }
 
 // ---------- Dashboard ----------
+
+// One child, one row. Both apps now push under a shared childId (§6.2), but a
+// child who paired before that fix has a `children` row per app, and a child
+// who uses Spelling on one tablet and Math on another legitimately gets two
+// ids. Within a single family a name is the child, so fold same-name rows into
+// one dashboard child that carries every id it was synced under.
+function mergeChildren(children) {
+  const byName = new Map();
+  for (const c of children) {
+    const key = (c.name || '').trim().toLowerCase() || c.id;
+    const merged = byName.get(key);
+    if (merged) { merged.ids.push(c.id); continue; }
+    byName.set(key, { id: c.id, name: c.name, created_at: c.created_at, ids: [c.id] });
+  }
+  return [...byName.values()];
+}
+
 async function renderDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const { children } = await api('/children');
+    const { children: synced } = await api('/children');
+    const children = mergeChildren(synced);
     state.children = children;
 
     if (!children.length) {
@@ -255,10 +273,23 @@ async function renderDashboard() {
     const cells = []; // { child, app, sessions }
     for (const child of children) {
       for (const a of APPS) {
-        const key = child.id + ':' + a.id;
-        const { sessions } = await api(`/sessions?childId=${encodeURIComponent(child.id)}&app=${a.id}&since=${since}`);
+        const sessions = [];
+        const seen = new Set();
+        for (const id of child.ids) {
+          const res = await api(`/sessions?childId=${encodeURIComponent(id)}&app=${a.id}&since=${since}`);
+          for (const s of res.sessions) {
+            // A merged child can hold the same session under more than one id:
+            // an app re-pushes its history when it adopts the shared childId.
+            // (deviceId, id) is the session's real identity — the storage key
+            // minus child and app.
+            const k = s.deviceId + ':' + s.id;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            sessions.push(s);
+          }
+        }
         sessions.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
-        state.sessionsByKey[key] = sessions;
+        state.sessionsByKey[child.id + ':' + a.id] = sessions;
         cells.push({ child, app: a, sessions });
       }
     }
