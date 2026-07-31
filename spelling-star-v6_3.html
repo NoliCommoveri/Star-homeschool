@@ -330,10 +330,18 @@ const app = document.getElementById("app");
 let parentUnlocked = false;
 
 function lockAndHome() { parentUnlocked = false; go("home"); }
+// Where the child currently is. Only read by the sync module (§15.5), which
+// needs to know whether repainting the screen under their fingers is safe
+// after a parent's assignment arrives.
+let currentView = "home";
 function go(view) {
   SP = null; // cancel any pending Spot the Spelling auto-advance — a stale timer must not fire post-navigation
   S = null;  // same discipline: a pending Practice/Test/Pretest/merge-pretest timer must not fire post-navigation
   RP = null; // same discipline for Repeat
+  currentView = view;
+  // Navigating just cleared every in-progress session, so anything a parent
+  // sent mid-activity can safely land now (§15.5).
+  syncApplyPending();
   document.getElementById("homeBtn").style.display = view === "home" ? "none" : "";
   const today = data.schedule[new Date().getDay()] || defaultDay();
   if (view === "home") return renderHome();
@@ -1752,29 +1760,188 @@ function syncChildId() {
   return data.sync.childId;
 }
 
+// Phase 3 (§15.2) made this a round-trip rather than a push: it always calls
+// /api/sync now, even with nothing pending, because the response is how a
+// parent's assignment reaches this device. It is still fire-and-forget in
+// every direction that matters — no await in the render path, no spinner, and
+// a failure still leaves the child's session untouched (§3 rule 1).
+let syncLastPullAt = 0;
+
 function syncPush() {
   if (!syncReady()) return;
+  syncLastPullAt = Date.now();
   const childId = syncChildId();
   const acked = new Set(data.sync.ackedIds || []);
   const pending = data.sessions.filter(s => !acked.has(s.id));
-  if (!pending.length) return;
-  syncApi("/sync", { app: SYNC_APP, childId, childName: data.childName, sessions: pending })
+  syncApi("/sync", {
+    app: SYNC_APP, childId, childName: data.childName, sessions: pending,
+    state: syncState(),
+    applied: data.sync.appliedCommandIds || [],
+  })
     .then(res => {
-      if (!res || !Array.isArray(res.accepted) || !res.accepted.length) return;
-      const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
-      // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
-      data.sync.ackedIds = [...merged].slice(-300);
+      if (!res) return;
+      if (Array.isArray(res.accepted) && res.accepted.length) {
+        const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
+        // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
+        data.sync.ackedIds = [...merged].slice(-300);
+      }
       data.sync.lastPushAt = Date.now();
       persist();
+      if (Array.isArray(res.commands) && res.commands.length) syncQueueCommands(res.commands);
     })
     .catch(() => { /* best-effort — the next session or boot retries (§8) */ });
 }
+
+// A parent's assignment should land while the tablet is in their hands, not
+// only at the next cold boot, so coming back to the tab counts as a poll.
+// Throttled, because a child flipping between apps must not spend the §6.6
+// rate-limit budget.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (Date.now() - syncLastPullAt < 60000) return;
+  syncPush();
+});
 
 // Best-effort (§8): if this fails, the session just reappears in the parent
 // dashboard; "Resync now" in Settings is the manual recovery.
 function syncDelete(ids) {
   if (!syncReady() || !ids.length) return;
   syncApi("/delete", { app: SYNC_APP, childId: syncChildId(), sessionIds: ids }).catch(() => {});
+}
+
+// ---------- Parent -> child commands (§15) ----------
+// This is where the two app files stop being byte-identical. §3 rule 5 still
+// holds for everything above — transport, pairing, acking, the queue — but
+// syncState() and applyCommand() are necessarily about *this* app's data
+// model, so they are the declared seam rather than an accidental divergence.
+// Their names, shape, and return contract are the same in both files.
+
+// What this tablet has right now, uploaded on every sync (§15.4) so the parent
+// phone can offer real choices. Word counts only, not the words: the parent
+// composing a list doesn't need them, and there's no reason to mirror more
+// into the cloud than the feature actually uses.
+function syncState() {
+  return {
+    lists: (data.lists || []).map(l => ({
+      id: l.id, name: l.name, desc: l.desc || "",
+      wordCount: (l.words || []).length, bonusCount: (l.bonus || []).length,
+      pretest: l.pretest || "global",
+    })),
+    activeListId: data.activeListId,
+  };
+}
+
+// Commands arrive from a network callback that can fire at any moment,
+// including mid-Test. Nothing is applied until the child is somewhere it is
+// safe to change the ground under them (§15.5).
+let syncPendingCommands = [];
+function syncSafeToApply() { return S === null && RP === null && SP === null; }
+
+function syncQueueCommands(commands) {
+  syncPendingCommands = syncPendingCommands.concat(commands);
+  syncApplyPending(true);
+}
+
+function syncApplyPending(repaint) {
+  if (!data || !data.sync || !syncPendingCommands.length || !syncSafeToApply()) return;
+  const queue = syncPendingCommands;
+  syncPendingCommands = [];
+  const done = new Set(data.sync.appliedCommandIds || []);
+  let changed = false;
+  for (const cmd of queue) {
+    if (!cmd || !cmd.id || done.has(cmd.id)) continue;
+    // Marked applied even when it throws or is rejected: a command this
+    // version of the app can't act on is a bad command, and re-attempting it
+    // on every sync forever is worse than dropping it. The parent sees it
+    // as delivered, which is true — it arrived and was considered.
+    try { if (applyCommand(cmd)) changed = true; } catch (e) {}
+    done.add(cmd.id);
+  }
+  // Acked upward on the next sync, which is what stops the server resending.
+  data.sync.appliedCommandIds = [...done].slice(-200);
+  persist();
+  // Only the home screen is repainted, and only when the child is sitting on
+  // it: a newly assigned list should show up without a reload, but no other
+  // screen is worth yanking out from under them.
+  if (changed && repaint && !parentUnlocked && currentView === "home") renderHome();
+}
+
+function applyCommand(cmd) {
+  const p = cmd.payload || {};
+  if (cmd.kind === "set-active-list") {
+    const list = (data.lists || []).find(l => l.id === p.listId)
+      || (data.lists || []).find(l => (l.name || "").toLowerCase() === String(p.listName || "").toLowerCase());
+    if (!list || data.activeListId === list.id) return false;
+    data.activeListId = list.id;
+    return true;
+  }
+  if (cmd.kind === "assign-list") {
+    const incoming = p.list || {};
+    const name = String(incoming.name || "").trim();
+    if (!name) return false;
+    const words = normalizeAssignedWords(incoming.words);
+    const bonus = normalizeAssignedWords(incoming.bonus);
+    if (!words.length && !bonus.length) return false;
+    // Replace by name rather than always appending: re-sending a corrected
+    // list is the common case, and it should fix the list the child already
+    // has instead of leaving two with the same name.
+    let list = (data.lists || []).find(l => (l.name || "").toLowerCase() === name.toLowerCase());
+    if (list) {
+      if (incoming.desc) list.desc = String(incoming.desc);
+      list.words = words;
+      list.bonus = bonus;
+      if (incoming.pretest) list.pretest = incoming.pretest;
+    } else {
+      list = {
+        id: "l" + Date.now() + Math.floor(Math.random() * 1000),
+        name, desc: String(incoming.desc || ""), words, bonus,
+        pretest: incoming.pretest || "global",
+      };
+      data.lists.push(list);
+    }
+    if (p.makeActive !== false) data.activeListId = list.id;
+    return true;
+  }
+  if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
+  return false;
+}
+
+// Accepts bare strings or {word, hint, sentence}, and fills the same defaults
+// addWord() does, so a list assigned from a phone is indistinguishable from
+// one typed in the parent area.
+function normalizeAssignedWords(items) {
+  const out = [];
+  const seen = new Set();
+  for (const item of (Array.isArray(items) ? items : [])) {
+    const raw = typeof item === "string" ? { word: item } : (item || {});
+    const word = String(raw.word || "").trim().toLowerCase();
+    if (!word || seen.has(word)) continue;
+    seen.add(word);
+    out.push({
+      word,
+      hint: String(raw.hint || "").trim() || "A word you're learning.",
+      sentence: String(raw.sentence || "").trim() || word,
+    });
+  }
+  return out;
+}
+
+// The parent already tombstoned these server-side, so there is nothing to push
+// back — this is the local half. Same linked-pair rule as deleteSession() in
+// the parent area (design v6 §2.5): a perfect pretest and its auto-promoted
+// test twin are one sitting and go together.
+function applyRemoteSessionDelete(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).map(String));
+  if (!wanted.size) return false;
+  for (const s of data.sessions) {
+    if (!wanted.has(String(s.id))) continue;
+    if (s.promotedFrom) wanted.add(String(s.promotedFrom));
+    const twin = data.sessions.find(x => x.promotedFrom && String(x.promotedFrom) === String(s.id));
+    if (twin) wanted.add(String(twin.id));
+  }
+  const before = data.sessions.length;
+  data.sessions = data.sessions.filter(s => !wanted.has(String(s.id)));
+  return data.sessions.length !== before;
 }
 
 async function connectSync() {
@@ -1798,7 +1965,7 @@ async function connectSync() {
     data.sync = {
       enabled: true, endpoint,
       childId: sharedChildId(),
-      deviceId, deviceToken: json.token, ackedIds: [], lastPushAt: null,
+      deviceId, deviceToken: json.token, ackedIds: [], appliedCommandIds: [], lastPushAt: null,
     };
     persist();
     renderParent("settings");
@@ -1823,8 +1990,8 @@ function syncSettingsHtml() {
   const s = data.sync;
   if (s && s.deviceToken) {
     return `
-      <div class="muted">${s.enabled ? "Sending results to your phone." : "Sync is paused on this device."}</div>
-      <div class="muted" style="margin-bottom:10px">Last sent: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
+      <div class="muted">${s.enabled ? "Sending results to your phone, and picking up word lists you assign from it." : "Sync is paused on this device."}</div>
+      <div class="muted" style="margin-bottom:10px">Last synced: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
       <div class="row">
         ${s.enabled ? `<button class="outline" onclick="disableSync()">Pause sync</button>` : `<button onclick="enableSync()">Resume sync</button>`}
         <button class="outline" onclick="resyncNow()">Resync now</button>

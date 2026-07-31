@@ -1,6 +1,13 @@
-// POST /api/sync — docs/parent-sync-spec.md §6.2, §6.3, §6.4, §8.
+// POST /api/sync — docs/parent-sync-spec.md §6.2, §6.3, §6.4, §8, §15.
 // Child-role only. Idempotent: retries and double-sends are harmless.
-import { authenticate, json } from './_lib/auth.js';
+//
+// Phase 3 (§15.2) made this the child's only round-trip rather than adding a
+// second endpoint to poll. It already ran on boot and after every session, so
+// it carries the new traffic in both directions: `state` and `applied[]` go
+// up alongside the sessions, `commands[]` comes back down. A Phase 1 client
+// that sends neither still works unchanged — every new field is optional, and
+// a client that ignores `commands` just never acts on them.
+import { authenticate, json, MAX_CHILD_STATE_BYTES } from './_lib/auth.js';
 
 export async function onRequestPost({ request, env }) {
   let device;
@@ -17,7 +24,7 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { app, childId, childName, sessions } = body || {};
+  const { app, childId, childName, sessions, state, applied } = body || {};
   if (!app || !childId || !Array.isArray(sessions)) {
     return json({ error: 'app, childId, and sessions[] are required' }, { status: 400 });
   }
@@ -72,5 +79,82 @@ export async function onRequestPost({ request, env }) {
     accepted.push(sessionId);
   }
 
-  return json({ accepted });
+  // §15.4 — what this tablet currently has (word lists / focus areas, plus the
+  // app's own category catalog), so parent.html can offer real choices without
+  // carrying a second copy of the child apps' data model. Keyed by device as
+  // well as child so two tablets sharing a childId don't overwrite each other;
+  // the parent reads whichever is freshest.
+  if (state && typeof state === 'object') {
+    const serialized = JSON.stringify(state);
+    if (serialized.length > MAX_CHILD_STATE_BYTES) {
+      return json({ error: 'state too large' }, { status: 413 });
+    }
+    await env.DB.prepare(
+      `INSERT INTO child_state (child_id, app, device_id, updated_at, state)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(child_id, app, device_id) DO UPDATE SET
+         updated_at = excluded.updated_at,
+         state = excluded.state`
+    ).bind(childId, app, device.id, now, serialized).run();
+  }
+
+  // Acks for commands this device applied since its last sync (§15.2). The
+  // family guard in the SELECT is what stops a device acking — and so hiding
+  // from its siblings' parent view — a command that isn't its family's.
+  if (Array.isArray(applied)) {
+    for (const commandId of applied.slice(0, 200)) {
+      if (!commandId) continue;
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO command_acks (command_id, device_id, applied_at)
+         SELECT c.id, ?, ? FROM commands c WHERE c.id = ? AND c.family_id = ?`
+      ).bind(device.id, now, String(commandId), device.family_id).run();
+    }
+  }
+
+  // Everything queued for this child+app that this device has not yet applied.
+  // Nothing is consumed by reading, so a device that crashes mid-apply simply
+  // sees the command again next sync — the client's apply step is written to
+  // be safe to repeat (§15.5).
+  const { results: pending } = await env.DB.prepare(
+    `SELECT c.id, c.kind, c.payload, c.created_at
+     FROM commands c
+     LEFT JOIN command_acks a ON a.command_id = c.id AND a.device_id = ?
+     WHERE c.child_id = ? AND c.app = ? AND c.canceled = 0 AND a.command_id IS NULL
+     ORDER BY c.created_at`
+  ).bind(device.id, childId, app).all();
+
+  // A child that adopted the shared childId (§6.2) leaves commands queued
+  // against the id it used before. Sweep those in too, so an assignment made
+  // while the dashboard was showing the old id still lands.
+  const legacy = await legacyCommands(env, device, childId, app);
+
+  const commands = [...pending, ...legacy].map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    payload: safeParse(row.payload),
+    createdAt: row.created_at,
+  }));
+
+  return json({ accepted, commands });
+}
+
+// Commands queued against another of this family's children that this same
+// device has already pushed sessions for — i.e. an earlier id for the very
+// same child (§6.2). Scoped through `sessions.device_id`, which only this
+// device can have written, so it cannot reach a sibling's queue.
+async function legacyCommands(env, device, currentChildId, app) {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.kind, c.payload, c.created_at
+     FROM commands c
+     LEFT JOIN command_acks a ON a.command_id = c.id AND a.device_id = ?
+     WHERE c.family_id = ? AND c.app = ? AND c.canceled = 0 AND a.command_id IS NULL
+       AND c.child_id != ?
+       AND c.child_id IN (SELECT DISTINCT s.child_id FROM sessions s WHERE s.device_id = ? AND s.app = ?)
+     ORDER BY c.created_at`
+  ).bind(device.id, device.family_id, app, currentChildId, device.id, app).all();
+  return results;
+}
+
+function safeParse(text) {
+  try { return JSON.parse(text); } catch { return null; }
 }

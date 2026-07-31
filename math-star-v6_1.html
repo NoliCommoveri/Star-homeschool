@@ -1073,11 +1073,19 @@ const app = document.getElementById("app");
 let parentUnlocked = false;
 
 function lockAndHome() { parentUnlocked = false; go("home"); }
+// Where the child currently is. Only read by the sync module (§15.5), which
+// needs to know whether repainting the screen under their fingers is safe
+// after a parent's assignment arrives.
+let currentView = "home";
 function go(view) {
   document.getElementById("homeBtn").style.display = view === "home" ? "none" : "";
   const today = data.schedule[new Date().getDay()] || defaultDay();
   clearSessionTimer();
+  currentView = view;
   if (view !== "practice" && view !== "drill") S = null;
+  // Navigating away from an activity clears the in-progress session, so
+  // anything a parent sent mid-activity can safely land now (§15.5).
+  syncApplyPending();
   if (view === "home") return renderHome();
   if (view === "history") { if (!data.showHistory) return renderHome(); return renderHistory(); }
   if (view === "practice") { if (!today.practiceEnabled) return renderHome(); return startSession("practice"); }
@@ -2205,29 +2213,166 @@ function syncChildId() {
   return data.sync.childId;
 }
 
+// Phase 3 (§15.2) made this a round-trip rather than a push: it always calls
+// /api/sync now, even with nothing pending, because the response is how a
+// parent's assignment reaches this device. It is still fire-and-forget in
+// every direction that matters — no await in the render path, no spinner, and
+// a failure still leaves the child's session untouched (§3 rule 1).
+let syncLastPullAt = 0;
+
 function syncPush() {
   if (!syncReady()) return;
+  syncLastPullAt = Date.now();
   const childId = syncChildId();
   const acked = new Set(data.sync.ackedIds || []);
   const pending = data.sessions.filter(s => !acked.has(s.id));
-  if (!pending.length) return;
-  syncApi("/sync", { app: SYNC_APP, childId, childName: data.childName, sessions: pending })
+  syncApi("/sync", {
+    app: SYNC_APP, childId, childName: data.childName, sessions: pending,
+    state: syncState(),
+    applied: data.sync.appliedCommandIds || [],
+  })
     .then(res => {
-      if (!res || !Array.isArray(res.accepted) || !res.accepted.length) return;
-      const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
-      // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
-      data.sync.ackedIds = [...merged].slice(-300);
+      if (!res) return;
+      if (Array.isArray(res.accepted) && res.accepted.length) {
+        const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
+        // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
+        data.sync.ackedIds = [...merged].slice(-300);
+      }
       data.sync.lastPushAt = Date.now();
       persist();
+      if (Array.isArray(res.commands) && res.commands.length) syncQueueCommands(res.commands);
     })
     .catch(() => { /* best-effort — the next session or boot retries (§8) */ });
 }
+
+// A parent's assignment should land while the tablet is in their hands, not
+// only at the next cold boot, so coming back to the tab counts as a poll.
+// Throttled, because a child flipping between apps must not spend the §6.6
+// rate-limit budget.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (Date.now() - syncLastPullAt < 60000) return;
+  syncPush();
+});
 
 // Best-effort (§8): if this fails, the session just reappears in the parent
 // dashboard; "Resync now" in Settings is the manual recovery.
 function syncDelete(ids) {
   if (!syncReady() || !ids.length) return;
   syncApi("/delete", { app: SYNC_APP, childId: syncChildId(), sessionIds: ids }).catch(() => {});
+}
+
+// ---------- Parent -> child commands (§15) ----------
+// This is where the two app files stop being byte-identical. §3 rule 5 still
+// holds for everything above — transport, pairing, acking, the queue — but
+// syncState() and applyCommand() are necessarily about *this* app's data
+// model, so they are the declared seam rather than an accidental divergence.
+// Their names, shape, and return contract are the same in both files.
+
+// What this tablet has right now, uploaded on every sync (§15.4) so the parent
+// phone can offer real choices. `catalog` is this build's own CATS: it means
+// parent.html renders a category picker matching whatever version of Math Star
+// is actually installed, instead of carrying a second copy that goes stale
+// every time a phase adds categories.
+function syncState() {
+  return {
+    focusAreas: (data.focusAreas || []).map(f => ({
+      id: f.id, name: f.name, categories: focusCategories(f), gradeBand: f.gradeBand,
+    })),
+    activeFocusId: data.activeFocusId,
+    catalog: CATS.map(c => ({ id: c.id, label: c.label, band: c.band, strand: c.strand })),
+  };
+}
+
+// Commands arrive from a network callback that can fire at any moment,
+// including mid-Drill. Nothing is applied until the child is somewhere it is
+// safe to change the ground under them (§15.5).
+let syncPendingCommands = [];
+function syncSafeToApply() { return S === null; }
+
+function syncQueueCommands(commands) {
+  syncPendingCommands = syncPendingCommands.concat(commands);
+  syncApplyPending(true);
+}
+
+function syncApplyPending(repaint) {
+  if (!data || !data.sync || !syncPendingCommands.length || !syncSafeToApply()) return;
+  const queue = syncPendingCommands;
+  syncPendingCommands = [];
+  const done = new Set(data.sync.appliedCommandIds || []);
+  let changed = false;
+  for (const cmd of queue) {
+    if (!cmd || !cmd.id || done.has(cmd.id)) continue;
+    // Marked applied even when it throws or is rejected: a command this
+    // version of the app can't act on is a bad command, and re-attempting it
+    // on every sync forever is worse than dropping it. The parent sees it
+    // as delivered, which is true — it arrived and was considered.
+    try { if (applyCommand(cmd)) changed = true; } catch (e) {}
+    done.add(cmd.id);
+  }
+  // Acked upward on the next sync, which is what stops the server resending.
+  data.sync.appliedCommandIds = [...done].slice(-200);
+  persist();
+  // Only the home screen is repainted, and only when the child is sitting on
+  // it: a newly assigned focus area should show up without a reload, but no
+  // other screen is worth yanking out from under them.
+  if (changed && repaint && !parentUnlocked && currentView === "home") renderHome();
+}
+
+function applyCommand(cmd) {
+  const p = cmd.payload || {};
+  if (cmd.kind === "set-active-focus") {
+    const focus = (data.focusAreas || []).find(f => f.id === p.focusId)
+      || (data.focusAreas || []).find(f => (f.name || "").toLowerCase() === String(p.focusName || "").toLowerCase());
+    if (!focus || data.activeFocusId === focus.id) return false;
+    data.activeFocusId = focus.id;
+    return true;
+  }
+  if (cmd.kind === "assign-focus") {
+    const incoming = p.focus || {};
+    const name = String(incoming.name || "").trim();
+    // Categories are filtered against this build's own CATS, not trusted from
+    // the wire: a parent phone showing a snapshot from an older or newer Math
+    // Star could otherwise assign a category this build can't generate
+    // problems for, which would break the home screen rather than the sync.
+    const categories = (Array.isArray(incoming.categories) ? incoming.categories : [])
+      .filter(c => CATS.some(x => x.id === c));
+    if (!name || !categories.length) return false;
+    let focus = (data.focusAreas || []).find(f => (f.name || "").toLowerCase() === name.toLowerCase());
+    if (focus) {
+      focus.categories = categories;
+      focus.gradeBand = catMeta(categories[0]).band;
+      delete focus.category; // supersedes the pre-v6.2 single-category shape
+    } else {
+      focus = {
+        id: "f" + Date.now() + Math.floor(Math.random() * 1000),
+        categories, gradeBand: catMeta(categories[0]).band, name,
+      };
+      data.focusAreas.push(focus);
+    }
+    if (p.makeActive !== false) data.activeFocusId = focus.id;
+    return true;
+  }
+  if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
+  return false;
+}
+
+// The parent already tombstoned these server-side, so there is nothing to push
+// back — this is the local half. The promotedFrom pairing is Spelling Star's
+// (design v6 §2.5) and never appears here, so the loop is a no-op in this app;
+// it is kept identical so the two files' delete behavior can't drift.
+function applyRemoteSessionDelete(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).map(String));
+  if (!wanted.size) return false;
+  for (const s of data.sessions) {
+    if (!wanted.has(String(s.id))) continue;
+    if (s.promotedFrom) wanted.add(String(s.promotedFrom));
+    const twin = data.sessions.find(x => x.promotedFrom && String(x.promotedFrom) === String(s.id));
+    if (twin) wanted.add(String(twin.id));
+  }
+  const before = data.sessions.length;
+  data.sessions = data.sessions.filter(s => !wanted.has(String(s.id)));
+  return data.sessions.length !== before;
 }
 
 async function connectSync() {
@@ -2251,7 +2396,7 @@ async function connectSync() {
     data.sync = {
       enabled: true, endpoint,
       childId: sharedChildId(),
-      deviceId, deviceToken: json.token, ackedIds: [], lastPushAt: null,
+      deviceId, deviceToken: json.token, ackedIds: [], appliedCommandIds: [], lastPushAt: null,
     };
     persist();
     renderParent("settings");
@@ -2276,8 +2421,8 @@ function syncSettingsHtml() {
   const s = data.sync;
   if (s && s.deviceToken) {
     return `
-      <div class="muted">${s.enabled ? "Sending results to your phone." : "Sync is paused on this device."}</div>
-      <div class="muted" style="margin-bottom:10px">Last sent: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
+      <div class="muted">${s.enabled ? "Sending results to your phone, and picking up focus areas you assign from it." : "Sync is paused on this device."}</div>
+      <div class="muted" style="margin-bottom:10px">Last synced: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
       <div class="row">
         ${s.enabled ? `<button class="outline" onclick="disableSync()">Pause sync</button>` : `<button onclick="enableSync()">Resume sync</button>`}
         <button class="outline" onclick="resyncNow()">Resync now</button>
