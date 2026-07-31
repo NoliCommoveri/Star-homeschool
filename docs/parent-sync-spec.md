@@ -599,6 +599,21 @@ family a name is the child. Sessions are fetched per id and deduped on
 `(deviceId, id)`, since a re-push under an adopted id leaves the same session
 under both.
 
+**Session type is part of the answer.** A pretest, a test and a practice run
+all arrive as a row with a score, so a bare count reads as "she did three
+things" when what a parent needs is "the diagnostic, then the test, then a
+practice." Every place the dashboard shows a session it names the kind, using
+the child apps' own words (Spelling Star's Pretest / Test / Practice / Repeat /
+Spot it, Math Star's Drill / Practice): a badge in Recent sessions, a
+count-per-kind breakdown under the 7-day summary, and the badge again in the
+session detail. Unknown modes render their raw `mode` rather than disappearing.
+
+A perfect pretest also writes a `test` session (`promotedFrom`, §2.1) so list
+progression sees a qualifying test. It is bookkeeping, not a second sitting, so
+it is marked `auto` wherever it appears and the detail view says so outright —
+the count stays truthful to what was recorded, and the parent can see why two
+sessions share a timestamp.
+
 **Per child, per app, one card:**
 
 - Last 7 days: sessions, average score, sparkline.

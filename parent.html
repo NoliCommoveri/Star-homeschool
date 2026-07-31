@@ -54,6 +54,11 @@
   .badge.ok { background: var(--green-soft); color: var(--green-dark); }
   .badge.warn { background: var(--gold-soft); color: #7A5300; }
   .badge.off { background: var(--border); color: #fff; }
+  .badge.tone-graded { background: var(--accent-soft); color: var(--accent); }
+  .badge.tone-diagnostic { background: var(--gold-soft); color: #7A5300; }
+  .badge.tone-practice { background: var(--green-soft); color: var(--green-dark); }
+  .badge.tone-play { background: var(--soft); color: var(--body-text); }
+  .mode-breakdown { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 12px; }
   .code-display { font-size: 40px; font-weight: 800; letter-spacing: .18em; text-align: center; padding: 18px; background: var(--soft); border-radius: 16px; margin: 12px 0; }
   .sparkline { display: block; }
   .trouble-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
@@ -101,7 +106,47 @@ const APPS = [
   { id: 'math', label: 'Math Star' },
 ];
 
+// What kind of sitting a session was. A pretest, a test and a practice all
+// arrive as a row with a score, and "2 sessions, averaging 100%" flattened
+// them into something a parent can't read: the diagnostic before the list and
+// the test after it look identical to two practice runs. Labels and ordering
+// follow the child apps' own screens (Spelling Star's Pretest / Test /
+// Practice, Math Star's Drill / Practice) so the dashboard names a session the
+// same way the child saw it.
+const MODES = {
+  spelling: {
+    pretest:  { label: 'Pretest',  tone: 'diagnostic' },
+    test:     { label: 'Test',     tone: 'graded' },
+    practice: { label: 'Practice', tone: 'practice' },
+    repeat:   { label: 'Repeat',   tone: 'practice' },
+    spotit:   { label: 'Spot it',  tone: 'play' },
+  },
+  math: {
+    drill:    { label: 'Drill',    tone: 'graded' },
+    practice: { label: 'Practice', tone: 'practice' },
+  },
+};
+
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Unknown modes still render — a future app screen shows its raw mode rather
+// than vanishing from the dashboard.
+function modeInfo(appId, mode) {
+  return (MODES[appId] || {})[mode] || { label: mode || 'Session', tone: 'play' };
+}
+function modeOrder(appId, mode) {
+  const i = Object.keys(MODES[appId] || {}).indexOf(mode);
+  return i === -1 ? 99 : i;
+}
+
+// A perfect pretest also writes a `test` session (promotedFrom) so that list
+// progression sees a qualifying test. It is bookkeeping, not a second sitting,
+// and the session count is only honest if the parent can tell which is which.
+function modeBadge(appId, session) {
+  const info = modeInfo(appId, session.mode);
+  const auto = session.promotedFrom ? ' <span class="muted">auto</span>' : '';
+  return `<span class="badge tone-${info.tone}">${esc(info.label)}</span>${auto}`;
+}
 
 function loadSync() {
   try { return JSON.parse(localStorage.getItem(SYNC_KEY)); } catch { return null; }
@@ -335,11 +380,21 @@ function renderChildAppCard(child, app, sessions) {
   const spark = sessions.slice(-14).map((s) => pct(s.score, s.total) ?? 0);
   const sparkSvg = spark.length > 1 ? renderSparkline(spark) : '';
 
+  // Which kinds of session made up that count, in the apps' own screen order.
+  const counts = new Map();
+  for (const s of recent) counts.set(s.mode, (counts.get(s.mode) || 0) + 1);
+  const breakdown = [...counts.entries()]
+    .sort((a, b) => modeOrder(app.id, a[0]) - modeOrder(app.id, b[0]))
+    .map(([mode, n]) => {
+      const info = modeInfo(app.id, mode);
+      return `<span class="badge tone-${info.tone}">${n} ${esc(info.label)}</span>`;
+    }).join('');
+
   const recentList = sessions.slice(-8).reverse().map((s) => {
     const scope = app.id === 'spelling' ? s.listName : (s.focusName || (s.categories || []).join(', '));
     const p = pct(s.score, s.total);
     return `<tr class="clickable" onclick="openSessionDetail('${child.id}','${app.id}','${esc(s.id)}')">
-      <td>${fmtDate(s.date)}</td><td>${esc(scope || s.mode)}</td>
+      <td>${fmtDate(s.date)}</td><td>${modeBadge(app.id, s)}</td><td>${esc(scope || '—')}</td>
       <td>${s.score}/${s.total}${p != null ? ` (${p}%)` : ''}</td></tr>`;
   }).join('');
 
@@ -358,6 +413,7 @@ function renderChildAppCard(child, app, sessions) {
       <div class="row">
         <div class="col">
           <p><strong>${recent.length}</strong> session${recent.length === 1 ? '' : 's'} in the last 7 days${avgPct != null ? `, averaging <strong>${avgPct}%</strong>` : ''}.</p>
+          ${breakdown ? `<div class="mode-breakdown">${breakdown}</div>` : ''}
           ${sparkSvg}
         </div>
         <div class="col">
@@ -367,7 +423,10 @@ function renderChildAppCard(child, app, sessions) {
       </div>
       <details style="margin-top:10px">
         <summary class="muted" style="cursor:pointer">Recent sessions</summary>
-        <table style="margin-top:8px"><tbody>${recentList}</tbody></table>
+        <table style="margin-top:8px">
+          <thead><tr><th>Date</th><th>Type</th><th>${app.id === 'spelling' ? 'List' : 'Focus'}</th><th>Score</th></tr></thead>
+          <tbody>${recentList}</tbody>
+        </table>
       </details>
     </div>`;
 }
@@ -427,7 +486,9 @@ function openSessionDetail(childId, appId, sessionId) {
   overlay.innerHTML = `
     <div class="card">
       <h2>${esc(child?.name || 'Session')}</h2>
-      <p class="muted">${fmtDate(session.date)} · ${esc(scope || session.mode)} · ${session.score}/${session.total}</p>
+      <p style="margin:6px 0">${modeBadge(appId, session)}</p>
+      <p class="muted">${fmtDate(session.date)}${scope ? ' · ' + esc(scope) : ''} · ${session.score}/${session.total}</p>
+      ${session.promotedFrom ? '<p class="muted">Recorded automatically from a perfect pretest — the same sitting as that pretest, not a second one.</p>' : ''}
       <div>${rows || '<p class="muted">No item detail recorded.</p>'}</div>
       <div class="center" style="margin-top:16px"><button class="outline" onclick="this.closest('.overlay').remove()">Close</button></div>
     </div>`;
