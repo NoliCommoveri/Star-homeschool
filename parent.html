@@ -1117,6 +1117,7 @@ async function renderDevices() {
           <tbody>${rows || '<tr><td colspan="5" class="muted">No devices yet.</td></tr>'}</tbody>
         </table>
       </div>`;
+    onChildSelectChange();
   } catch (err) {
     app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
   }
