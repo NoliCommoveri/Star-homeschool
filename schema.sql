@@ -34,6 +34,7 @@ CREATE TABLE pairing_codes (
   code_hash   TEXT PRIMARY KEY,      -- SHA-256 of the 6-char code
   family_id   TEXT NOT NULL REFERENCES families(id),
   role        TEXT NOT NULL,
+  child_id    TEXT REFERENCES children(id), -- role='child' only (§6.2 parent-assigned id)
   expires_at  INTEGER NOT NULL,
   used_at     INTEGER                -- non-null once redeemed; single use
 );

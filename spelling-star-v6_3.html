@@ -406,7 +406,7 @@ function go(view) {
 }
 
 // ---------- First-launch setup wizard ----------
-const setup = { pin: null, name: null, scoring: null };
+const setup = { pin: null, name: null, scoring: null, pairingCode: null };
 function renderSetup(step) {
   document.getElementById("homeBtn").style.display = "none";
   document.getElementById("greeting").innerHTML = "Welcome! &#11088;";
@@ -430,6 +430,11 @@ function renderSetup(step) {
         <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 4 &mdash; Who's spelling?</div>
         <div class="muted" style="margin-bottom:14px">This name appears throughout the app and on exported results.</div>
         <input type="text" id="nameIn" placeholder="Child's first name" style="text-align:center;font-size:20px">
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+          <label for="pairCodeIn" class="muted" style="font-size:13px">Pairing code from your parent's phone (optional)</label>
+          <input type="text" id="pairCodeIn" placeholder="6-character code" maxlength="6" style="text-transform:uppercase;text-align:center;font-size:18px;letter-spacing:.2em">
+          <div class="muted" style="font-size:12px;margin-top:4px">Skip this if you don't have one yet — you can pair from the parent area later.</div>
+        </div>
         <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
         <button class="big" onclick="setupName()" style="margin-top:8px">Continue &rarr;</button>
       </div>`;
@@ -469,16 +474,29 @@ function setupName() {
   const v = document.getElementById("nameIn").value.trim();
   const msg = document.getElementById("setupMsg");
   if (!v) { msg.textContent = "Please enter a name."; return; }
-  setup.name = v; renderSetup(3);
+  setup.name = v;
+  setup.pairingCode = document.getElementById("pairCodeIn").value.trim().toUpperCase();
+  renderSetup(3);
 }
 function setupScoring(scoring) { setup.scoring = scoring; renderSetup(4); }
-function setupFinish(gradeLevel) {
+async function setupFinish(gradeLevel) {
   KEY = nameToKey(setup.name);
   const existing = localStorage.getItem(KEY);
   if (existing && !confirm(`This device already has saved data for a child named "${setup.name}". Continue and use that existing data?`)) return;
   if (existing) { data = load(KEY); }
   else { data = freshData(setup.name, setup.pin, setup.scoring, gradeLevel); persist(); }
   applyTheme();
+  // §6.2: a code typed in at setup gets this profile onto its parent-assigned
+  // childId from its very first save — no local id ever minted to reconcile
+  // away later. Best-effort: a bad or expired code must not block onboarding.
+  if (setup.pairingCode) {
+    try {
+      data.sync = await redeemPairingCode(setup.pairingCode, "/api", crypto.randomUUID());
+      persist();
+    } catch (err) {
+      alert("Couldn't connect with that pairing code (" + err.message + "). You can try again anytime from the parent area → Settings → Sync.");
+    }
+  }
   go("home");
 }
 
@@ -2053,6 +2071,31 @@ function applyRemoteSessionDelete(ids) {
   return data.sessions.length !== before;
 }
 
+// Redeems a pairing code and builds the resulting data.sync block. Shared by
+// the Settings "Connect" button and the first-launch wizard (§6.2 setup-time
+// pairing) so a code is only ever redeemed one way.
+async function redeemPairingCode(code, endpoint, deviceId) {
+  const res = await fetch(endpoint + "/pair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ code, deviceId, role: "child", label: data.childName + "'s device" }),
+  });
+  let json = null;
+  try { json = await res.json(); } catch(e) {}
+  if (!res.ok) throw new Error((json && json.error) || "Could not connect — check the code and try again.");
+  // §6.2: a code minted from the parent side carries the child it was
+  // assigned to. That's now authoritative — fall back to the local
+  // name-slug guess only against an older server that never sends one.
+  const childId = json.childId || sharedChildId();
+  try { localStorage.setItem(sharedChildIdKey(), childId); } catch(e) {}
+  return {
+    enabled: true, endpoint,
+    childId,
+    deviceId, deviceToken: json.token, ackedIds: [], appliedCommandIds: [], lastPushAt: null,
+  };
+}
+
 async function connectSync() {
   const code = document.getElementById("syncCodeIn").value.trim().toUpperCase();
   const endpointIn = document.getElementById("syncEndpointIn").value.trim();
@@ -2062,20 +2105,7 @@ async function connectSync() {
   const endpoint = endpointIn || "/api";
   const deviceId = (data.sync && data.sync.deviceId) || crypto.randomUUID();
   try {
-    const res = await fetch(endpoint + "/pair", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify({ code, deviceId, role: "child", label: data.childName + "'s device" }),
-    });
-    let json = null;
-    try { json = await res.json(); } catch(e) {}
-    if (!res.ok) throw new Error((json && json.error) || "Could not connect — check the code and try again.");
-    data.sync = {
-      enabled: true, endpoint,
-      childId: sharedChildId(),
-      deviceId, deviceToken: json.token, ackedIds: [], appliedCommandIds: [], lastPushAt: null,
-    };
+    data.sync = await redeemPairingCode(code, endpoint, deviceId);
     persist();
     renderParent("settings");
     syncPush();
