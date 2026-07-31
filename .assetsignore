@@ -3,6 +3,7 @@
 functions/
 dist/
 docs/
+tests/
 schema*.sql
 wrangler.toml
 .assetsignore

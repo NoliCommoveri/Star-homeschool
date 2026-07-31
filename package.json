@@ -1,0 +1,14 @@
+{
+  "name": "star-homeschool",
+  "private": true,
+  "description": "Tooling for the Star apps. The apps themselves are self-contained HTML and need none of this.",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:api": "node tests/api.test.mjs",
+    "build:worker": "wrangler pages functions build --outdir=dist/worker"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0",
+    "wrangler": "^4.117.0"
+  }
+}
