@@ -35,10 +35,12 @@
   button.danger { background: var(--danger); }
   button.link { background: none; color: var(--muted); font-size: 13px; text-decoration: underline; padding: 4px; }
   button:disabled { background: var(--border); color: #fff; cursor: default; border-color: var(--border); }
-  input[type=text], input[type=password], select {
+  input[type=text], input[type=password], select, textarea {
     font-family: inherit; font-size: 15px; padding: 10px 12px; border-radius: 10px;
     border: 2px solid var(--border); width: 100%; margin-bottom: 10px; background: var(--input-bg); color: var(--text);
   }
+  textarea { resize: vertical; line-height: 1.45; }
+  code { background: var(--soft); border-radius: 5px; padding: 1px 5px; font-size: 13px; }
   label { font-size: 13px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 4px; }
   .muted { color: var(--muted); font-size: 13px; }
   .error { color: var(--danger); font-size: 13px; margin: 6px 0; min-height: 16px; }
@@ -164,6 +166,10 @@ function clearSync() { localStorage.removeItem(SYNC_KEY); }
 const state = {
   sync: loadSync(), view: 'dashboard', children: [], sessionsByKey: {}, loading: false, error: '',
   detailChildId: null, detailApp: APPS[0].id, // which child/app the detail card below the grid is showing
+  // Assign view (§15): the tablet's own report of what it has, and the queue
+  // of things sent to it. Both are per child+app and reloaded on every switch.
+  snapshots: [], commands: [], assignErr: '', assignNote: '',
+  years: [], // Previous years (§16): one aggregate row per (grade, list)
 };
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
@@ -200,6 +206,14 @@ function fmtTime(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return '';
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+// Same as fmtDate but carries the year. The Dashboard can leave the year off
+// because everything on it is recent; the Years view cannot — "Jun 26" against
+// "Jun 21" reads as the same fortnight when the two are a year apart.
+function fmtDateWithYear(ms) {
+  const d = new Date(ms);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 function fmtDateTime(iso) {
   const d = new Date(iso);
@@ -294,16 +308,41 @@ function renderShell() {
   nav.style.display = 'flex';
   nav.innerHTML = `
     <button class="outline" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
+    <button class="outline" id="navYears" onclick="showView('years')">Years</button>
+    <button class="outline" id="navAssign" onclick="showView('assign')">Assign</button>
     <button class="outline" id="navDevices" onclick="showView('devices')">Devices</button>
     <button class="link" onclick="signOut()">Sign out</button>`;
 }
 
+const VIEWS = { dashboard: renderDashboard, years: renderYears, assign: renderAssign, devices: renderDevices };
+
 function showView(view) {
   state.view = view;
-  document.getElementById('navDashboard')?.classList.toggle('active', view === 'dashboard');
-  document.getElementById('navDevices')?.classList.toggle('active', view === 'devices');
-  if (view === 'dashboard') renderDashboard();
-  else renderDevices();
+  for (const [id, name] of [['navDashboard', 'dashboard'], ['navYears', 'years'], ['navAssign', 'assign'], ['navDevices', 'devices']]) {
+    document.getElementById(id)?.classList.toggle('active', view === name);
+  }
+  (VIEWS[view] || renderDashboard)();
+}
+
+// Which mode counts as the graded sitting, per app. Derived from MODES rather
+// than written out again, so adding an app or renaming its graded screen keeps
+// this correct on its own.
+function gradedMode(appId) {
+  const modes = MODES[appId] || {};
+  return Object.keys(modes).find((m) => modes[m].tone === 'graded');
+}
+
+// Every id a merged child has synced under (§6.2), as repeated query params.
+// The parent never knows which one a given tablet is currently pushing with,
+// so both reads and writes address all of them.
+function childQuery(child) {
+  return child.ids.map((id) => 'childId=' + encodeURIComponent(id)).join('&');
+}
+
+async function ensureChildren() {
+  if (state.children.length) return;
+  const { children } = await api('/children');
+  state.children = mergeChildren(children);
 }
 
 // ---------- Dashboard ----------
@@ -556,9 +595,468 @@ function openSessionDetail(childId, appId, sessionId) {
       <p class="muted">${esc(fmtDateTime(session.date))}${scope ? ' · ' + esc(scope) : ''} · ${session.score}/${session.total}</p>
       ${session.promotedFrom ? '<p class="muted">Recorded automatically from a perfect pretest — the same sitting as that pretest, not a second one.</p>' : ''}
       <div>${rows || '<p class="muted">No item detail recorded.</p>'}</div>
-      <div class="center" style="margin-top:16px"><button class="outline" onclick="this.closest('.overlay').remove()">Close</button></div>
+      <div class="error" id="sessionDeleteErr"></div>
+      <div class="row" style="margin-top:16px;justify-content:space-between">
+        <button class="danger" onclick="deleteSessionFromParent('${esc(childId)}','${esc(appId)}','${esc(String(session.id))}',this)">Delete session</button>
+        <button class="outline" onclick="this.closest('.overlay').remove()">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+// §15.3. One call does both halves — tombstone the cloud row so this dashboard
+// stops showing it, and queue the command that drops it from the tablet's own
+// history — because a delete that lands on only one side is worse than no
+// delete at all.
+async function deleteSessionFromParent(childId, appId, sessionId, btn) {
+  const child = state.children.find((c) => c.id === childId);
+  const sessions = state.sessionsByKey[childId + ':' + appId] || [];
+  const session = sessions.find((s) => String(s.id) === String(sessionId));
+  if (!child || !session) return;
+
+  // A perfect pretest and its auto-promoted test twin are one sitting (§9), so
+  // they delete together — the same rule the child app applies locally. Doing
+  // it here rather than server-side keeps the server out of the business of
+  // knowing what a Spelling Star session means (§3 rule 3).
+  const ids = new Set([String(session.id)]);
+  if (session.promotedFrom) ids.add(String(session.promotedFrom));
+  const twin = sessions.find((s) => s.promotedFrom && String(s.promotedFrom) === String(session.id));
+  if (twin) ids.add(String(twin.id));
+
+  const extra = ids.size > 1 ? '\n\nIts auto-recorded twin will go too — they are one sitting.' : '';
+  if (!confirm(`Delete this session from ${child.name || 'this child'}'s history?${extra}\n\nIt disappears here and from the tablet the next time it syncs. This can't be undone.`)) return;
+
+  const errEl = document.getElementById('sessionDeleteErr');
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  try {
+    await api('/sessions/delete', { method: 'POST', body: { app: appId, childIds: child.ids, sessionIds: [...ids] } });
+    for (const a of APPS) {
+      const key = childId + ':' + a.id;
+      if (!state.sessionsByKey[key]) continue;
+      state.sessionsByKey[key] = state.sessionsByKey[key].filter((s) => !ids.has(String(s.id)));
+    }
+    document.querySelector('.overlay')?.remove();
+    paintDashboard();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Delete session'; }
+    if (errEl) errEl.textContent = err.message;
+  }
+}
+
+// ---------- Previous years (§16) ----------
+//
+// The multi-year record. Deliberately not the dashboard: the dashboard answers
+// "how is it going this week" and is built from full sessions, while this
+// answers "what did they do in Grade 3" and is built from one aggregate query
+// (§16.2) that never moves a payload. Which is why it can span years at all.
+//
+// A final grade here is the **highest** graded sitting on each list, not an
+// average of attempts — practising a list until it is right is the point, so
+// the best score is the honest record of what was learned (§16.1).
+
+async function renderYears() {
+  const appEl = document.getElementById('app');
+  appEl.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    await ensureChildren();
+    if (!state.children.length) {
+      appEl.innerHTML = `<div class="card empty">No children synced yet.<br><br>
+        <button onclick="showView('devices')">Go to Devices to add one</button></div>`;
+      return;
+    }
+    if (!state.children.some((c) => c.id === state.detailChildId)) state.detailChildId = state.children[0].id;
+
+    const child = state.children.find((c) => c.id === state.detailChildId);
+    const appDef = APPS.find((a) => a.id === state.detailApp) || APPS[0];
+    const mode = gradedMode(appDef.id);
+    const qs = childQuery(child) + '&app=' + encodeURIComponent(appDef.id) + '&mode=' + encodeURIComponent(mode);
+    const { lists } = await api('/summary?' + qs);
+    state.years = lists || [];
+    paintYears();
+  } catch (err) {
+    appEl.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+function selectYearsChild(id) { state.detailChildId = id; renderYears(); }
+function selectYearsApp(appId) { state.detailApp = appId; renderYears(); }
+
+function paintYears() {
+  const child = state.children.find((c) => c.id === state.detailChildId);
+  const appDef = APPS.find((a) => a.id === state.detailApp) || APPS[0];
+  const gradedLabel = modeInfo(appDef.id, gradedMode(appDef.id)).label;
+
+  const childOptions = state.children
+    .map((c) => `<option value="${esc(c.id)}"${c.id === child.id ? ' selected' : ''}>${esc(c.name || 'Unnamed')}</option>`)
+    .join('');
+  const appToggle = APPS.map((a) => {
+    const active = a.id === appDef.id ? ' active' : '';
+    return `<button class="outline${active}" onclick="selectYearsApp('${a.id}')">${esc(a.label)}</button>`;
+  }).join('');
+
+  // Newest grade first, with anything recorded before grades existed last —
+  // it is history, not a year, and putting it on top would bury the real ones.
+  const byGrade = new Map();
+  for (const row of state.years) {
+    const key = row.grade || '';
+    if (!byGrade.has(key)) byGrade.set(key, []);
+    byGrade.get(key).push(row);
+  }
+  const order = [...byGrade.keys()].sort((a, b) => {
+    if (!a) return 1;
+    if (!b) return -1;
+    return gradeRank(b) - gradeRank(a);
+  });
+
+  const sections = order.map((grade) => {
+    const rows = byGrade.get(grade).slice().sort((x, y) => (y.lastAt || 0) - (x.lastAt || 0));
+    // The grade-level number is the mean of each list's best — an average of
+    // finals, not of every attempt. Stated in the copy, because "91%" with no
+    // definition is exactly the kind of number that gets quoted back wrongly.
+    const mean = Math.round((rows.reduce((sum, r) => sum + r.best, 0) / rows.length) * 100);
+    const span = rows.length
+      ? `${fmtDateWithYear(Math.min(...rows.map((r) => r.firstAt)))} – ${fmtDateWithYear(Math.max(...rows.map((r) => r.lastAt)))}`
+      : '';
+
+    const body = rows.map((r) => `
+      <tr>
+        <td><strong>${esc(r.scopeName || 'Untitled')}</strong><br><span class="muted">${esc(fmtDateWithYear(r.lastAt))}</span></td>
+        <td class="muted">${r.attempts} ${esc(gradedLabel.toLowerCase())}${r.attempts === 1 ? '' : 's'}</td>
+        <td><strong>${Math.round(r.best * 100)}%</strong></td>
+      </tr>`).join('');
+
+    return `
+      <div class="card">
+        <h2>${grade ? 'Grade ' + esc(grade) : 'Before grades'}</h2>
+        <p class="muted">${rows.length} list${rows.length === 1 ? '' : 's'}${span ? ' · ' + esc(span) : ''} · best scores average <strong>${mean}%</strong></p>
+        ${!grade ? '<p class="muted">Recorded before word lists carried a grade. These keep their scores; they just have no year to file under.</p>' : ''}
+        <table>
+          <thead><tr><th>${appDef.id === 'spelling' ? 'List' : 'Focus area'}</th><th>Sittings</th><th>Best</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  document.getElementById('app').innerHTML = `
+    <div class="card picker">
+      <label for="yearsChildSel">Previous years for:</label>
+      <select id="yearsChildSel" onchange="selectYearsChild(this.value)">${childOptions}</select>
+      <div class="row app-toggle">${appToggle}</div>
+      <p class="muted" style="margin:10px 0 0">Each list's <strong>best ${esc(gradedLabel)}</strong> score, filed under the grade it was worked in. Practice and other sittings aren't counted here — they're on the Dashboard.</p>
+    </div>
+    ${sections || `<div class="card empty">No ${esc(gradedLabel.toLowerCase())} results yet for ${esc(child.name || 'this child')} in ${esc(appDef.label)}.</div>`}`;
+}
+
+// "K" sorts below 1; everything else is a number. Anything unrecognized sorts
+// to the bottom rather than throwing off the order.
+function gradeRank(grade) {
+  if (grade === 'K') return 0;
+  const n = parseInt(grade, 10);
+  return Number.isFinite(n) ? n : -1;
+}
+
+// ---------- Assign (parent -> child, §15) ----------
+//
+// The one screen that writes rather than reads. Everything it offers comes
+// from the tablet's own snapshot (§15.4) — its word lists, its focus areas,
+// its category catalog — so this page never carries a second copy of either
+// child app's data model and can't drift out of date with the installed
+// version. Nothing here takes effect instantly: a command sits in the queue
+// until the tablet next syncs, which the delivery status makes plain.
+
+async function renderAssign() {
+  const appEl = document.getElementById('app');
+  appEl.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    await ensureChildren();
+    if (!state.children.length) {
+      appEl.innerHTML = `<div class="card empty">No children synced yet.<br><br>
+        <button onclick="showView('devices')">Go to Devices to add one</button></div>`;
+      return;
+    }
+    if (!state.children.some((c) => c.id === state.detailChildId)) state.detailChildId = state.children[0].id;
+
+    const child = state.children.find((c) => c.id === state.detailChildId);
+    const appDef = APPS.find((a) => a.id === state.detailApp) || APPS[0];
+    const qs = childQuery(child) + '&app=' + encodeURIComponent(appDef.id);
+    const [snap, cmds] = await Promise.all([api('/child-state?' + qs), api('/commands?' + qs)]);
+    state.snapshots = snap.snapshots || [];
+    state.commands = cmds.commands || [];
+    paintAssign();
+  } catch (err) {
+    appEl.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+function selectAssignChild(id) { state.detailChildId = id; state.assignErr = ''; state.assignNote = ''; renderAssign(); }
+function selectAssignApp(appId) { state.detailApp = appId; state.assignErr = ''; state.assignNote = ''; renderAssign(); }
+
+function paintAssign() {
+  const child = state.children.find((c) => c.id === state.detailChildId);
+  const appDef = APPS.find((a) => a.id === state.detailApp) || APPS[0];
+  // Freshest wins: two tablets can both report, and the server hands them back
+  // newest-first.
+  const snapshot = state.snapshots[0];
+
+  const childOptions = state.children
+    .map((c) => `<option value="${esc(c.id)}"${c.id === child.id ? ' selected' : ''}>${esc(c.name || 'Unnamed')}</option>`)
+    .join('');
+  const appToggle = APPS.map((a) => {
+    const active = a.id === appDef.id ? ' active' : '';
+    return `<button class="outline${active}" onclick="selectAssignApp('${a.id}')">${esc(a.label)}</button>`;
+  }).join('');
+
+  const body = !snapshot
+    ? `<div class="card empty">${esc(child.name || 'This child')}'s tablet hasn't reported what it has for ${esc(appDef.label)} yet.
+        <br><br><span class="muted">It reports on the next sync — opening the app on the tablet is enough. A tablet still on the older app version syncs results but can't be assigned to until it's updated.</span></div>`
+    : appDef.id === 'spelling'
+      ? renderSpellingAssign(child, snapshot)
+      : renderMathAssign(child, snapshot);
+
+  document.getElementById('app').innerHTML = `
+    <div class="card picker">
+      <label for="assignChildSel">Assign for:</label>
+      <select id="assignChildSel" onchange="selectAssignChild(this.value)">${childOptions}</select>
+      <div class="row app-toggle">${appToggle}</div>
+      ${snapshot ? `<p class="muted" style="margin:10px 0 0">From ${esc(snapshot.deviceLabel || 'the tablet')}, ${fmtRelative(snapshot.updatedAt)}.</p>` : ''}
+    </div>
+    ${state.assignNote ? `<div class="card" style="background:var(--green-soft);border-color:var(--green)"><strong>${esc(state.assignNote)}</strong><div class="muted" style="margin-top:4px">It lands the next time the tablet syncs — on the next app open, or within a minute if it's already open.</div></div>` : ''}
+    ${state.assignErr ? `<div class="card error">${esc(state.assignErr)}</div>` : ''}
+    ${body}
+    ${renderQueueCard()}`;
+}
+
+function renderSpellingAssign(child, snapshot) {
+  const lists = snapshot.state.lists || [];
+  const activeId = snapshot.state.activeListId;
+
+  // The tablet reports which grades it offers, so this stays right if the app
+  // ever changes the set (§15.4). Older clients send no `grades`; the field
+  // then falls back to whatever grades their lists already use.
+  const grades = snapshot.state.grades
+    || [...new Set(lists.map((l) => l.grade).filter(Boolean))];
+  const defaultGrade = snapshot.state.gradeLevel;
+
+  const rows = lists.map((l) => {
+    const isActive = l.id === activeId;
+    const counts = `${l.wordCount} word${l.wordCount === 1 ? '' : 's'}${l.bonusCount ? ` + ${l.bonusCount} bonus` : ''}`;
+    return `<tr>
+      <td><strong>${esc(l.name)}</strong><br><span class="muted">${l.grade ? 'Grade ' + esc(l.grade) : 'Ungraded'}${l.desc ? ' · ' + esc(l.desc) : ''}</span></td>
+      <td class="muted">${counts}</td>
+      <td>${isActive
+        ? '<span class="badge ok">Assigned</span>'
+        : `<button onclick="${esc(`sendCommand('set-active-list', ${JSON.stringify({ listId: l.id })}, ${JSON.stringify('Assigned “' + l.name + '”')})`)}">Assign</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h2>Lists on the tablet</h2>
+      <p class="muted">Whichever one is assigned is what ${esc(child.name || 'they')} practises and gets tested on.</p>
+      <table>
+        <thead><tr><th>List</th><th>Size</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" class="muted">No lists reported.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Send a new list</h2>
+      <p class="muted">One word per line. To add a hint and an example sentence, write <code>word, hint, sentence</code> — the same format the tablet's CSV import takes. Sending a list whose name already exists replaces its words.</p>
+      <label for="newListName">List name</label>
+      <input type="text" id="newListName" placeholder="e.g. Week 12" maxlength="60">
+      ${grades.length ? `
+      <label for="newListGrade">Grade level</label>
+      <select id="newListGrade">
+        ${grades.map((g) => `<option value="${esc(g)}"${g === defaultGrade ? ' selected' : ''}>Grade ${esc(g)}</option>`).join('')}
+      </select>` : ''}
+      <label for="newListWords">Words</label>
+      <textarea id="newListWords" rows="8" placeholder="because&#10;friend, tricky one, My friend is here.&#10;through"></textarea>
+      <label for="newListBonus">Bonus words (optional)</label>
+      <textarea id="newListBonus" rows="3" placeholder="rhythm&#10;conscience"></textarea>
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)">
+        <input type="checkbox" id="newListActive" checked style="width:auto;margin:0"> Make it the assigned list
+      </label>
+      <button class="big" style="margin-top:12px" onclick="sendNewList()">Send to the tablet</button>
+    </div>`;
+}
+
+function renderMathAssign(child, snapshot) {
+  const areas = snapshot.state.focusAreas || [];
+  const activeId = snapshot.state.activeFocusId;
+  // The tablet's own CATS (§15.4). If an older app version reported no
+  // catalog, the picker is hidden rather than guessed at.
+  const catalog = snapshot.state.catalog || [];
+
+  const rows = areas.map((f) => {
+    const isActive = f.id === activeId;
+    const labels = (f.categories || []).map((c) => {
+      const meta = catalog.find((x) => x.id === c);
+      return meta ? meta.label : c;
+    }).join(', ');
+    return `<tr>
+      <td><strong>${esc(f.name)}</strong><br><span class="muted">${esc(labels)}</span></td>
+      <td>${isActive
+        ? '<span class="badge ok">Assigned</span>'
+        : `<button onclick="${esc(`sendCommand('set-active-focus', ${JSON.stringify({ focusId: f.id })}, ${JSON.stringify('Assigned “' + f.name + '”')})`)}">Assign</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  const strands = [];
+  const byStrand = {};
+  for (const c of catalog) {
+    const key = c.strand || 'Other';
+    if (!byStrand[key]) { byStrand[key] = []; strands.push(key); }
+    byStrand[key].push(c);
+  }
+  const picker = strands.map((strand) => `
+    <div style="margin-bottom:10px">
+      <div class="muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${esc(strand)}</div>
+      ${byStrand[strand].map((c) => `
+        <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text);padding:2px 0">
+          <input type="checkbox" class="newFocusCat" value="${esc(c.id)}" style="width:auto;margin:0">
+          ${esc(c.label)} <span class="muted">${esc(c.band)}</span>
+        </label>`).join('')}
+    </div>`).join('');
+
+  return `
+    <div class="card">
+      <h2>Focus areas on the tablet</h2>
+      <p class="muted">The assigned one is what ${esc(child.name || 'they')} gets for practice and drills.</p>
+      <table>
+        <thead><tr><th>Focus area</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="2" class="muted">No focus areas reported.</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${catalog.length ? `
+    <div class="card">
+      <h2>Send a new focus area</h2>
+      <p class="muted">Pick one category for a focused stretch, or several for a mixed session. Sending one whose name already exists replaces its categories.</p>
+      <label for="newFocusName">Name</label>
+      <input type="text" id="newFocusName" placeholder="e.g. Fractions week" maxlength="60">
+      <label>Categories</label>
+      ${picker}
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)">
+        <input type="checkbox" id="newFocusActive" checked style="width:auto;margin:0"> Make it the assigned focus area
+      </label>
+      <button class="big" style="margin-top:12px" onclick="sendNewFocus()">Send to the tablet</button>
+    </div>` : ''}`;
+}
+
+// Human-readable summary of a queued command, for the "Sent recently" card.
+// Falls back to the raw kind so a command from a newer parent build still
+// shows up as something rather than vanishing.
+function describeCommand(cmd) {
+  const p = cmd.payload || {};
+  if (cmd.kind === 'assign-list') return `New list “${p.list?.name || '?'}” (${(p.list?.words || []).length} words)`;
+  if (cmd.kind === 'set-active-list') return 'Switch the assigned list';
+  if (cmd.kind === 'assign-focus') return `New focus area “${p.focus?.name || '?'}”`;
+  if (cmd.kind === 'set-active-focus') return 'Switch the assigned focus area';
+  if (cmd.kind === 'delete-session') return `Delete ${(p.sessionIds || []).length} session${(p.sessionIds || []).length === 1 ? '' : 's'}`;
+  return cmd.kind;
+}
+
+function renderQueueCard() {
+  // One command is queued per child id (§6.2), so a merged child produces
+  // duplicates that are the same instruction. Collapse them by kind+time and
+  // keep every id, so Cancel cancels the whole thing.
+  const groups = new Map();
+  for (const cmd of state.commands) {
+    const key = cmd.kind + ':' + cmd.createdAt + ':' + JSON.stringify(cmd.payload);
+    if (!groups.has(key)) groups.set(key, { ...cmd, ids: [] });
+    const g = groups.get(key);
+    g.ids.push(cmd.id);
+    g.ackCount = Math.max(g.ackCount, cmd.ackCount);
+    g.canceled = g.canceled && cmd.canceled;
+  }
+
+  const rows = [...groups.values()].slice(0, 12).map((cmd) => {
+    const status = cmd.canceled
+      ? '<span class="badge off">Canceled</span>'
+      : cmd.ackCount
+        ? `<span class="badge ok">Delivered ${fmtRelative(cmd.firstAppliedAt)}</span>`
+        : '<span class="badge warn">Waiting for the tablet</span>';
+    const action = !cmd.canceled && !cmd.ackCount
+      ? `<button class="link" onclick="${esc(`cancelCommand(${JSON.stringify(cmd.ids)})`)}">Cancel</button>`
+      : '';
+    return `<tr>
+      <td>${esc(describeCommand(cmd))}<br><span class="muted">${esc(fmtDateTime(new Date(cmd.createdAt).toISOString()))}</span></td>
+      <td>${status}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h2>Sent recently</h2>
+      <p class="muted">Anything still waiting can be canceled — once a tablet has applied it, undoing means sending something new.</p>
+      <table>
+        <tbody>${rows || '<tr><td class="muted">Nothing sent yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+// Each line is `word` or `word, hint, sentence` — deliberately the same shape
+// the tablet's own CSV import accepts, so a parent with a list in a spreadsheet
+// can paste it straight in. The tablet fills the same defaults for a bare word
+// that typing it into the parent area would.
+function parseWordLines(text) {
+  return String(text || '').split(/\r?\n/).map((line) => {
+    const [word, hint, sentence] = line.split(',').map((s) => s.trim());
+    return word ? { word, hint: hint || '', sentence: sentence || '' } : null;
+  }).filter(Boolean);
+}
+
+async function sendNewList() {
+  const name = document.getElementById('newListName').value.trim();
+  const words = parseWordLines(document.getElementById('newListWords').value);
+  const bonus = parseWordLines(document.getElementById('newListBonus').value);
+  const grade = document.getElementById('newListGrade')?.value || undefined;
+  if (!name) return setAssignError('Give the list a name.');
+  if (!words.length && !bonus.length) return setAssignError('Add at least one word.');
+  // Grade travels with the list because it is half of its identity on the
+  // tablet: the app matches an incoming list on name *and* grade, so that
+  // sending "Unit 1" for a new year adds a list rather than overwriting last
+  // year's (§16).
+  await sendCommand('assign-list', { list: { name, grade, words, bonus }, makeActive: document.getElementById('newListActive').checked },
+    `Sent “${name}”${grade ? ` for Grade ${grade}` : ''} — ${words.length + bonus.length} word${words.length + bonus.length === 1 ? '' : 's'}.`);
+}
+
+async function sendNewFocus() {
+  const name = document.getElementById('newFocusName').value.trim();
+  const categories = [...document.querySelectorAll('.newFocusCat:checked')].map((el) => el.value);
+  if (!name) return setAssignError('Give the focus area a name.');
+  if (!categories.length) return setAssignError('Pick at least one category.');
+  await sendCommand('assign-focus', { focus: { name, categories }, makeActive: document.getElementById('newFocusActive').checked },
+    `Sent “${name}”.`);
+}
+
+function setAssignError(message) {
+  state.assignErr = message;
+  state.assignNote = '';
+  paintAssign();
+}
+
+async function sendCommand(kind, payload, note) {
+  const child = state.children.find((c) => c.id === state.detailChildId);
+  const appDef = APPS.find((a) => a.id === state.detailApp) || APPS[0];
+  if (!child) return;
+  state.assignErr = '';
+  try {
+    await api('/commands', { method: 'POST', body: { app: appDef.id, childIds: child.ids, kind, payload } });
+    state.assignNote = note || 'Sent.';
+    await renderAssign();
+  } catch (err) {
+    setAssignError(err.message);
+  }
+}
+
+async function cancelCommand(ids) {
+  try {
+    await api('/commands/cancel', { method: 'POST', body: { commandIds: ids } });
+    state.assignNote = '';
+    await renderAssign();
+  } catch (err) {
+    setAssignError(err.message);
+  }
 }
 
 // ---------- Devices ----------

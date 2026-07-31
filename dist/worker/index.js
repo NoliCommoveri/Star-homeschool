@@ -37,6 +37,30 @@ async function sha256Hex(input) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 __name(sha256Hex, "sha256Hex");
+var COMMAND_KINDS = [
+  "assign-list",
+  // spelling: add/replace a word list, optionally make it active
+  "set-active-list",
+  // spelling: switch which existing list is assigned
+  "assign-focus",
+  // math: add/replace a focus area, optionally make it active
+  "set-active-focus",
+  // math: switch which existing focus area is assigned
+  "delete-session"
+  // both: drop sessions from the tablet's own history
+];
+var MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024;
+var MAX_CHILD_STATE_BYTES = 128 * 1024;
+async function familyChildIds(env, familyId, ids) {
+  const wanted = [...new Set((ids || []).filter(Boolean).map(String))];
+  if (!wanted.length) return [];
+  const placeholders = wanted.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT id FROM children WHERE family_id = ? AND id IN (${placeholders})`
+  ).bind(familyId, ...wanted).all();
+  return results.map((r) => r.id);
+}
+__name(familyChildIds, "familyChildIds");
 async function authenticate(request, env, allowedRoles) {
   const header = request.headers.get("Authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -68,8 +92,39 @@ async function authenticate(request, env, allowedRoles) {
 }
 __name(authenticate, "authenticate");
 
-// api/devices/revoke.js
+// api/commands/cancel.js
 async function onRequestPost({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const ids = (Array.isArray(body?.commandIds) ? body.commandIds : [body?.commandId]).filter(Boolean).map(String);
+  if (!ids.length) {
+    return json({ error: "commandId or commandIds[] is required" }, { status: 400 });
+  }
+  let canceled = 0;
+  for (const id of ids.slice(0, 50)) {
+    const res = await env.DB.prepare(
+      `UPDATE commands SET canceled = 1
+       WHERE id = ? AND family_id = ?
+         AND NOT EXISTS (SELECT 1 FROM command_acks a WHERE a.command_id = commands.id)`
+    ).bind(id, device.family_id).run();
+    canceled += res.meta.changes;
+  }
+  return json({ canceled });
+}
+__name(onRequestPost, "onRequestPost");
+
+// api/devices/revoke.js
+async function onRequestPost2({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -92,10 +147,93 @@ async function onRequestPost({ request, env }) {
   }
   return json({ revoked: true });
 }
-__name(onRequestPost, "onRequestPost");
+__name(onRequestPost2, "onRequestPost");
+
+// api/sessions/delete.js
+async function onRequestPost3({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const { app, sessionIds } = body || {};
+  const requestedIds = Array.isArray(body?.childIds) ? body.childIds : [body?.childId];
+  if (!app || !Array.isArray(sessionIds) || !sessionIds.length) {
+    return json({ error: "app and a non-empty sessionIds[] are required" }, { status: 400 });
+  }
+  const childIds = await familyChildIds(env, device.family_id, requestedIds);
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const ids = [...new Set(sessionIds.map(String))].slice(0, 100);
+  const now = Date.now();
+  const childPlaceholders = childIds.map(() => "?").join(",");
+  const sessionPlaceholders = ids.map(() => "?").join(",");
+  const tombstoned = await env.DB.prepare(
+    `UPDATE sessions SET deleted = 1
+     WHERE app = ? AND child_id IN (${childPlaceholders}) AND session_id IN (${sessionPlaceholders})`
+  ).bind(app, ...childIds, ...ids).run();
+  const payload = JSON.stringify({ sessionIds: ids });
+  const commands = [];
+  for (const childId of childIds) {
+    const id = randomId();
+    await env.DB.prepare(
+      `INSERT INTO commands (id, family_id, child_id, app, kind, payload, created_at, created_by)
+       VALUES (?, ?, ?, ?, 'delete-session', ?, ?, ?)`
+    ).bind(id, device.family_id, childId, app, payload, now, device.id).run();
+    commands.push({ id, childId });
+  }
+  return json({ deleted: ids, rows: tombstoned.meta.changes, commands });
+}
+__name(onRequestPost3, "onRequestPost");
+
+// api/child-state.js
+async function onRequestGet({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  const url = new URL(request.url);
+  const app = url.searchParams.get("app");
+  const childIds = await familyChildIds(env, device.family_id, url.searchParams.getAll("childId"));
+  if (!app) return json({ error: "app query param is required" }, { status: 400 });
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const placeholders = childIds.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT s.child_id, s.device_id, s.updated_at, s.state, d.label
+     FROM child_state s
+     LEFT JOIN devices d ON d.id = s.device_id
+     WHERE s.app = ? AND s.child_id IN (${placeholders})
+     ORDER BY s.updated_at DESC`
+  ).bind(app, ...childIds).all();
+  const snapshots = results.map((row) => ({
+    childId: row.child_id,
+    deviceId: row.device_id,
+    deviceLabel: row.label,
+    updatedAt: row.updated_at,
+    state: safeParse(row.state)
+  })).filter((s) => s.state);
+  return json({ snapshots });
+}
+__name(onRequestGet, "onRequestGet");
+function safeParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+__name(safeParse, "safeParse");
 
 // api/children.js
-async function onRequestGet({ request, env }) {
+async function onRequestGet2({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -107,10 +245,100 @@ async function onRequestGet({ request, env }) {
   ).bind(device.family_id).all();
   return json({ children: results });
 }
-__name(onRequestGet, "onRequestGet");
+__name(onRequestGet2, "onRequestGet");
+
+// api/commands.js
+var COMMAND_RETENTION_MS = 30 * 864e5;
+async function onRequestPost4({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const { app, kind, payload } = body || {};
+  const requestedIds = Array.isArray(body?.childIds) ? body.childIds : [body?.childId];
+  if (!app || !kind) {
+    return json({ error: "app and kind are required" }, { status: 400 });
+  }
+  if (!COMMAND_KINDS.includes(kind)) {
+    return json({ error: "unknown command kind" }, { status: 400 });
+  }
+  const serialized = JSON.stringify(payload ?? {});
+  if (serialized.length > MAX_COMMAND_PAYLOAD_BYTES) {
+    return json({ error: "payload too large" }, { status: 413 });
+  }
+  const childIds = await familyChildIds(env, device.family_id, requestedIds);
+  if (!childIds.length) {
+    return json({ error: "not found" }, { status: 404 });
+  }
+  const now = Date.now();
+  await env.DB.prepare("DELETE FROM command_acks WHERE command_id IN (SELECT id FROM commands WHERE created_at < ?)").bind(now - COMMAND_RETENTION_MS).run();
+  await env.DB.prepare("DELETE FROM commands WHERE created_at < ?").bind(now - COMMAND_RETENTION_MS).run();
+  const created = [];
+  for (const childId of childIds) {
+    const id = randomId();
+    await env.DB.prepare(
+      `INSERT INTO commands (id, family_id, child_id, app, kind, payload, created_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, device.family_id, childId, app, kind, serialized, now, device.id).run();
+    created.push({ id, childId });
+  }
+  return json({ commands: created, createdAt: now });
+}
+__name(onRequestPost4, "onRequestPost");
+async function onRequestGet3({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  const url = new URL(request.url);
+  const app = url.searchParams.get("app");
+  const childIds = await familyChildIds(env, device.family_id, url.searchParams.getAll("childId"));
+  if (!app) return json({ error: "app query param is required" }, { status: 400 });
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const placeholders = childIds.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.child_id, c.kind, c.payload, c.created_at, c.canceled,
+            (SELECT COUNT(*) FROM command_acks a WHERE a.command_id = c.id) AS ack_count,
+            (SELECT MIN(a.applied_at) FROM command_acks a WHERE a.command_id = c.id) AS first_applied_at
+     FROM commands c
+     WHERE c.app = ? AND c.child_id IN (${placeholders})
+     ORDER BY c.created_at DESC
+     LIMIT 40`
+  ).bind(app, ...childIds).all();
+  const commands = results.map((row) => ({
+    id: row.id,
+    childId: row.child_id,
+    kind: row.kind,
+    payload: safeParse2(row.payload),
+    createdAt: row.created_at,
+    canceled: !!row.canceled,
+    ackCount: row.ack_count,
+    firstAppliedAt: row.first_applied_at
+  }));
+  return json({ commands });
+}
+__name(onRequestGet3, "onRequestGet");
+function safeParse2(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+__name(safeParse2, "safeParse");
 
 // api/delete.js
-async function onRequestPost2({ request, env }) {
+async function onRequestPost5({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["child"]);
@@ -140,10 +368,10 @@ async function onRequestPost2({ request, env }) {
   }
   return json({ deleted });
 }
-__name(onRequestPost2, "onRequestPost");
+__name(onRequestPost5, "onRequestPost");
 
 // api/devices.js
-async function onRequestGet2({ request, env }) {
+async function onRequestGet4({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -155,10 +383,10 @@ async function onRequestGet2({ request, env }) {
   ).bind(device.family_id).all();
   return json({ devices: results });
 }
-__name(onRequestGet2, "onRequestGet");
+__name(onRequestGet4, "onRequestGet");
 
 // api/family.js
-async function onRequestPost3({ request, env }) {
+async function onRequestPost6({ request, env }) {
   let body;
   try {
     body = await request.json();
@@ -186,10 +414,10 @@ async function onRequestPost3({ request, env }) {
   ]);
   return json({ token, familyId, role: "parent" });
 }
-__name(onRequestPost3, "onRequestPost");
+__name(onRequestPost6, "onRequestPost");
 
 // api/pair.js
-async function onRequestPost4({ request, env }) {
+async function onRequestPost7({ request, env }) {
   let body;
   try {
     body = await request.json();
@@ -228,10 +456,10 @@ async function onRequestPost4({ request, env }) {
   ).bind(deviceId, pairing.family_id, tokenHash, role, label || null, now, now, Math.floor(now / 1e3)).run();
   return json({ token, role });
 }
-__name(onRequestPost4, "onRequestPost");
+__name(onRequestPost7, "onRequestPost");
 
 // api/pairing-code.js
-async function onRequestPost5({ request, env }) {
+async function onRequestPost8({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -257,10 +485,10 @@ async function onRequestPost5({ request, env }) {
   ).bind(codeHash, device.family_id, role, expiresAt).run();
   return json({ code, expiresAt });
 }
-__name(onRequestPost5, "onRequestPost");
+__name(onRequestPost8, "onRequestPost");
 
 // api/sessions.js
-async function onRequestGet3({ request, env }) {
+async function onRequestGet5({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -299,10 +527,58 @@ async function onRequestGet3({ request, env }) {
   }));
   return json({ sessions });
 }
-__name(onRequestGet3, "onRequestGet");
+__name(onRequestGet5, "onRequestGet");
+
+// api/summary.js
+async function onRequestGet6({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  const url = new URL(request.url);
+  const app = url.searchParams.get("app");
+  const mode = url.searchParams.get("mode");
+  const childIds = await familyChildIds(env, device.family_id, url.searchParams.getAll("childId"));
+  if (!app || !mode) return json({ error: "app and mode query params are required" }, { status: 400 });
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const placeholders = childIds.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT grade,
+            scope_id,
+            MAX(scope_name)                AS scope_name,
+            MAX(ratio)                     AS best,
+            COUNT(*)                       AS attempts,
+            MIN(occurred_at)               AS first_at,
+            MAX(occurred_at)               AS last_at
+     FROM (
+       SELECT DISTINCT device_id, session_id, grade, scope_id, scope_name,
+              occurred_at, (score * 1.0 / total) AS ratio
+       FROM sessions
+       WHERE app = ? AND mode = ? AND total > 0 AND deleted = 0
+         AND child_id IN (${placeholders})
+     )
+     GROUP BY grade, scope_id
+     ORDER BY grade, MAX(occurred_at) DESC`
+  ).bind(app, mode, ...childIds).all();
+  const lists = results.map((row) => ({
+    grade: row.grade,
+    // null = recorded before grades existed
+    scopeId: row.scope_id,
+    scopeName: row.scope_name,
+    best: row.best,
+    // 0..1; the client formats it
+    attempts: row.attempts,
+    firstAt: row.first_at,
+    lastAt: row.last_at
+  }));
+  return json({ lists });
+}
+__name(onRequestGet6, "onRequestGet");
 
 // api/sync.js
-async function onRequestPost6({ request, env }) {
+async function onRequestPost9({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["child"]);
@@ -315,7 +591,7 @@ async function onRequestPost6({ request, env }) {
   } catch {
     return json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { app, childId, childName, sessions } = body || {};
+  const { app, childId, childName, sessions, state, applied } = body || {};
   if (!app || !childId || !Array.isArray(sessions)) {
     return json({ error: "app, childId, and sessions[] are required" }, { status: 400 });
   }
@@ -341,9 +617,10 @@ async function onRequestPost6({ request, env }) {
     const sessionId = String(session.id);
     const { id, date, mode, score, total, ...rest } = session;
     const occurredAt = Date.parse(date);
+    const scope = sessionScope(app, rest);
     await env.DB.prepare(
-      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(child_id, app, device_id, session_id) DO NOTHING`
     ).bind(
       childId,
@@ -355,82 +632,194 @@ async function onRequestPost6({ request, env }) {
       mode || null,
       score ?? null,
       total ?? null,
-      JSON.stringify(rest)
+      JSON.stringify(rest),
+      scope.grade,
+      scope.id,
+      scope.name
     ).run();
     accepted.push(sessionId);
   }
-  return json({ accepted });
+  if (state && typeof state === "object") {
+    const serialized = JSON.stringify(state);
+    if (serialized.length > MAX_CHILD_STATE_BYTES) {
+      return json({ error: "state too large" }, { status: 413 });
+    }
+    await env.DB.prepare(
+      `INSERT INTO child_state (child_id, app, device_id, updated_at, state)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(child_id, app, device_id) DO UPDATE SET
+         updated_at = excluded.updated_at,
+         state = excluded.state`
+    ).bind(childId, app, device.id, now, serialized).run();
+  }
+  if (Array.isArray(applied)) {
+    for (const commandId of applied.slice(0, 200)) {
+      if (!commandId) continue;
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO command_acks (command_id, device_id, applied_at)
+         SELECT c.id, ?, ? FROM commands c WHERE c.id = ? AND c.family_id = ?`
+      ).bind(device.id, now, String(commandId), device.family_id).run();
+    }
+  }
+  const { results: pending } = await env.DB.prepare(
+    `SELECT c.id, c.kind, c.payload, c.created_at
+     FROM commands c
+     LEFT JOIN command_acks a ON a.command_id = c.id AND a.device_id = ?
+     WHERE c.child_id = ? AND c.app = ? AND c.canceled = 0 AND a.command_id IS NULL
+     ORDER BY c.created_at`
+  ).bind(device.id, childId, app).all();
+  const legacy = await legacyCommands(env, device, childId, app);
+  const commands = [...pending, ...legacy].map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    payload: safeParse3(row.payload),
+    createdAt: row.created_at
+  }));
+  return json({ accepted, commands });
 }
-__name(onRequestPost6, "onRequestPost");
+__name(onRequestPost9, "onRequestPost");
+async function legacyCommands(env, device, currentChildId, app) {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id, c.kind, c.payload, c.created_at
+     FROM commands c
+     LEFT JOIN command_acks a ON a.command_id = c.id AND a.device_id = ?
+     WHERE c.family_id = ? AND c.app = ? AND c.canceled = 0 AND a.command_id IS NULL
+       AND c.child_id != ?
+       AND c.child_id IN (SELECT DISTINCT s.child_id FROM sessions s WHERE s.device_id = ? AND s.app = ?)
+     ORDER BY c.created_at`
+  ).bind(device.id, device.family_id, app, currentChildId, device.id, app).all();
+  return results;
+}
+__name(legacyCommands, "legacyCommands");
+function sessionScope(app, rest) {
+  if (app === "spelling") {
+    return { grade: rest.listGrade || null, id: rest.listId || null, name: rest.listName || null };
+  }
+  if (app === "math") {
+    return { grade: rest.focusGrade || null, id: rest.focusId || null, name: rest.focusName || null };
+  }
+  return { grade: null, id: null, name: null };
+}
+__name(sessionScope, "sessionScope");
+function safeParse3(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+__name(safeParse3, "safeParse");
 
-// ../.wrangler/tmp/pages-W8MpVv/functionsRoutes-0.4699978642497291.mjs
+// ../.wrangler/tmp/pages-28fgz4/functionsRoutes-0.25032411239664887.mjs
 var routes = [
   {
-    routePath: "/api/devices/revoke",
-    mountPath: "/api/devices",
+    routePath: "/api/commands/cancel",
+    mountPath: "/api/commands",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost]
   },
   {
-    routePath: "/api/children",
+    routePath: "/api/devices/revoke",
+    mountPath: "/api/devices",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost2]
+  },
+  {
+    routePath: "/api/sessions/delete",
+    mountPath: "/api/sessions",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost3]
+  },
+  {
+    routePath: "/api/child-state",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet]
   },
   {
-    routePath: "/api/delete",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost2]
-  },
-  {
-    routePath: "/api/devices",
+    routePath: "/api/children",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet2]
   },
   {
-    routePath: "/api/family",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost3]
-  },
-  {
-    routePath: "/api/pair",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost4]
-  },
-  {
-    routePath: "/api/pairing-code",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost5]
-  },
-  {
-    routePath: "/api/sessions",
+    routePath: "/api/commands",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet3]
   },
   {
-    routePath: "/api/sync",
+    routePath: "/api/commands",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost4]
+  },
+  {
+    routePath: "/api/delete",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost5]
+  },
+  {
+    routePath: "/api/devices",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet4]
+  },
+  {
+    routePath: "/api/family",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost6]
+  },
+  {
+    routePath: "/api/pair",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost7]
+  },
+  {
+    routePath: "/api/pairing-code",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost8]
+  },
+  {
+    routePath: "/api/sessions",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet5]
+  },
+  {
+    routePath: "/api/summary",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet6]
+  },
+  {
+    routePath: "/api/sync",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost9]
   }
 ];
 
-// ../../../../root/.npm/_npx/d77349f55c2be1c0/node_modules/path-to-regexp/dist.es2015/index.js
+// ../../../../root/.npm/_npx/c943b712072b77c4/node_modules/path-to-regexp/dist.es2015/index.js
 function lexer(str) {
   var tokens = [];
   var i = 0;
@@ -756,7 +1145,7 @@ function pathToRegexp(path, keys, options) {
 }
 __name(pathToRegexp, "pathToRegexp");
 
-// ../../../../root/.npm/_npx/d77349f55c2be1c0/node_modules/wrangler/templates/pages-template-worker.ts
+// ../../../../root/.npm/_npx/c943b712072b77c4/node_modules/wrangler/templates/pages-template-worker.ts
 var escapeRegex = /[.+?^${}()|[\]\\]/g;
 function* executeRequest(request) {
   const requestPath = new URL(request.url).pathname;

@@ -50,6 +50,55 @@ CREATE TABLE sessions (
   total       INTEGER,
   deleted     INTEGER NOT NULL DEFAULT 0,
   payload     TEXT NOT NULL,         -- JSON (or ciphertext — see §10)
+  -- Columns rather than payload fields because the multi-year view GROUPs BY
+  -- them, and a Worker cannot parse every payload to do that inside its CPU
+  -- budget. Both stay NULL until the apps stamp them; NULL reads as
+  -- "before grades".
+  grade       TEXT,                  -- school grade when the session happened
+  scope_id    TEXT,                  -- list id (spelling) / focus area id (math)
+  scope_name  TEXT,                  -- its label, frozen at write time
   PRIMARY KEY (child_id, app, device_id, session_id)
 );
 CREATE INDEX idx_sessions_child_app ON sessions(child_id, app, occurred_at);
+
+-- ---------------------------------------------------------------------------
+-- Phase 3 (§15): parent -> child. Also in schema-phase3.sql as a standalone
+-- migration, for a database that was already created from the tables above.
+-- ---------------------------------------------------------------------------
+
+-- The parent -> child queue (§15.2). Append-only, like sessions: a command is
+-- never edited, only canceled, and delivery is recorded in command_acks.
+CREATE TABLE commands (
+  id          TEXT PRIMARY KEY,      -- 128-bit random hex
+  family_id   TEXT NOT NULL REFERENCES families(id),
+  child_id    TEXT NOT NULL REFERENCES children(id),
+  app         TEXT NOT NULL,         -- 'spelling' | 'math'
+  kind        TEXT NOT NULL,         -- §15.3's fixed set
+  payload     TEXT NOT NULL,         -- JSON
+  created_at  INTEGER NOT NULL,
+  created_by  TEXT NOT NULL REFERENCES devices(id),
+  canceled    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_commands_child ON commands(child_id, app, created_at);
+
+-- Delivery is per device, not per command (§15.2): two tablets sharing one
+-- childId must each apply an assignment, and the parent wants to see which
+-- have. A device pulls what it has not yet acked; nothing is ever "consumed."
+CREATE TABLE command_acks (
+  command_id  TEXT NOT NULL REFERENCES commands(id),
+  device_id   TEXT NOT NULL REFERENCES devices(id),
+  applied_at  INTEGER NOT NULL,
+  PRIMARY KEY (command_id, device_id)
+);
+
+-- What the tablet actually has right now (§15.4) — word lists, focus areas,
+-- and the category catalog — so the parent composes against reality instead
+-- of against a copy of the child apps' data model.
+CREATE TABLE child_state (
+  child_id    TEXT NOT NULL REFERENCES children(id),
+  app         TEXT NOT NULL,
+  device_id   TEXT NOT NULL REFERENCES devices(id),
+  updated_at  INTEGER NOT NULL,
+  state       TEXT NOT NULL,         -- JSON
+  PRIMARY KEY (child_id, app, device_id)
+);

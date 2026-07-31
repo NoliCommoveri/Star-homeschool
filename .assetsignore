@@ -3,7 +3,8 @@
 functions/
 dist/
 docs/
-schema.sql
+tests/
+schema*.sql
 wrangler.toml
 .assetsignore
 README.md

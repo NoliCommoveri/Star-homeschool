@@ -1,6 +1,19 @@
 # Parent Sync — Specification
 
-Status: **Phase 1 complete.** The §6 schema and §6.4 API (`schema.sql`,
+Status: **Phase 1 complete; Phase 3 built (§15); grade + multi-year view built (§16).** Phase 3 — assigning work
+from the parent phone and deleting sessions from it — is designed and
+implemented in §15: a `commands` queue pulled by the child through the
+existing `/api/sync` round-trip, plus a `child_state` snapshot pushed up so
+`parent.html` composes against what the tablet actually has. It needs
+`schema-phase3.sql` applied to the live D1 database before deploying, and like
+Phase 1 it has not yet run against a live Worker — see §15.8 for what was
+verified and what wasn't. Note that this is Phase 3 arriving before Phase 2
+(§11): encryption and the fork-and-deploy README are still outstanding, and
+§15.7 records what Phase 3 owes Phase 2 as a result. §16 (word lists carry a
+grade; a Years view over the whole history) ships in the same migration and
+the same deploy.
+
+Phase 1: the §6 schema and §6.4 API (`schema.sql`,
 `functions/api/*`) are built per §12 Steps 4 and 7, `parent.html` (§9, §11
 step 3) is built and tested end-to-end against a local D1 instance (family
 creation, pairing-code mint/redeem, sync, the dashboard grid/cards/
@@ -68,7 +81,9 @@ committed `.assetsignore`, and a pre-bundled Worker script built from
 - Accounts, passwords, or email for children. Children never sign in.
 - Real-time / live-watching. Minutes-fresh is fine.
 - Replacing `localStorage` as the source of truth. The cloud is a mirror.
-- Parent-to-child direction (assigning lists remotely). Deferred to Phase 3.
+- ~~Parent-to-child direction (assigning lists remotely). Deferred to Phase 3.~~
+  Built in §15 — it stayed a non-goal through Phase 1, which is what kept the
+  Phase 1 server to one direction and one sync kind.
 - Operating a hosted service for other families. Possible later on this same
   code, but a deliberate separate decision — see §5.
 
@@ -129,13 +144,19 @@ Local-first, one-way, best-effort.
 
 ```
 child device (localStorage = truth)
-      │  append-only push, fire-and-forget
-      ▼
-   tiny API  ──►  small database
+      │  append-only push, fire-and-forget       ▲
+      ▼                                          │ pulled commands (§15)
+   tiny API  ──►  small database  ───────────────┘
       │
-      ▼  read-only
+      ▼  read-only + queue writes (§15)
 parent phone (parent.html)
 ```
+
+Phase 3 (§15) added the upward arrow, and it is narrower than it looks:
+*records* still travel one way only — a parent never writes a session — while
+the return channel carries *instructions* the tablet chooses to apply to its
+own `localStorage`. The command is not the state; the tablet's reaction to it
+is, which is why rule 1 below survives intact.
 
 Rules the build must not violate:
 
@@ -150,6 +171,11 @@ Rules the build must not violate:
    same field names, differing only in the `app` string. With no build step,
    copy-paste is the sharing mechanism, and two identical copies stay
    maintainable in a way that two variants would not.
+   *Amended by §15:* transport, pairing, queueing and acking are still
+   byte-identical, but `syncState()` and `applyCommand()` are necessarily about
+   each app's own data model. They are a **declared seam** with the same names,
+   shape and return contract in both files — the exception is named so it can't
+   become an unnoticed drift.
 
 ---
 
@@ -729,7 +755,8 @@ field + CORS; fork-and-deploy README for other families.
 list or a math focus area from your phone and have it appear on the tablet.
 Requires the child device to *poll* on boot and a real answer for remote-vs-local
 conflicts. Deliberately last, because it inverts the one-way rule in §3 and
-everything gets harder once it does.
+everything gets harder once it does. **Built — see §15**, ahead of Phase 2
+rather than after it; §15.7 records what that costs.
 
 ---
 
@@ -817,6 +844,32 @@ theoretical, not actually active in production. Real enforcement would need
 `PRAGMA foreign_keys = ON` run at the top of the request handler itself, not
 just once during schema setup.
 
+### Step 4b — Apply the Phase 3 migration
+
+Only if your database was created before §15 existed. `schema.sql` above
+already contains the Phase 3 tables, so a **fresh** deployment skips this step
+entirely; an existing one needs:
+
+```
+npx wrangler d1 execute star-homeschool --remote --file=./schema-phase3.sql
+```
+
+Same `--remote` caveat as Step 4. Run it **before** deploying the Worker that
+expects those tables, or `/api/sync` starts 500-ing on every tablet — the
+tables are new, so there is no version of the schema where the old code breaks
+and the new code doesn't need them.
+
+*Checkpoint:* `SELECT name FROM sqlite_master WHERE type='table';` now also
+lists `commands`, `command_acks`, `child_state`, and
+`PRAGMA table_info(sessions);` shows the `grade`, `scope_id` and `scope_name`
+columns.
+
+Those three columns belong to §16 rather than to Phase 3. They ship in the
+same migration deliberately: both land in the same deploy, and a missed second
+migration is not benign — `sync.js`'s INSERT names them, so their absence
+throws on every write and `/api/sync` 500s on every tablet, invisibly (§3
+rule 1).
+
 ### Step 5 — Bind the database to the site
 
 **The dashboard's Bindings tab does not work for this.** If your Worker
@@ -880,7 +933,8 @@ export async function onRequestPost({ request, env }) {
 }
 ```
 
-Nine files, one per §6.4 endpoint. Roughly 200-260 lines total.
+Nine files, one per §6.4 endpoint — thirteen once §15's four are added.
+Roughly 200-260 lines, or ~450 with Phase 3.
 
 **This file-based routing is a Pages-only convention — a plain Worker (which
 is what git-connected deploys produce now) does not understand `functions/`
@@ -1030,3 +1084,336 @@ a later decision rather than an accident.
 The main real cost is moving hosting off GitHub Pages. The main unexpected
 benefit is that this doubles as the first actual backup of data that currently
 exists only in a browser's `localStorage`.
+
+
+---
+
+## 15. Phase 3 — parent → child
+
+The parent phone can now assign work and delete sessions, and both reach the
+tablet. This is the phase §11 called "deliberately last, because it inverts the
+one-way rule in §3."
+
+It does not, in the end, invert it. §3's arrow still points one way for
+*records*: sessions are still append-only, still minted only on the child
+device, still never written by a parent. What Phase 3 adds is a second, much
+smaller channel pointing the other way, carrying *instructions* rather than
+data — a handful of bytes saying "practise this list next," which the tablet
+applies to its own `localStorage` and then reports on through the existing
+upward channel. `localStorage` remains the source of truth (§3), because the
+command is not the state; the tablet's reaction to it is.
+
+### 15.1 What it does
+
+- **Assign a list or focus area.** Switch which of the tablet's existing word
+  lists / focus areas is the assigned one, or send a brand new one composed on
+  the phone — words typed in, or Math categories ticked.
+- **Delete a session.** From the session detail on the dashboard. It vanishes
+  from the parent view immediately and from the tablet's own history on its
+  next sync.
+
+### 15.2 Mechanism: a pulled command queue
+
+A `commands` table, per family / child / app, append-only in the same style as
+`sessions`. Three decisions carry the design:
+
+**No push, and no new endpoint.** The child pulls. There is no way to push to a
+tablet that may be closed, asleep, or offline for a week, and a queue the child
+drains whenever it next appears needs no delivery guarantees at all. `/api/sync`
+already ran on boot and after every session-completing `persist()`, so it
+became the round-trip rather than gaining a sibling: the body gained optional
+`state` and `applied[]`, the response gained `commands[]`. A ninth endpoint
+would have doubled the child's request rate to carry the same bytes.
+
+The one change this forces: `syncPush()` no longer returns early when there is
+nothing to push, because the response is now the point. A tablet with sync on
+therefore makes one request on boot, one after each session, and one on
+tab-visible (throttled to once a minute) — still an order of magnitude under
+§6.6's ceiling.
+
+**Delivery is per device, not per command.** `command_acks` is keyed
+`(command_id, device_id)`. Two tablets sharing one `childId` (§8) must each
+apply an assignment, so nothing is ever "consumed" by being read: a device
+pulls what *it* has not acked. The client keeps the same list locally in
+`data.sync.appliedCommandIds`, which is what stops it re-applying a command in
+the window between applying and its next sync. This also gives the parent a
+real delivery status rather than a hopeful one.
+
+**Cancel, don't edit.** An unapplied command can be canceled — a flag, not a
+row removal, for the same reason §6's deletes are tombstones. A command already
+applied by any device cannot be canceled; undoing it means sending a new
+command, which is honest about what actually happened.
+
+Commands older than 30 days are swept when a new one is queued — the same
+no-scheduled-job trick §7 uses for expired pairing codes.
+
+### 15.3 The command set
+
+| Kind | App | Payload | Effect on the tablet |
+|---|---|---|---|
+| `set-active-list` | spelling | `{ listId }` | assigns an existing list |
+| `assign-list` | spelling | `{ list: { name, desc?, words[], bonus?[], pretest? }, makeActive? }` | adds or replaces by name |
+| `set-active-focus` | math | `{ focusId }` | assigns an existing focus area |
+| `assign-focus` | math | `{ focus: { name, categories[] }, makeActive? }` | adds or replaces by name |
+| `delete-session` | both | `{ sessionIds[] }` | removes them from local history |
+
+The server checks `kind` against this list and caps the payload at 64 KB, and
+that is the whole of its involvement: it never parses a payload or knows what
+one means (§3 rule 3), which is what lets a new command kind ship as an app
+change rather than a backend deploy.
+
+**Replace-by-name, not append.** Re-sending a corrected list should fix the one
+the child already has, not leave two with the same name. Names are the identity
+here because ids are minted on whichever side created the thing.
+
+**`/api/sessions/delete` does both halves in one call**, tombstoning the rows
+and queueing the command together. Two client calls would leave a window where
+a dropped network deletes a session from the parent's view and leaves it on the
+tablet forever — precisely the divergence this phase exists to prevent. It
+scopes by child and app across every device, unlike the child-role `/api/delete`
+which scopes to the calling device's own rows (§6.2): a parent deleting "that
+session" means the row they are looking at, whichever tablet recorded it.
+
+Spelling Star's perfect-pretest twin (`promotedFrom`, §9) is expanded to the
+pair on the *client* side, in `parent.html` and again in the app, rather than
+server-side — the server has no business knowing what a Spelling Star session
+means.
+
+### 15.4 The child-state snapshot
+
+`/api/sync` also carries up a small snapshot of what the tablet has — word
+lists with their sizes and which is assigned; focus areas; and, for Math Star,
+**its own `CATS` catalog**. `parent.html` renders every choice from it.
+
+This is the part worth arguing for. The obvious build is a copy of the child
+apps' data model inside `parent.html` — a hardcoded category list, a guess at
+what lists exist. That copy is wrong the moment a phase adds a category or a
+parent edits a list on the tablet, and wrong in the worst way: the phone offers
+something the tablet cannot do. Letting the tablet report its own capabilities
+means the picker always matches the installed version, and `parent.html` holds
+no second copy of either app's model at all.
+
+The snapshot carries word *counts*, not the words themselves. The parent
+composing a list doesn't need them, and there is no reason to mirror more into
+the cloud than the feature uses (§10).
+
+A tablet still running the Phase 1 client sends no snapshot, so the Assign
+screen says so plainly rather than offering controls that would do nothing.
+
+### 15.5 Never under the child's fingers
+
+The rule §3 states for failures — a child must never see sync happen — applies
+just as much to success. A command arrives from a network callback that can
+fire at any moment, including mid-Test, and applying one changes the assigned
+list.
+
+So nothing is applied while a session is running (`S`/`RP`/`SP` in Spelling
+Star, `S` in Math Star). Commands queue in memory and land on the next
+navigation, which is exactly where `go()` already clears those session objects.
+When they do land, only the home screen is repainted, and only if the child is
+sitting on it: a newly assigned list should appear without a reload, and no
+other screen is worth yanking away.
+
+A command that throws or is rejected is still marked applied. A command this
+version of the app cannot act on is a bad command, and re-attempting it on
+every sync forever is worse than dropping it. Math Star additionally filters
+assigned categories against its own `CATS` — a phone showing a snapshot from a
+different build must not be able to assign a category this build cannot
+generate problems for, which would break the home screen rather than the sync.
+
+### 15.6 Authorization
+
+Unchanged from §6.5, which is the point of having stated it as an invariant:
+every new handler resolves `family_id` from the bearer token and filters by it.
+Concretely — writes (`/api/commands`, `/api/sessions/delete`) are parent-role
+only, so a child token cannot queue commands for anything; every client-supplied
+`childId` is passed through a family check before it becomes a selector; a
+`commandId` from another family matches nothing rather than 403-ing.
+
+One new path needed thought: a child that adopted the shared `childId` (§6.2)
+leaves commands queued under the id it used before. Those are swept in through
+`sessions.device_id` — only rows this very device wrote — so a device can reach
+its own earlier identity and nothing else.
+
+Payload and snapshot ceilings (64 KB / 128 KB) are bug-catchers, not an
+anti-abuse system, in the same spirit as §6.6.
+
+### 15.7 What this owes Phase 2
+
+Phase 3 shipped before Phase 2, so the §10 encryption story now has a second
+thing to cover. Commands hold spelling words a parent typed — the same class of
+data as `sessions.payload`, and it should be encrypted the same way when Phase 2
+lands. `child_state` holds list *names* and counts, which is a small
+widening of what the server sees and should be stated in any privacy note
+rather than quietly assumed. Neither is a reason to have waited: both are the
+same shape of data already going up, and both fit the same envelope-plus-
+ciphertext treatment §10 describes.
+
+The §10 "delete everything" one-tap must also clear `commands`, `command_acks`,
+and `child_state`, which it does not yet — that button has not been built.
+
+### 15.8 Verified, and not
+
+Verified: the API end-to-end against a real SQLite database driving the actual
+handlers — pairing, snapshot upload, queueing, per-device delivery, ack,
+cancel-before-vs-after-delivery, session delete across both halves, a stale
+re-push failing to resurrect a deleted session, the §6.5 boundary from four
+angles, the legacy-`childId` path, and the size caps. Both child apps and
+`parent.html` in Chromium against a mocked API: assignment and deletion landing
+in `localStorage`, word normalization matching `addWord()`'s defaults, unknown
+Math categories filtered, commands deferred during a session and applied on the
+way out, and — the §3 rule 2 check — no network calls at all with sync off and
+no visible change with the server unreachable.
+
+Not verified: a live Worker with a real D1 instance. As with Phase 1, treat the
+next deploy as the first live test, and run `schema-phase3.sql` before it.
+
+---
+## 16. Grade and the multi-year view
+
+**Built.** `schema-phase3.sql` carries the three columns (§12 Step 4b), both
+apps stamp them, `GET /api/summary` aggregates them, and `parent.html` has a
+Years tab. Spelling Star gained a grade per word list; Math Star finally reads
+the `gradeLevel` it has collected at setup since v6 and never used.
+
+Recorded here because these are decisions, not derivations: they will look
+arbitrary later, and there is no `spelling-star-spec.md` to hold them (that
+app's spec is the header comment block in its own file).
+
+### 16.1 What a final grade is
+
+**The highest Test score per list.** Not an average, not a term rollup, and
+not a value a parent types in.
+
+This is already the app's own semantic: `spelling-star-v6_3.html`'s kid-facing
+history filters `mode === "test" && total > 0` and keeps the best percentage
+per list. The dashboard adopts the same rule, keyed on `(grade, scope_id)`
+instead of on the list's name — which is the whole point, since a name is not
+unique across grades.
+
+**Perfect-pretest promotions count.** A perfect pretest writes a `test` session
+(`promotedFrom`, §9), and it counts toward the final grade like any other test.
+The child demonstrated the words; that the app recorded it without a second
+sitting is bookkeeping. The dashboard still labels those `auto` wherever they
+appear (§9), so the record stays legible.
+
+This decision also kept the schema smaller, which is worth noting because the
+opposite choice was not free: `promotedFrom` lives inside `payload`, so
+*excluding* promotions would have needed a third column and a backfill to
+filter on in SQL. Counting them makes the predicate
+`WHERE mode = 'test' AND total > 0`.
+
+### 16.2 A query, not a rollup table
+
+The obvious build is a summary table holding each list's final grade, written
+alongside the session. It is not needed, and the reason is arithmetic rather
+than taste.
+
+**Storage is not the constraint.** Two children at three sessions a day is
+~5 MB of D1 a year — roughly 1% of the free allowance after ten years. The
+server has never capped sessions, so the cloud already holds everything the
+tablet's 300-session cap drops (§8). Nothing has to be built for that cap to
+stay as it is.
+
+**Read cost is the constraint.** `/api/sessions` spreads `payload` into every
+row, so five years of history is ~25 MB down a phone. That is what makes a
+multi-year view unusable, and a projection fixes it: grouped to best-test-per-
+list, the same five years is a few hundred rows and a few KB.
+
+```sql
+SELECT grade, scope_id, MAX(ratio) AS best, COUNT(*) AS attempts
+FROM (SELECT DISTINCT device_id, session_id, grade, scope_id, occurred_at,
+             (score * 1.0 / total) AS ratio
+      FROM sessions
+      WHERE app = ? AND mode = ? AND total > 0 AND deleted = 0
+        AND child_id IN (...))
+GROUP BY grade, scope_id
+```
+
+The inner `DISTINCT` is not decoration: a merged child holds the same sitting
+under more than one `childId` (§6.2), so aggregating the rows directly would
+count one test twice. De-duplicating on `(device_id, session_id)` — the
+session's real identity, §9 — is what keeps `attempts` honest.
+
+`mode` is a parameter rather than the literal `'test'` because the graded
+sitting has a different name in each app: a Test in Spelling Star, a Drill in
+Math Star. `parent.html` derives it from the `MODES` table that already drives
+its badges, so the server never learns either app's vocabulary.
+
+A materialized rollup is what you add when that query gets slow. At these row
+counts it will not, and a second copy of a derived value is a second thing that
+can disagree with the first.
+
+### 16.3 Why columns rather than payload fields
+
+New session fields normally ride in `payload` for free — §6.3's split, and the
+reason the grade work needs no server change to *record* a grade. These two are
+the exception because the view **groups by** them, and a Worker cannot parse
+every payload to do that inside its CPU budget. Anything the server has to
+filter or aggregate on has to be a column; everything else stays in the blob.
+
+`scope_id` rather than `list_id` because §6.3 already treats "the scope field"
+as one slot with two app-specific fillings — a list for Spelling Star, a focus
+area for Math Star — and the multi-year view wants both.
+
+### 16.4 What this does not solve
+
+Families who never turn sync on. For them the 300-session cap is real data
+loss, and only CSV export or raising the cap addresses it. A server-side view
+is invisible to them, and it should not be allowed to stand in for that
+decision. Spelling Star's CSV export does now carry a `grade` column, which is
+the one thing that helps: the export is the record that outlives the cap.
+
+### 16.5 What the apps had to change
+
+Recording a grade was the small half. The larger half was that **Spelling Star
+joined its own history on a free-text list name** — nine separate lookups, from
+the pretest gate to Repeat's difficulty to the results grouping. That is fine
+while a name is unique and wrong the moment lists repeat across years: last
+year's "Unit 1" would satisfy this year's pretest gate, feed its Repeat
+difficulty, and pool both years into one average.
+
+Sessions now carry `listId` alongside `listName`, and all nine joins go through
+one `sessionMatchesList()` helper that prefers the id and falls back to the
+name. The fallback is what keeps existing history attached to its list instead
+of orphaning a year of it — those sessions genuinely have no id and never will.
+
+`listName` is still written, because the parent dashboard, the CSV export and
+the session detail only want to *display* the list, and because a session
+should stay readable after its list is deleted.
+
+Two consequences worth stating:
+
+- **The grade is frozen at write time.** Re-labelling a list changes the list,
+  never the sessions already recorded under it. A year that was worked in
+  Grade 3 stays in Grade 3.
+- **`assign-list` (§15.3) now matches on name *and* grade.** Without that, a
+  parent assigning "Unit 1" for Grade 5 from their phone would silently
+  overwrite the Grade 3 list of the same name, replacing its words in place.
+  That is the one place the name-collision problem could destroy something
+  rather than merely confuse a total.
+
+### 16.6 Verified
+
+The §16.2 query against a real SQLite database: best-not-latest, practice
+sittings excluded, the same list name in two grades staying two rows, unequal
+totals compared as ratios, pre-grade rows bucketing under a null grade, a
+promoted pretest counted (§16.1), a deleted session dropping out of the record,
+Math Star aggregating on `drill` where Spelling uses `test`, and the §6.5
+boundary holding on the new endpoint.
+
+Both apps in Chromium: the four-step setup wizard through to a graded starter
+list; a pre-grade profile opening untouched, defaulting `gradeLevel` in memory
+without rewriting storage and without silently grading its existing lists;
+sessions carrying `listId`/`listGrade`; re-labelling a list leaving past
+sessions alone; last year's same-named list failing to satisfy this year's
+pretest gate while still finding its own test; a pre-grade session still
+matching its list by name; and an assigned list colliding by name across two
+grades adding a list rather than overwriting one.
+
+`parent.html`: the Years tab requesting each app's own graded mode, ordering
+newest grade first with "Before grades" last, and the phone's list composer
+carrying grade through to the command.
+
+Still not verified against a live Worker and D1 — as with §15.8, the next
+deploy is the first live test.

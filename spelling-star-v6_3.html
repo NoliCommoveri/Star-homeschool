@@ -156,9 +156,18 @@ function nameToKey(name) {
 let KEY = null;
 let data = null;
 
-function freshData(childName, pin, scoring) {
+// Grades a list can be labelled with. Same set as Math Star's, so one child
+// reads the same way across both apps.
+const GRADES = ["K","1","2","3","4","5","6","7"];
+
+function freshData(childName, pin, scoring, gradeLevel) {
   return {
     childName, pin, scoring,           // scoring: "percent" | "points"
+    // The default grade for lists created from now on — not a fact about the
+    // child that anything else reads. A list's own `grade` is what history is
+    // keyed on, because a list outlives the year the child was in when it was
+    // made (parent-sync-spec §16).
+    gradeLevel: gradeLevel || "2",
     showHistory: true,
     pretestGlobal: false,
     gamesEnabled: true,
@@ -168,7 +177,7 @@ function freshData(childName, pin, scoring) {
     keyboard: "abc",                   // "abc" | "qwerty"
     repeatStandard: 5,
     repeatHard: 8,
-    lists: [{ id: "starter", name: "Starter Words", desc: "", words: [], bonus: [], pretest: "global" }],
+    lists: [{ id: "starter", name: "Starter Words", desc: "", words: [], bonus: [], pretest: "global", grade: gradeLevel || "2" }],
     activeListId: "starter",
     reviewWords: [],
     sessions: [],
@@ -207,6 +216,11 @@ function load(key) {
     if (d.advanceEnabled === undefined) d.advanceEnabled = false;
     if (d.advanceThreshold === undefined) d.advanceThreshold = 90;
     d.lists.forEach(l => { if (!l.pretest) l.pretest = "global"; });
+    // Grade arrives with no sensible default for lists that predate it, and
+    // guessing one would silently mislabel a year of history. Left undefined
+    // on purpose: the UI reads that as "Ungraded" and history records it as
+    // "before grades" (parent-sync-spec §16.1).
+    if (d.gradeLevel === undefined) d.gradeLevel = "2";
     if (!d.theme) d.theme = "classic";
     if (!d.keyboard) d.keyboard = "abc";
     if (!d.scoring) d.scoring = "percent";
@@ -248,6 +262,41 @@ function saveFailedBannerHtml(kind) {
   </div>`;
 }
 function activeList() { return data.lists.find(l => l.id === data.activeListId) || data.lists[0]; }
+
+// ---------- Which sessions belong to a list (parent-sync-spec §16) ----------
+// Sessions used to record only `listName`, so every lookup below joined on a
+// free-text string. That was survivable while a name was unique, and stops
+// being survivable the moment lists carry a grade: "Unit 1" in Grade 3 and
+// "Unit 1" in Grade 5 are different lists, and name-matching would let the
+// older one satisfy the newer one's pretest gate, feed its Repeat difficulty,
+// and pool both into one average.
+//
+// Sessions now also carry `listId`. Matching prefers it and falls back to the
+// name only when a session predates the change — those sessions genuinely have
+// no id, and the fallback is what keeps existing history attached to its list
+// rather than silently orphaning a year of it.
+// The three fields that tie a session to a list, spread into the in-flight
+// session object at start and copied onto the record at finish. `listName` is
+// still written because everything that only wants to *display* the list —
+// including the parent dashboard and the CSV export — reads it, and because a
+// session should stay readable if the list is later deleted. `listGrade` is
+// frozen here rather than looked up later, so re-labelling a list never
+// rewrites the grade a past sitting was recorded under (§16.1).
+function listStamp(list) {
+  return { listName: list.name, listId: list.id, listGrade: list.grade };
+}
+function carryListStamp(state) {
+  return { listName: state.listName, listId: state.listId, listGrade: state.listGrade };
+}
+function sessionMatchesList(s, list) {
+  if (!list) return false;
+  if (s.listId) return s.listId === list.id;
+  return s.listName === list.name;
+}
+function sessionsForList(list) { return data.sessions.filter(s => sessionMatchesList(s, list)); }
+// The key a session groups under in the results views. Prefers the id so two
+// same-named lists stay apart; older sessions group by name as they always did.
+function sessionListKey(s) { return s.listId || ("name:" + (s.listName || "Untitled list")); }
 function pct(s) { return s.total ? Math.min(100, Math.round((s.score / s.total) * 100)) : 0; }
 function fmtTest(s) { return data.scoring === "points" ? `${s.score}/${s.total}` : `${pct(s)}%`; }
 function pretestRequired(list) {
@@ -258,15 +307,15 @@ function pretestRequired(list) {
 function pretestGateActive() {
   const list = activeList();
   if (!pretestRequired(list)) return false;
-  return !data.sessions.some(s => s.listName === list.name);
+  return !data.sessions.some(s => sessionMatchesList(s, list));
 }
 
 // ---------- Child-led list progression: shared primitives (design v6 §2.1) ----------
 // hasTestSession also counts a perfect-pretest promotion, since that's stored as
 // mode:"test" too (promotedFrom) — a child who aces the pretest already has a
 // qualifying test on record, same as one who took the Test screen directly.
-function hasTestSession(listName) {
-  return data.sessions.some(s => s.mode === "test" && s.listName === listName);
+function hasTestSession(list) {
+  return data.sessions.some(s => s.mode === "test" && sessionMatchesList(s, list));
 }
 // Reads data.lists' live order each time — if a parent reorders or deletes lists,
 // this always reflects whatever "next" means right now. Nothing is cached.
@@ -279,7 +328,7 @@ function nextListFor(list) {
 function advanceEligible() {
   if (!data.advanceEnabled) return false;
   const list = activeList();
-  const lastTest = [...data.sessions].reverse().find(s => s.mode === "test" && s.listName === list.name);
+  const lastTest = [...data.sessions].reverse().find(s => s.mode === "test" && sessionMatchesList(s, list));
   if (!lastTest) return false;
   return pct(lastTest) >= data.advanceThreshold && !!nextListFor(list);
 }
@@ -302,7 +351,7 @@ function mergeEligible() {
   // list would show both the pretest banner and "give me more words" at once.
   if (pretestGateActive()) return false;
   const list = activeList();
-  if (hasTestSession(list.name)) return false; // tested lists advance, not merge
+  if (hasTestSession(list)) return false; // tested lists advance, not merge
   const next = nextListFor(list);
   return !!next && (next.words.length + next.bonus.length) > 0;
 }
@@ -330,10 +379,18 @@ const app = document.getElementById("app");
 let parentUnlocked = false;
 
 function lockAndHome() { parentUnlocked = false; go("home"); }
+// Where the child currently is. Only read by the sync module (§15.5), which
+// needs to know whether repainting the screen under their fingers is safe
+// after a parent's assignment arrives.
+let currentView = "home";
 function go(view) {
   SP = null; // cancel any pending Spot the Spelling auto-advance — a stale timer must not fire post-navigation
   S = null;  // same discipline: a pending Practice/Test/Pretest/merge-pretest timer must not fire post-navigation
   RP = null; // same discipline for Repeat
+  currentView = view;
+  // Navigating just cleared every in-progress session, so anything a parent
+  // sent mid-activity can safely land now (§15.5).
+  syncApplyPending();
   document.getElementById("homeBtn").style.display = view === "home" ? "none" : "";
   const today = data.schedule[new Date().getDay()] || defaultDay();
   if (view === "home") return renderHome();
@@ -349,7 +406,7 @@ function go(view) {
 }
 
 // ---------- First-launch setup wizard ----------
-const setup = { pin: null, name: null };
+const setup = { pin: null, name: null, scoring: null };
 function renderSetup(step) {
   document.getElementById("homeBtn").style.display = "none";
   document.getElementById("greeting").innerHTML = "Welcome! &#11088;";
@@ -358,7 +415,7 @@ function renderSetup(step) {
     app.innerHTML = `
       <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
         <div style="font-size:34px;margin-bottom:10px">&#128274;</div>
-        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 1 of 3 &mdash; Set a parent PIN</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 1 of 4 &mdash; Set a parent PIN</div>
         <div class="muted" style="margin-bottom:14px">You'll need this PIN to open the parent dashboard, where you manage word lists, schedules, and results.</div>
         <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="New PIN (at least 4 digits)" style="text-align:center;font-size:22px;letter-spacing:.3em">
         <input type="password" id="pinIn2" inputmode="numeric" maxlength="8" placeholder="Repeat PIN" style="text-align:center;font-size:22px;letter-spacing:.3em">
@@ -370,22 +427,32 @@ function renderSetup(step) {
     app.innerHTML = `
       <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
         <div style="font-size:34px;margin-bottom:10px">&#128075;</div>
-        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 3 &mdash; Who's spelling?</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 4 &mdash; Who's spelling?</div>
         <div class="muted" style="margin-bottom:14px">This name appears throughout the app and on exported results.</div>
         <input type="text" id="nameIn" placeholder="Child's first name" style="text-align:center;font-size:20px">
         <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
         <button class="big" onclick="setupName()" style="margin-top:8px">Continue &rarr;</button>
       </div>`;
     document.getElementById("nameIn").focus();
-  } else {
+  } else if (step === 3) {
     app.innerHTML = `
       <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
         <div style="font-size:34px;margin-bottom:10px">&#127942;</div>
-        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 3 of 3 &mdash; How should test scores show?</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 3 of 4 &mdash; How should test scores show?</div>
         <div class="muted" style="margin-bottom:16px">You can change this later in the parent dashboard.</div>
         <div style="display:flex;flex-direction:column;gap:12px;align-items:center">
-          <button class="big outline" style="width:280px" onclick="setupFinish('percent')">Percentage (85%)</button>
-          <button class="big outline" style="width:280px" onclick="setupFinish('points')">Points (17/20)</button>
+          <button class="big outline" style="width:280px" onclick="setupScoring('percent')">Percentage (85%)</button>
+          <button class="big outline" style="width:280px" onclick="setupScoring('points')">Points (17/20)</button>
+        </div>
+      </div>`;
+  } else {
+    app.innerHTML = `
+      <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
+        <div style="font-size:34px;margin-bottom:10px">&#127891;</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 4 of 4 &mdash; What grade level?</div>
+        <div class="muted" style="margin-bottom:16px">New word lists start at this grade, and results are kept year by year under it. You can set a different grade on any individual list, and change this later.</div>
+        <div class="row center" style="justify-content:center;max-width:320px;margin:0 auto">
+          ${GRADES.map(g => `<button class="outline" style="width:60px" onclick="setupFinish('${g}')">${g}</button>`).join("")}
         </div>
       </div>`;
   }
@@ -404,12 +471,13 @@ function setupName() {
   if (!v) { msg.textContent = "Please enter a name."; return; }
   setup.name = v; renderSetup(3);
 }
-function setupFinish(scoring) {
+function setupScoring(scoring) { setup.scoring = scoring; renderSetup(4); }
+function setupFinish(gradeLevel) {
   KEY = nameToKey(setup.name);
   const existing = localStorage.getItem(KEY);
   if (existing && !confirm(`This device already has saved data for a child named "${setup.name}". Continue and use that existing data?`)) return;
   if (existing) { data = load(KEY); }
-  else { data = freshData(setup.name, setup.pin, scoring); persist(); }
+  else { data = freshData(setup.name, setup.pin, setup.scoring, gradeLevel); persist(); }
   applyTheme();
   go("home");
 }
@@ -607,10 +675,12 @@ function renderHistory() {
     return;
   }
   const avg = Math.round(tests.reduce((sum, s) => sum + pct(s), 0) / tests.length);
+  // Keyed on the list, not its name (§16): repeating "Unit 1" in a later grade
+  // is a new list with its own best score, not a better attempt at the old one.
   const best = {};
   tests.forEach(s => {
-    const name = s.listName || "Untitled list";
-    if (!best[name] || pct(s) > pct(best[name])) best[name] = s;
+    const key = sessionListKey(s);
+    if (!best[key] || pct(s) > pct(best[key])) best[key] = s;
   });
   const gradeColor = avg >= 90 ? "var(--green)" : avg >= 75 ? "var(--accent)" : "var(--eyebrow)";
   const totalScore = tests.reduce((sum, s) => sum + s.score, 0);
@@ -623,9 +693,9 @@ function renderHistory() {
     </div>
     <div class="card">
       <div style="font-weight:700;margin-bottom:10px">My best score on each list</div>
-      ${Object.entries(best).map(([name, s]) => `
+      ${Object.values(best).map((s) => `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-          <span style="font-size:17px;font-weight:600">${esc(name)}</span>
+          <span style="font-size:17px;font-weight:600">${esc(s.listName || "Untitled list")}</span>
           <span style="text-align:right">
             <span style="font-size:20px;font-weight:800;color:${pct(s)>=90?"var(--green)":pct(s)>=75?"var(--accent)":"var(--eyebrow)"}">${fmtTest(s)}</span>
             <span class="muted" style="display:block;font-size:13px">${new Date(s.date).toLocaleDateString()}</span>
@@ -717,7 +787,7 @@ function startSession(mode) {
   let queue = shuffle([...main, ...review]);
   if (isTest) queue = [...queue, ...list.bonus.map(w => ({...w, type:"bonus"}))];
   if (!queue.length) { app.innerHTML = `<div class="card">This list is empty! Ask a parent to add words in the parent dashboard.</div>`; return; }
-  S = { mode, isTest, queue, idx: 0, attempts: 0, results: [], listName: list.name };
+  S = { mode, isTest, queue, idx: 0, attempts: 0, results: [], ...listStamp(list) };
   const C = cheers();
   const cheer = mode === "pretest" ? "Just show what you know — every answer helps!" : C[Math.floor(Math.random() * C.length)];
   const label = mode === "pretest" ? "&#128221; Pretest" : isTest ? "&#128221; Test time" : "&#127919; Practice time";
@@ -847,7 +917,7 @@ function finishSession() {
   const mainR = S.results.filter(r => r.type === "main");
   const bonusEarned = S.results.filter(r => r.type === "bonus" && r.correct).length;
   const session = {
-    id: Date.now(), date: new Date().toISOString(), mode: S.mode, listName: S.listName,
+    id: Date.now(), date: new Date().toISOString(), mode: S.mode, ...carryListStamp(S),
     results: S.results,
     score: Math.min(mainR.filter(r => r.correct).length + bonusEarned, mainR.length),
     total: mainR.length, bonusEarned,
@@ -935,7 +1005,7 @@ function confirmMergeStart() {
   if (!pretestRequired(list)) return finishMergeDirect(next, newMain, newBonus);
   // Always duplicate the latest pretest for this list, not the original — a
   // second merge needs to build on the combined result of the first (v6 §2.3.3).
-  const latestPretest = [...data.sessions].reverse().find(s => s.mode === "pretest" && s.listName === list.name);
+  const latestPretest = [...data.sessions].reverse().find(s => s.mode === "pretest" && sessionMatchesList(s, list));
   startMergePretest(next, newMain, newBonus, latestPretest);
 }
 function finishMergeDirect(next, newMain, newBonus) {
@@ -962,7 +1032,7 @@ function startMergePretest(next, newMain, newBonus, latestPretest) {
   ]);
   if (!queue.length) return renderNothingToMerge(next);
   S = {
-    mode: "pretest", isTest: true, queue, idx: 0, attempts: 0, results: [], listName: list.name,
+    mode: "pretest", isTest: true, queue, idx: 0, attempts: 0, results: [], ...listStamp(list),
     mergeContext: { next, newMain, newBonus, latestPretest },
   };
   app.innerHTML = `
@@ -984,7 +1054,7 @@ function finishMergePretest() {
   const bonusEarned = combined.filter(r => r.type === "bonus" && r.correct).length;
   const session = {
     id: Date.now(), date: new Date().toISOString(), mode: "pretest",
-    listName: activeList().name,
+    ...listStamp(activeList()),
     results: combined,
     score: Math.min(mainR.filter(r => r.correct).length + bonusEarned, mainR.length),
     total: mainR.length, bonusEarned,
@@ -1029,10 +1099,10 @@ function renderMergeDone(session, promoted, addCount, sourceName, saved) {
 
 // ---------- Repeat (write-it-out drill) ----------
 let RP = null;
-function repsNeededFor(word, listName) {
+function repsNeededFor(word, list) {
   const modes = ["practice", "test", "pretest"];
   for (const mode of modes) {
-    const last = [...data.sessions].reverse().find(s => s.mode === mode && s.listName === listName);
+    const last = [...data.sessions].reverse().find(s => s.mode === mode && sessionMatchesList(s, list));
     if (!last) continue;
     const r = last.results.find(x => x.word === word);
     if (!r) continue;
@@ -1044,11 +1114,11 @@ function repsNeededFor(word, listName) {
 function startRepeat() {
   const list = activeList();
   const queue = shuffle(list.words).map(w => {
-    const needed = repsNeededFor(w.word, list.name);
+    const needed = repsNeededFor(w.word, list);
     return { ...w, needed, extra: needed === (data.repeatHard || 8) };
   });
   if (!queue.length) { app.innerHTML = `<div class="card">This list is empty! Ask a parent to add words in the parent dashboard.</div>`; return; }
-  RP = { queue, idx: 0, rep: 0, typed: "", results: [], listName: list.name };
+  RP = { queue, idx: 0, rep: 0, typed: "", results: [], ...listStamp(list) };
   app.innerHTML = `
     <div class="card center" style="padding:40px">
       <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#9997; Repeat</div>
@@ -1122,7 +1192,7 @@ function nextRepeatWord() {
 }
 function finishRepeat() {
   const session = {
-    id: Date.now(), date: new Date().toISOString(), mode: "repeat", listName: RP.listName,
+    id: Date.now(), date: new Date().toISOString(), mode: "repeat", ...carryListStamp(RP),
     results: RP.results, score: 0, total: 0,
   };
   data.sessions.push(session);
@@ -1206,7 +1276,7 @@ function startSpotIt() {
   const rounds = pool.slice(0, targetCount).map(word => ({
     word, misspelled: generateMisspelling(word), correctSide: Math.random() < 0.5 ? "left" : "right",
   }));
-  SP = { rounds, idx: 0, results: [], listName: list.name, locked: false, pickedSide: null };
+  SP = { rounds, idx: 0, results: [], ...listStamp(list), locked: false, pickedSide: null };
   app.innerHTML = `
     <div class="card center" style="padding:40px">
       <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#128269; Spot the Spelling</div>
@@ -1260,7 +1330,7 @@ function nextSpot() {
 function finishSpotIt() {
   if (!SP) return;
   const session = {
-    id: Date.now(), date: new Date().toISOString(), mode: "spotit", listName: SP.listName,
+    id: Date.now(), date: new Date().toISOString(), mode: "spotit", ...carryListStamp(SP),
     results: SP.results, score: 0, total: 0,
   };
   data.sessions.push(session);
@@ -1285,15 +1355,18 @@ let selectedListId = null;
 let selectedResultsList = null;
 
 function resultGroups() {
-  // Group sessions by list name; order by most recent session desc
+  // Group sessions by list — by id where there is one, so the same list name
+  // reused in a later grade gets its own group (§16). Order by most recent
+  // session desc. `grade` comes off the sessions rather than the live list, so
+  // a group keeps the grade it was worked under even if the list is relabelled.
   const groups = {};
   data.sessions.forEach(s => {
-    const name = s.listName || "Untitled list";
-    if (!groups[name]) groups[name] = [];
-    groups[name].push(s);
+    const key = sessionListKey(s);
+    if (!groups[key]) groups[key] = { key, name: s.listName || "Untitled list", grade: s.listGrade, sessions: [] };
+    groups[key].sessions.push(s);
   });
-  return Object.entries(groups)
-    .map(([name, sessions]) => ({ name, sessions, latest: Math.max(...sessions.map(x => x.id)) }))
+  return Object.values(groups)
+    .map(g => ({ ...g, latest: Math.max(...g.sessions.map(x => x.id)) }))
     .sort((a, b) => b.latest - a.latest);
 }
 
@@ -1360,6 +1433,11 @@ function renderParent(view) {
           <input type="text" inputmode="numeric" value="${data.repeatHard}" style="width:60px;margin:0" onchange="setRepeatCount('repeatHard',this.value)">
         </label>
       </div>
+      <div style="margin-top:18px;font-weight:600">Default grade level</div>
+      <div class="muted" style="margin-bottom:6px">New word lists start at this grade. Existing lists keep the grade they already have &mdash; change those in Word lists.</div>
+      <div class="row">
+        ${GRADES.map(g => `<button class="${data.gradeLevel===g?"":"outline"}" style="width:44px;padding:8px 0" onclick="setSetting('gradeLevel','${g}')">${g}</button>`).join("")}
+      </div>
       <div style="margin-top:18px;font-weight:600">Child's display name</div>
       <div class="muted" style="margin-bottom:6px">Changing this updates the name shown in the app. Saved data stays with this profile.</div>
       <input type="text" id="renameIn" value="${esc(data.childName)}" style="max-width:280px">
@@ -1397,12 +1475,14 @@ function renderParent(view) {
     if (!groups.length) {
       html += `<div class="card"><div class="muted">No sessions yet. Results will appear here grouped by word list.</div></div>`;
     } else {
-      if (!selectedResultsList || !groups.some(g => g.name === selectedResultsList)) selectedResultsList = groups[0].name;
-      const group = groups.find(g => g.name === selectedResultsList);
+      // Selected by group key, not name: two grades can hold a list of the
+      // same name and picking one must not silently select the other (§16).
+      if (!selectedResultsList || !groups.some(g => g.key === selectedResultsList)) selectedResultsList = groups[0].key;
+      const group = groups.find(g => g.key === selectedResultsList);
       html += `<div class="card">
         <div style="font-weight:700;margin-bottom:8px">Results by list</div>
         <select onchange="selectResultsList(this.value)">
-          ${groups.map(g => `<option value="${esc(g.name)}" ${g.name===selectedResultsList?"selected":""}>${esc(g.name)} (${g.sessions.length} session${g.sessions.length===1?"":"s"})</option>`).join("")}
+          ${groups.map(g => `<option value="${esc(g.key)}" ${g.key===selectedResultsList?"selected":""}>${esc(g.name)}${g.grade?` — Grade ${esc(g.grade)}`:""} (${g.sessions.length} session${g.sessions.length===1?"":"s"})</option>`).join("")}
         </select>
       </div>`;
       const sessions = [...group.sessions].reverse();
@@ -1460,7 +1540,7 @@ function renderParent(view) {
       ${data.lists.map(l => `
         <div style="display:flex;align-items:center;gap:10px;padding:6px 0;flex-wrap:wrap">
           <button class="${l.id===selectedListId?"":"outline"}" onclick="selectList('${l.id}')">${esc(l.name)}</button>
-          <span class="muted">${l.words.length} words${l.bonus.length?`, ${l.bonus.length} bonus`:""}</span>
+          <span class="muted">${gradeLabel(l.grade)} &middot; ${l.words.length} words${l.bonus.length?`, ${l.bonus.length} bonus`:""}</span>
           ${l.id===data.activeListId
             ? '<span class="assigned-badge">ASSIGNED</span>'
             : `<button class="link" onclick="assignList('${l.id}')">assign this list</button>`}
@@ -1469,6 +1549,10 @@ function renderParent(view) {
       <div style="margin-top:12px">
         <input type="text" id="newListName" placeholder="New list name (e.g., Week 2)" style="max-width:320px">
         <input type="text" id="newListDesc" placeholder="Description (e.g., Long vowel words like rain and boat)" style="max-width:320px">
+        <label class="muted" for="newListGrade" style="display:block;margin-bottom:4px">Grade level</label>
+        <select id="newListGrade" style="max-width:160px">
+          ${GRADES.map(g => `<option value="${g}" ${g===data.gradeLevel?"selected":""}>Grade ${g}</option>`).join("")}
+        </select>
         <button onclick="createList()">Create list</button>
       </div>
     </div>`;
@@ -1476,6 +1560,12 @@ function renderParent(view) {
       <div style="font-weight:700;margin-bottom:6px">Edit &ldquo;${esc(sel.name)}&rdquo; description</div>
       <input type="text" id="editDesc" value="${esc(sel.desc || "")}" placeholder="Shown to ${esc(data.childName)} on the start screen">
       <button class="outline" onclick="saveDesc()">Save description</button>
+      <div style="font-weight:700;margin:16px 0 4px">Grade level for this list</div>
+      <div class="muted" style="margin-bottom:6px">Results are filed under this grade year by year. Changing it relabels the list from now on &mdash; sessions already recorded keep the grade they were taken under.</div>
+      <select onchange="setListGrade('${sel.id}',this.value)">
+        <option value="" ${!sel.grade?"selected":""}>Ungraded</option>
+        ${GRADES.map(g => `<option value="${g}" ${sel.grade===g?"selected":""}>Grade ${g}</option>`).join("")}
+      </select>
       <div style="font-weight:700;margin:16px 0 4px">Pretest for this list</div>
       <select onchange="setListPretest('${sel.id}',this.value)">
         <option value="global" ${(sel.pretest||"global")==="global"?"selected":""}>Use global setting (currently ${data.pretestGlobal?"required":"off"})</option>
@@ -1506,7 +1596,16 @@ function renderParent(view) {
   app.innerHTML = html;
 }
 
-function selectResultsList(name) { selectedResultsList = name; renderParent("results"); }
+function selectResultsList(key) { selectedResultsList = key; renderParent("results"); }
+// A list with no grade is not an error — every list that predates grades has
+// none, and load() deliberately doesn't guess one (parent-sync-spec §16.1).
+function gradeLabel(grade) { return grade ? "Grade " + grade : "Ungraded"; }
+function setListGrade(id, value) {
+  const l = data.lists.find(x => x.id === id);
+  if (!l) return;
+  if (value) l.grade = value; else delete l.grade;
+  persist(); renderParent("words");
+}
 function setListPretest(id, value) {
   const l = data.lists.find(x => x.id === id);
   if (!l) return;
@@ -1555,7 +1654,8 @@ function createList() {
   if (!name) return;
   if (data.lists.some(l => l.name.toLowerCase() === name.toLowerCase())) { alert("A list with that name already exists."); return; }
   const id = "l" + Date.now();
-  data.lists.push({ id, name, desc, words: [], bonus: [] });
+  const grade = document.getElementById("newListGrade")?.value || data.gradeLevel;
+  data.lists.push({ id, name, desc, words: [], bonus: [], pretest: "global", grade });
   selectedListId = id; persist(); renderParent("words");
 }
 function saveDesc() {
@@ -1647,6 +1747,7 @@ function removeReview(word) { data.reviewWords = data.reviewWords.filter(w => w.
 function resetProfile() {
   const kept = {
     childName: data.childName, pin: data.pin, scoring: data.scoring,
+    gradeLevel: data.gradeLevel,
     showHistory: data.showHistory, pretestGlobal: data.pretestGlobal,
     gamesEnabled: data.gamesEnabled, advanceEnabled: data.advanceEnabled,
     advanceThreshold: data.advanceThreshold, theme: data.theme, keyboard: data.keyboard,
@@ -1657,7 +1758,7 @@ function resetProfile() {
   // Rebuild from freshData (the single source of truth for "blank progress")
   // and layer the settings/content we're keeping back on top, rather than
   // hand-listing every progress field to blank out.
-  data = Object.assign(freshData(kept.childName, kept.pin, kept.scoring), kept);
+  data = Object.assign(freshData(kept.childName, kept.pin, kept.scoring, kept.gradeLevel), kept);
   persist();
   applyTheme();
   renderParent("settings");
@@ -1682,10 +1783,14 @@ function changePin() {
   data.pin = np.trim(); persist(); alert("PIN updated.");
 }
 function exportCSV() {
-  const rows = [["child","date","time","mode","list","word","type","correct","attempts"]];
+  // `grade` sits next to `list` because the pair is the real identity of a
+  // sitting once lists repeat across years — and because the export is the
+  // record that outlives the 300-session cap (§16.4), so it is the one place
+  // grade absolutely has to appear.
+  const rows = [["child","date","time","mode","grade","list","word","type","correct","attempts"]];
   data.sessions.forEach(s => {
     const d = new Date(s.date);
-    s.results.forEach(r => rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), s.mode, s.listName || "", r.word, r.type || (s.mode==="repeat" ? (r.extra?"repeat-extra":"repeat") : s.mode==="spotit" ? "spotit" : ""), r.correct===undefined ? "n/a" : (r.correct?"yes":"no"), r.attempts!==undefined ? r.attempts : (r.reps!==undefined ? r.reps : "")]));
+    s.results.forEach(r => rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), s.mode, s.listGrade || "", s.listName || "", r.word, r.type || (s.mode==="repeat" ? (r.extra?"repeat-extra":"repeat") : s.mode==="spotit" ? "spotit" : ""), r.correct===undefined ? "n/a" : (r.correct?"yes":"no"), r.attempts!==undefined ? r.attempts : (r.reps!==undefined ? r.reps : "")]));
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -1752,29 +1857,200 @@ function syncChildId() {
   return data.sync.childId;
 }
 
+// Phase 3 (§15.2) made this a round-trip rather than a push: it always calls
+// /api/sync now, even with nothing pending, because the response is how a
+// parent's assignment reaches this device. It is still fire-and-forget in
+// every direction that matters — no await in the render path, no spinner, and
+// a failure still leaves the child's session untouched (§3 rule 1).
+let syncLastPullAt = 0;
+
 function syncPush() {
   if (!syncReady()) return;
+  syncLastPullAt = Date.now();
   const childId = syncChildId();
   const acked = new Set(data.sync.ackedIds || []);
   const pending = data.sessions.filter(s => !acked.has(s.id));
-  if (!pending.length) return;
-  syncApi("/sync", { app: SYNC_APP, childId, childName: data.childName, sessions: pending })
+  syncApi("/sync", {
+    app: SYNC_APP, childId, childName: data.childName, sessions: pending,
+    state: syncState(),
+    applied: data.sync.appliedCommandIds || [],
+  })
     .then(res => {
-      if (!res || !Array.isArray(res.accepted) || !res.accepted.length) return;
-      const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
-      // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
-      data.sync.ackedIds = [...merged].slice(-300);
+      if (!res) return;
+      if (Array.isArray(res.accepted) && res.accepted.length) {
+        const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
+        // Pruned alongside the 300-session cap (§8) so this can't grow unbounded.
+        data.sync.ackedIds = [...merged].slice(-300);
+      }
       data.sync.lastPushAt = Date.now();
       persist();
+      if (Array.isArray(res.commands) && res.commands.length) syncQueueCommands(res.commands);
     })
     .catch(() => { /* best-effort — the next session or boot retries (§8) */ });
 }
+
+// A parent's assignment should land while the tablet is in their hands, not
+// only at the next cold boot, so coming back to the tab counts as a poll.
+// Throttled, because a child flipping between apps must not spend the §6.6
+// rate-limit budget.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (Date.now() - syncLastPullAt < 60000) return;
+  syncPush();
+});
 
 // Best-effort (§8): if this fails, the session just reappears in the parent
 // dashboard; "Resync now" in Settings is the manual recovery.
 function syncDelete(ids) {
   if (!syncReady() || !ids.length) return;
   syncApi("/delete", { app: SYNC_APP, childId: syncChildId(), sessionIds: ids }).catch(() => {});
+}
+
+// ---------- Parent -> child commands (§15) ----------
+// This is where the two app files stop being byte-identical. §3 rule 5 still
+// holds for everything above — transport, pairing, acking, the queue — but
+// syncState() and applyCommand() are necessarily about *this* app's data
+// model, so they are the declared seam rather than an accidental divergence.
+// Their names, shape, and return contract are the same in both files.
+
+// What this tablet has right now, uploaded on every sync (§15.4) so the parent
+// phone can offer real choices. Word counts only, not the words: the parent
+// composing a list doesn't need them, and there's no reason to mirror more
+// into the cloud than the feature actually uses.
+function syncState() {
+  return {
+    lists: (data.lists || []).map(l => ({
+      id: l.id, name: l.name, desc: l.desc || "", grade: l.grade || null,
+      wordCount: (l.words || []).length, bonusCount: (l.bonus || []).length,
+      pretest: l.pretest || "global",
+    })),
+    activeListId: data.activeListId,
+    gradeLevel: data.gradeLevel,
+    grades: GRADES,
+  };
+}
+
+// Commands arrive from a network callback that can fire at any moment,
+// including mid-Test. Nothing is applied until the child is somewhere it is
+// safe to change the ground under them (§15.5).
+let syncPendingCommands = [];
+function syncSafeToApply() { return S === null && RP === null && SP === null; }
+
+function syncQueueCommands(commands) {
+  syncPendingCommands = syncPendingCommands.concat(commands);
+  syncApplyPending(true);
+}
+
+function syncApplyPending(repaint) {
+  if (!data || !data.sync || !syncPendingCommands.length || !syncSafeToApply()) return;
+  const queue = syncPendingCommands;
+  syncPendingCommands = [];
+  const done = new Set(data.sync.appliedCommandIds || []);
+  let changed = false;
+  for (const cmd of queue) {
+    if (!cmd || !cmd.id || done.has(cmd.id)) continue;
+    // Marked applied even when it throws or is rejected: a command this
+    // version of the app can't act on is a bad command, and re-attempting it
+    // on every sync forever is worse than dropping it. The parent sees it
+    // as delivered, which is true — it arrived and was considered.
+    try { if (applyCommand(cmd)) changed = true; } catch (e) {}
+    done.add(cmd.id);
+  }
+  // Acked upward on the next sync, which is what stops the server resending.
+  data.sync.appliedCommandIds = [...done].slice(-200);
+  persist();
+  // Only the home screen is repainted, and only when the child is sitting on
+  // it: a newly assigned list should show up without a reload, but no other
+  // screen is worth yanking out from under them.
+  if (changed && repaint && !parentUnlocked && currentView === "home") renderHome();
+}
+
+function applyCommand(cmd) {
+  const p = cmd.payload || {};
+  if (cmd.kind === "set-active-list") {
+    const list = (data.lists || []).find(l => l.id === p.listId)
+      || (data.lists || []).find(l => (l.name || "").toLowerCase() === String(p.listName || "").toLowerCase());
+    if (!list || data.activeListId === list.id) return false;
+    data.activeListId = list.id;
+    return true;
+  }
+  if (cmd.kind === "assign-list") {
+    const incoming = p.list || {};
+    const name = String(incoming.name || "").trim();
+    if (!name) return false;
+    const words = normalizeAssignedWords(incoming.words);
+    const bonus = normalizeAssignedWords(incoming.bonus);
+    if (!words.length && !bonus.length) return false;
+    const grade = incoming.grade || data.gradeLevel;
+    // Replace by name rather than always appending: re-sending a corrected
+    // list is the common case, and it should fix the list the child already
+    // has instead of leaving two with the same name.
+    //
+    // Matched on name *and grade* (§16). Without the grade in the match, a
+    // parent assigning "Unit 1" for Grade 5 would silently overwrite the
+    // Grade 3 list of the same name — replacing its words in place and
+    // taking a previous year's list with it. That is data loss, not a
+    // mislabel, and it is the one place the name-collision problem could
+    // destroy something rather than just confuse a total.
+    let list = (data.lists || []).find(l =>
+      (l.name || "").toLowerCase() === name.toLowerCase() && (l.grade || null) === (grade || null));
+    if (list) {
+      if (incoming.desc) list.desc = String(incoming.desc);
+      list.words = words;
+      list.bonus = bonus;
+      if (incoming.pretest) list.pretest = incoming.pretest;
+    } else {
+      list = {
+        id: "l" + Date.now() + Math.floor(Math.random() * 1000),
+        name, desc: String(incoming.desc || ""), words, bonus,
+        pretest: incoming.pretest || "global",
+        grade,
+      };
+      data.lists.push(list);
+    }
+    if (p.makeActive !== false) data.activeListId = list.id;
+    return true;
+  }
+  if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
+  return false;
+}
+
+// Accepts bare strings or {word, hint, sentence}, and fills the same defaults
+// addWord() does, so a list assigned from a phone is indistinguishable from
+// one typed in the parent area.
+function normalizeAssignedWords(items) {
+  const out = [];
+  const seen = new Set();
+  for (const item of (Array.isArray(items) ? items : [])) {
+    const raw = typeof item === "string" ? { word: item } : (item || {});
+    const word = String(raw.word || "").trim().toLowerCase();
+    if (!word || seen.has(word)) continue;
+    seen.add(word);
+    out.push({
+      word,
+      hint: String(raw.hint || "").trim() || "A word you're learning.",
+      sentence: String(raw.sentence || "").trim() || word,
+    });
+  }
+  return out;
+}
+
+// The parent already tombstoned these server-side, so there is nothing to push
+// back — this is the local half. Same linked-pair rule as deleteSession() in
+// the parent area (design v6 §2.5): a perfect pretest and its auto-promoted
+// test twin are one sitting and go together.
+function applyRemoteSessionDelete(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).map(String));
+  if (!wanted.size) return false;
+  for (const s of data.sessions) {
+    if (!wanted.has(String(s.id))) continue;
+    if (s.promotedFrom) wanted.add(String(s.promotedFrom));
+    const twin = data.sessions.find(x => x.promotedFrom && String(x.promotedFrom) === String(s.id));
+    if (twin) wanted.add(String(twin.id));
+  }
+  const before = data.sessions.length;
+  data.sessions = data.sessions.filter(s => !wanted.has(String(s.id)));
+  return data.sessions.length !== before;
 }
 
 async function connectSync() {
@@ -1798,7 +2074,7 @@ async function connectSync() {
     data.sync = {
       enabled: true, endpoint,
       childId: sharedChildId(),
-      deviceId, deviceToken: json.token, ackedIds: [], lastPushAt: null,
+      deviceId, deviceToken: json.token, ackedIds: [], appliedCommandIds: [], lastPushAt: null,
     };
     persist();
     renderParent("settings");
@@ -1823,8 +2099,8 @@ function syncSettingsHtml() {
   const s = data.sync;
   if (s && s.deviceToken) {
     return `
-      <div class="muted">${s.enabled ? "Sending results to your phone." : "Sync is paused on this device."}</div>
-      <div class="muted" style="margin-bottom:10px">Last sent: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
+      <div class="muted">${s.enabled ? "Sending results to your phone, and picking up word lists you assign from it." : "Sync is paused on this device."}</div>
+      <div class="muted" style="margin-bottom:10px">Last synced: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
       <div class="row">
         ${s.enabled ? `<button class="outline" onclick="disableSync()">Pause sync</button>` : `<button onclick="enableSync()">Resume sync</button>`}
         <button class="outline" onclick="resyncNow()">Resync now</button>
