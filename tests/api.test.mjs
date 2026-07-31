@@ -330,4 +330,42 @@ const legacyRow = await DB.prepare("SELECT grade, scope_id, scope_name FROM sess
 check('a pre-grade client writes NULLs, not blanks',
   legacyRow.grade === null && legacyRow.scope_id === null && legacyRow.scope_name === 'Old list', legacyRow);
 
+// ------------------------------------------------ parent-assigned childId ---
+console.log('\n[§6.2] a pairing code minted with childName creates the child up front');
+const children = await mod('children.js');
+let [, newChildCode] = await body(await pairingCode.onRequestPost(post('http://x/api/pairing-code', {
+  role: 'child', childName: 'Zoe',
+}, parentToken)));
+let [, listAfterMint] = await body(await children.onRequestGet(get('http://x/api/children', parentToken)));
+const zoe = listAfterMint.children.find((c) => c.name === 'Zoe');
+check('the child row exists before any device ever synced', !!zoe, listAfterMint.children);
+
+let [, newDevicePair] = await body(await pair.onRequestPost(post('http://x/api/pair', {
+  code: newChildCode.code, deviceId: 'zoe-tablet', role: 'child', label: "Zoe's tablet",
+})));
+check('pair response carries the assigned childId', newDevicePair.childId === zoe.id, newDevicePair);
+
+console.log('\n[§6.2] a second device paired against the same childId lands on one child');
+let [, resumeCode] = await body(await pairingCode.onRequestPost(post('http://x/api/pairing-code', {
+  role: 'child', childId: zoe.id,
+}, parentToken)));
+let [, replacementPair] = await body(await pair.onRequestPost(post('http://x/api/pair', {
+  code: resumeCode.code, deviceId: 'zoe-replacement-tablet', role: 'child', label: "Zoe's new tablet",
+})));
+check('the replacement device gets the same childId back, not a new one',
+  replacementPair.childId === zoe.id, replacementPair);
+
+console.log('\n[§6.2] childId is scoped to the minting parent\'s own family');
+let [crossFamilyStatus] = await body(await pairingCode.onRequestPost(post('http://x/api/pairing-code', {
+  role: 'child', childId: zoe.id,
+}, otherParent)));
+check('another family cannot mint a code bound to our child', crossFamilyStatus === 404, crossFamilyStatus);
+
+console.log('\n[§6.2] omitting childId/childName still works, unbound, as before');
+let [, unboundCode] = await body(await pairingCode.onRequestPost(post('http://x/api/pairing-code', { role: 'child' }, parentToken)));
+let [, unboundPair] = await body(await pair.onRequestPost(post('http://x/api/pair', {
+  code: unboundCode.code, deviceId: 'unbound-tablet', role: 'child', label: 'Unbound tablet',
+})));
+check('an unbound code pairs fine and carries no childId', !unboundPair.childId, unboundPair);
+
 process.exit(report('api') ? 1 : 0);

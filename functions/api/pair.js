@@ -20,7 +20,7 @@ export async function onRequestPost({ request, env }) {
   const codeHash = await sha256Hex(code);
 
   const pairing = await env.DB.prepare(
-    'SELECT family_id, role FROM pairing_codes WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?'
+    'SELECT family_id, role, child_id FROM pairing_codes WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?'
   ).bind(codeHash, now).first();
 
   if (!pairing) return json({ error: 'invalid or expired code' }, { status: 401 });
@@ -55,5 +55,7 @@ export async function onRequestPost({ request, env }) {
        revoked = 0`
   ).bind(deviceId, pairing.family_id, tokenHash, role, label || null, now, now, Math.floor(now / 1000)).run();
 
-  return json({ token, role });
+  // §6.2: a child-role code was minted for a specific child, so the device
+  // gets that id back instead of guessing one from a locally typed name.
+  return json({ token, role, childId: pairing.child_id || undefined });
 }

@@ -1066,7 +1066,8 @@ async function renderDevices() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const { devices } = await api('/devices');
+    const [{ devices }, { children: synced }] = await Promise.all([api('/devices'), api('/children')]);
+    const children = mergeChildren(synced);
     const rows = devices.map((d) => {
       const isSelf = d.id === state.sync.deviceId;
       const quiet = !d.revoked && d.last_seen && (Date.now() - d.last_seen) > 7 * 86400000;
@@ -1089,10 +1090,20 @@ async function renderDevices() {
         <div class="row">
           <div class="col">
             <label for="roleSelect">Device type</label>
-            <select id="roleSelect">
+            <select id="roleSelect" onchange="onDeviceRoleChange()">
               <option value="child">Child's tablet</option>
               <option value="parent">Another parent phone</option>
             </select>
+          </div>
+        </div>
+        <div class="row" id="childPickerRow">
+          <div class="col">
+            <label for="childSelect">Which child is this device for?</label>
+            <select id="childSelect" onchange="onChildSelectChange()">
+              ${children.map((c) => `<option value="${esc(c.id)}">${esc(c.name || '(unnamed)')}</option>`).join('')}
+              <option value="__new__">New child…</option>
+            </select>
+            <input type="text" id="newChildNameIn" placeholder="Child's name" style="display:none;margin-top:6px">
           </div>
         </div>
         <button onclick="mintPairingCode()">Generate code</button>
@@ -1111,13 +1122,37 @@ async function renderDevices() {
   }
 }
 
+// §6.2: a child-role code is minted for a specific child, chosen here rather
+// than left for the device to guess from a typed name — that's what lets a
+// lost or replacement tablet re-pair onto the same history instead of
+// splitting it.
+function onDeviceRoleChange() {
+  const role = document.getElementById('roleSelect').value;
+  document.getElementById('childPickerRow').style.display = role === 'child' ? '' : 'none';
+}
+function onChildSelectChange() {
+  const isNew = document.getElementById('childSelect').value === '__new__';
+  document.getElementById('newChildNameIn').style.display = isNew ? '' : 'none';
+}
+
 async function mintPairingCode() {
   clearInterval(pairingTimer);
   const role = document.getElementById('roleSelect').value;
   const area = document.getElementById('pairingCodeArea');
+  const body = { role };
+  if (role === 'child') {
+    const childSelect = document.getElementById('childSelect').value;
+    if (childSelect === '__new__') {
+      const name = document.getElementById('newChildNameIn').value.trim();
+      if (!name) { area.innerHTML = '<p class="error">Enter the new child\'s name.</p>'; return; }
+      body.childName = name;
+    } else {
+      body.childId = childSelect;
+    }
+  }
   area.innerHTML = '<p class="muted">Generating…</p>';
   try {
-    const { code, expiresAt } = await api('/pairing-code', { method: 'POST', body: { role } });
+    const { code, expiresAt } = await api('/pairing-code', { method: 'POST', body });
     area.innerHTML = `<div class="code-display">${esc(code)}</div><p class="center muted" id="pairingCountdown"></p>`;
     const tick = () => {
       const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));

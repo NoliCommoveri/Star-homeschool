@@ -380,22 +380,42 @@ put; the dashboard folds them in by name (§9) rather than the server rewriting
 history. `/api/delete` therefore tombstones by `device_id` rather than
 `child_id`, so a delete still reaches copies written before the adoption.
 
-This unifies the common case — one tablet, both apps. A child using Spelling on
-one device and Math on another still mints two ids, the same documented
-limitation shape as §8's "same child on two devices," and lands on the same
-dashboard-side merge.
+This unified the common case — one tablet, both apps. It did not unify the
+case that actually breaks a parent's day: a child using Spelling on one device
+and Math on another, or a lost/replaced tablet, still minted a fresh id with
+nothing to adopt it from — `localStorage` does not survive the swap. That was
+shipped as "a documented limitation, not a Phase 1 bug" (§8), papered over
+only on the dashboard, which merges same-name rows for display (§9) without
+touching storage.
 
-There is no separate "create a child" call. The `children` row is created
-lazily, inside `/api/sync`'s handler: on each push, upsert `children` by
-`(id)` within the token's `family_id`, setting `name = childName` from the
-request. `INSERT ... ON CONFLICT(id) DO UPDATE SET name = excluded.name` keeps
-this idempotent and also lets a child's display name be edited later by simply
-sending a new `childName` on the next push — no separate rename endpoint
-needed.
+**Phase 4 (this revision) fixes the actual cause: the parent, not the device,
+now assigns `childId`, through the same pairing-code exchange §7 already built
+for `deviceId`.** `POST /api/pairing-code` takes an optional `childId`
+(reuse) or `childName` (create) when `role: "child"`; the id is stored on the
+`pairing_codes` row and handed back from `POST /api/pair` in the response
+body. A device that receives one uses it — and writes it into the shared
+`localStorage` slot too, so it stays the answer for any other app on the same
+device that hasn't repaired yet. No device, old or new, ever has to guess a
+name-derived id again: pairing a lost tablet's replacement against the same
+child in the parent picker lands it on the exact same history, not a split
+one. The name-slug path (`sharedChildId()`) stays as the fallback for a code
+minted without either field — kept for API/test back-compat, and for the case
+where the parent skips the picker.
 
-Because the upsert is scoped to the token's `family_id` (§6.5 step 4 applies
-here too), a child device cannot create or touch a `children` row outside its
-own family even if it sent a guessed `childId`.
+There is no separate "create a child" call **for the sync path**. The
+`children` row it upserts lazily, inside `/api/sync`'s handler: on each push,
+upsert `children` by `(id)` within the token's `family_id`, setting `name =
+childName` from the request. `INSERT ... ON CONFLICT(id) DO UPDATE SET name =
+excluded.name` keeps this idempotent and also lets a child's display name be
+edited later by simply sending a new `childName` on the next push — no
+separate rename endpoint needed. The pairing path (above) is the one place
+that *does* mint a `children` row directly, when the parent picks "New
+child…" while generating a code, ahead of that child's first sync.
+
+Because both paths are scoped to the token's `family_id` (§6.5 step 4 applies
+to `childId` here too — a pairing code reusing a `childId` from another family
+404s, same as everywhere else), a device cannot create or touch a `children`
+row outside its own family even if it sent a guessed `childId`.
 
 ### 6.3 Envelope and payload
 
@@ -425,8 +445,8 @@ Nine endpoints, all JSON. All except `/api/family` are authenticated by
 | Endpoint | Auth | Body / query | Role |
 |---|---|---|---|
 | `POST /api/family` | signup secret | `{ signupSecret, deviceId, label }` | — |
-| `POST /api/pairing-code` | token | `{ role, label }` | parent |
-| `POST /api/pair` | pairing code | `{ code, deviceId, role, label }` | — |
+| `POST /api/pairing-code` | token | `{ role, label, childId?, childName? }` | parent |
+| `POST /api/pair` | pairing code | `{ code, deviceId, role, label }` → `{ token, role, childId? }` | — |
 | `POST /api/sync` | token | `{ app, childId, childName, sessions: [...] }` | child |
 | `POST /api/delete` | token | `{ app, childId, sessionIds: [...] }` | child |
 | `GET /api/children` | token | — | parent |
