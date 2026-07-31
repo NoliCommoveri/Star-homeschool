@@ -1,6 +1,6 @@
 # Parent Sync — Specification
 
-Status: **Phase 1 complete; Phase 3 built (§15).** Phase 3 — assigning work
+Status: **Phase 1 complete; Phase 3 built (§15); grade + multi-year view built (§16).** Phase 3 — assigning work
 from the parent phone and deleting sessions from it — is designed and
 implemented in §15: a `commands` queue pulled by the child through the
 existing `/api/sync` round-trip, plus a `child_state` snapshot pushed up so
@@ -9,7 +9,9 @@ existing `/api/sync` round-trip, plus a `child_state` snapshot pushed up so
 Phase 1 it has not yet run against a live Worker — see §15.8 for what was
 verified and what wasn't. Note that this is Phase 3 arriving before Phase 2
 (§11): encryption and the fork-and-deploy README are still outstanding, and
-§15.7 records what Phase 3 owes Phase 2 as a result.
+§15.7 records what Phase 3 owes Phase 2 as a result. §16 (word lists carry a
+grade; a Years view over the whole history) ships in the same migration and
+the same deploy.
 
 Phase 1: the §6 schema and §6.4 API (`schema.sql`,
 `functions/api/*`) are built per §12 Steps 4 and 7, `parent.html` (§9, §11
@@ -859,10 +861,14 @@ and the new code doesn't need them.
 
 *Checkpoint:* `SELECT name FROM sqlite_master WHERE type='table';` now also
 lists `commands`, `command_acks`, `child_state`, and
-`PRAGMA table_info(sessions);` shows the `grade` and `scope_id` columns.
+`PRAGMA table_info(sessions);` shows the `grade`, `scope_id` and `scope_name`
+columns.
 
-Those two columns are for the grade work, not for Phase 3, and nothing writes
-them yet — see §16.
+Those three columns belong to §16 rather than to Phase 3. They ship in the
+same migration deliberately: both land in the same deploy, and a missed second
+migration is not benign — `sync.js`'s INSERT names them, so their absence
+throws on every write and `/api/sync` 500s on every tablet, invisibly (§3
+rule 1).
 
 ### Step 5 — Bind the database to the site
 
@@ -1265,10 +1271,10 @@ next deploy as the first live test, and run `schema-phase3.sql` before it.
 ---
 ## 16. Grade and the multi-year view
 
-Design settled; **not built**. `schema-phase3.sql` ships the two columns this
-needs (§12 Step 4b) and nothing writes them yet. The app-side half — word
-lists carrying a grade at all — is separate work, researched in a brief on
-`claude/grade-level-spelling-lists-7dkvjo`.
+**Built.** `schema-phase3.sql` carries the three columns (§12 Step 4b), both
+apps stamp them, `GET /api/summary` aggregates them, and `parent.html` has a
+Years tab. Spelling Star gained a grade per word list; Math Star finally reads
+the `gradeLevel` it has collected at setup since v6 and never used.
 
 Recorded here because these are decisions, not derivations: they will look
 arbitrary later, and there is no `spelling-star-spec.md` to hold them (that
@@ -1315,11 +1321,24 @@ multi-year view unusable, and a projection fixes it: grouped to best-test-per-
 list, the same five years is a few hundred rows and a few KB.
 
 ```sql
-SELECT grade, scope_id, MAX(score * 1.0 / total) AS best, COUNT(*) AS attempts
-FROM sessions
-WHERE child_id IN (...) AND app = ? AND mode = 'test' AND total > 0 AND deleted = 0
+SELECT grade, scope_id, MAX(ratio) AS best, COUNT(*) AS attempts
+FROM (SELECT DISTINCT device_id, session_id, grade, scope_id, occurred_at,
+             (score * 1.0 / total) AS ratio
+      FROM sessions
+      WHERE app = ? AND mode = ? AND total > 0 AND deleted = 0
+        AND child_id IN (...))
 GROUP BY grade, scope_id
 ```
+
+The inner `DISTINCT` is not decoration: a merged child holds the same sitting
+under more than one `childId` (§6.2), so aggregating the rows directly would
+count one test twice. De-duplicating on `(device_id, session_id)` — the
+session's real identity, §9 — is what keeps `attempts` honest.
+
+`mode` is a parameter rather than the literal `'test'` because the graded
+sitting has a different name in each app: a Test in Spelling Star, a Drill in
+Math Star. `parent.html` derives it from the `MODES` table that already drives
+its badges, so the server never learns either app's vocabulary.
 
 A materialized rollup is what you add when that query gets slow. At these row
 counts it will not, and a second copy of a derived value is a second thing that
@@ -1342,4 +1361,59 @@ area for Math Star — and the multi-year view wants both.
 Families who never turn sync on. For them the 300-session cap is real data
 loss, and only CSV export or raising the cap addresses it. A server-side view
 is invisible to them, and it should not be allowed to stand in for that
-decision.
+decision. Spelling Star's CSV export does now carry a `grade` column, which is
+the one thing that helps: the export is the record that outlives the cap.
+
+### 16.5 What the apps had to change
+
+Recording a grade was the small half. The larger half was that **Spelling Star
+joined its own history on a free-text list name** — nine separate lookups, from
+the pretest gate to Repeat's difficulty to the results grouping. That is fine
+while a name is unique and wrong the moment lists repeat across years: last
+year's "Unit 1" would satisfy this year's pretest gate, feed its Repeat
+difficulty, and pool both years into one average.
+
+Sessions now carry `listId` alongside `listName`, and all nine joins go through
+one `sessionMatchesList()` helper that prefers the id and falls back to the
+name. The fallback is what keeps existing history attached to its list instead
+of orphaning a year of it — those sessions genuinely have no id and never will.
+
+`listName` is still written, because the parent dashboard, the CSV export and
+the session detail only want to *display* the list, and because a session
+should stay readable after its list is deleted.
+
+Two consequences worth stating:
+
+- **The grade is frozen at write time.** Re-labelling a list changes the list,
+  never the sessions already recorded under it. A year that was worked in
+  Grade 3 stays in Grade 3.
+- **`assign-list` (§15.3) now matches on name *and* grade.** Without that, a
+  parent assigning "Unit 1" for Grade 5 from their phone would silently
+  overwrite the Grade 3 list of the same name, replacing its words in place.
+  That is the one place the name-collision problem could destroy something
+  rather than merely confuse a total.
+
+### 16.6 Verified
+
+The §16.2 query against a real SQLite database: best-not-latest, practice
+sittings excluded, the same list name in two grades staying two rows, unequal
+totals compared as ratios, pre-grade rows bucketing under a null grade, a
+promoted pretest counted (§16.1), a deleted session dropping out of the record,
+Math Star aggregating on `drill` where Spelling uses `test`, and the §6.5
+boundary holding on the new endpoint.
+
+Both apps in Chromium: the four-step setup wizard through to a graded starter
+list; a pre-grade profile opening untouched, defaulting `gradeLevel` in memory
+without rewriting storage and without silently grading its existing lists;
+sessions carrying `listId`/`listGrade`; re-labelling a list leaving past
+sessions alone; last year's same-named list failing to satisfy this year's
+pretest gate while still finding its own test; a pre-grade session still
+matching its list by name; and an assigned list colliding by name across two
+grades adding a list rather than overwriting one.
+
+`parent.html`: the Years tab requesting each app's own graded mode, ordering
+newest grade first with "Before grades" last, and the phone's list composer
+carrying grade through to the command.
+
+Still not verified against a live Worker and D1 — as with §15.8, the next
+deploy is the first live test.

@@ -56,6 +56,7 @@ CREATE TABLE sessions (
   -- "before grades".
   grade       TEXT,                  -- school grade when the session happened
   scope_id    TEXT,                  -- list id (spelling) / focus area id (math)
+  scope_name  TEXT,                  -- its label, frozen at write time
   PRIMARY KEY (child_id, app, device_id, session_id)
 );
 CREATE INDEX idx_sessions_child_app ON sessions(child_id, app, occurred_at);

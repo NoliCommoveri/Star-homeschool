@@ -1465,7 +1465,7 @@ function startSession(mode) {
   // session is a genuine shuffle across categories, not one after another.
   const freshItems = Array.from({ length: freshCount }, () => buildUniqueProblem(cats[randInt(0, cats.length - 1)], usedKeys));
   const queue = orderNoAdjacentAnswers([...freshItems, ...reviewItems]);
-  S = { mode, queue, idx: 0, attempts: 0, results: [], focusName: focus.name, categories: cats, typed: "", fields: {}, activeField: null, lastHint: null, startTime: null };
+  S = { mode, queue, idx: 0, attempts: 0, results: [], focusName: focus.name, focusId: focus.id, focusGrade: data.gradeLevel, categories: cats, typed: "", fields: {}, activeField: null, lastHint: null, startTime: null };
   const C = cheers();
   const cheer = C[Math.floor(Math.random() * C.length)];
   const label = mode === "drill" ? "&#9201;&#65039; Drill time" : "&#127919; Practice time";
@@ -1692,7 +1692,7 @@ function finishSession() {
   const total = S.results.length;
   const correct = S.results.filter(r => r.correct).length;
   const elapsedMs = S.startTime ? (Date.now() - S.startTime) : null;
-  const session = { id: Date.now(), date: new Date().toISOString(), mode: S.mode, categories: S.categories, focusName: S.focusName, results: S.results, score: correct, total, elapsedMs };
+  const session = { id: Date.now(), date: new Date().toISOString(), mode: S.mode, categories: S.categories, focusName: S.focusName, focusId: S.focusId, focusGrade: S.focusGrade, results: S.results, score: correct, total, elapsedMs };
   data.sessions.push(session);
   // Mastery bookkeeping (masteryGrid, categoryStats, review pool, graduation)
   // is Drill-only. Practice allows retries until correct, which is great for
@@ -2274,12 +2274,19 @@ function syncDelete(ids) {
 // parent.html renders a category picker matching whatever version of Math Star
 // is actually installed, instead of carrying a second copy that goes stale
 // every time a phase adds categories.
+// `gradeLevel` has existed on this profile since v6 and was collected at setup
+// but never read by anything (it is not the same as a category's `gradeBand`,
+// which is a property of the category, not the child). Stamping it onto
+// sessions — see finishSession — is what finally makes it mean something:
+// it is the grade a sitting was recorded under, for the multi-year view
+// (parent-sync-spec §16).
 function syncState() {
   return {
     focusAreas: (data.focusAreas || []).map(f => ({
       id: f.id, name: f.name, categories: focusCategories(f), gradeBand: f.gradeBand,
     })),
     activeFocusId: data.activeFocusId,
+    gradeLevel: data.gradeLevel,
     catalog: CATS.map(c => ({ id: c.id, label: c.label, band: c.band, strand: c.strand })),
   };
 }

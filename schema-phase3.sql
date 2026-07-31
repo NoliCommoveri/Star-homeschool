@@ -59,5 +59,10 @@ CREATE TABLE child_state (
 -- columns; if they are absent every write throws and /api/sync 500s on every
 -- tablet — invisibly, because §3 rule 1 keeps sync failures away from the
 -- child. One migration is one thing to get right.
+-- scope_name is denormalized on purpose. The name is already inside `payload`,
+-- but the aggregate cannot read payload, and a label frozen at write time is
+-- the more correct one anyway: renaming a list should not retroactively
+-- relabel the year it was worked under.
 ALTER TABLE sessions ADD COLUMN grade TEXT;
 ALTER TABLE sessions ADD COLUMN scope_id TEXT;
+ALTER TABLE sessions ADD COLUMN scope_name TEXT;

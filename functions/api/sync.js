@@ -59,9 +59,20 @@ export async function onRequestPost({ request, env }) {
     const { id, date, mode, score, total, ...rest } = session;
     const occurredAt = Date.parse(date);
 
+    // §16.3: grade and scope are lifted out of the payload into columns,
+    // because the multi-year view GROUPs BY them and a Worker cannot parse
+    // every payload to do that inside its CPU budget. Everything else keeps
+    // riding along in the blob for free (§6.3).
+    //
+    // The two apps name these differently in their own session records, which
+    // is right for each — a Spelling Star session has a listName, not a
+    // "scope". Normalizing happens here rather than in the apps so neither has
+    // to learn the server's vocabulary.
+    const scope = sessionScope(app, rest);
+
     await env.DB.prepare(
-      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(child_id, app, device_id, session_id) DO NOTHING`
     ).bind(
       childId,
@@ -73,7 +84,10 @@ export async function onRequestPost({ request, env }) {
       mode || null,
       score ?? null,
       total ?? null,
-      JSON.stringify(rest)
+      JSON.stringify(rest),
+      scope.grade,
+      scope.id,
+      scope.name
     ).run();
 
     accepted.push(sessionId);
@@ -153,6 +167,24 @@ async function legacyCommands(env, device, currentChildId, app) {
      ORDER BY c.created_at`
   ).bind(device.id, device.family_id, app, currentChildId, device.id, app).all();
   return results;
+}
+
+// Each app's own words for "which list / focus area was this?", mapped onto
+// the shared envelope columns (§16.3). A session from a client that predates
+// grades yields nulls, which read as "before grades" — the permanent and
+// correct value for every session recorded up to that point.
+//
+// This is the one place the server knows anything app-specific, and it is
+// deliberately confined to naming rather than meaning: it does not interpret
+// a list, only recognize which field holds its id. §3 rule 3 stays intact.
+function sessionScope(app, rest) {
+  if (app === 'spelling') {
+    return { grade: rest.listGrade || null, id: rest.listId || null, name: rest.listName || null };
+  }
+  if (app === 'math') {
+    return { grade: rest.focusGrade || null, id: rest.focusId || null, name: rest.focusName || null };
+  }
+  return { grade: null, id: null, name: null };
 }
 
 function safeParse(text) {

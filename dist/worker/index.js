@@ -529,6 +529,54 @@ async function onRequestGet5({ request, env }) {
 }
 __name(onRequestGet5, "onRequestGet");
 
+// api/summary.js
+async function onRequestGet6({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  const url = new URL(request.url);
+  const app = url.searchParams.get("app");
+  const mode = url.searchParams.get("mode");
+  const childIds = await familyChildIds(env, device.family_id, url.searchParams.getAll("childId"));
+  if (!app || !mode) return json({ error: "app and mode query params are required" }, { status: 400 });
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const placeholders = childIds.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT grade,
+            scope_id,
+            MAX(scope_name)                AS scope_name,
+            MAX(ratio)                     AS best,
+            COUNT(*)                       AS attempts,
+            MIN(occurred_at)               AS first_at,
+            MAX(occurred_at)               AS last_at
+     FROM (
+       SELECT DISTINCT device_id, session_id, grade, scope_id, scope_name,
+              occurred_at, (score * 1.0 / total) AS ratio
+       FROM sessions
+       WHERE app = ? AND mode = ? AND total > 0 AND deleted = 0
+         AND child_id IN (${placeholders})
+     )
+     GROUP BY grade, scope_id
+     ORDER BY grade, MAX(occurred_at) DESC`
+  ).bind(app, mode, ...childIds).all();
+  const lists = results.map((row) => ({
+    grade: row.grade,
+    // null = recorded before grades existed
+    scopeId: row.scope_id,
+    scopeName: row.scope_name,
+    best: row.best,
+    // 0..1; the client formats it
+    attempts: row.attempts,
+    firstAt: row.first_at,
+    lastAt: row.last_at
+  }));
+  return json({ lists });
+}
+__name(onRequestGet6, "onRequestGet");
+
 // api/sync.js
 async function onRequestPost9({ request, env }) {
   let device;
@@ -569,9 +617,10 @@ async function onRequestPost9({ request, env }) {
     const sessionId = String(session.id);
     const { id, date, mode, score, total, ...rest } = session;
     const occurredAt = Date.parse(date);
+    const scope = sessionScope(app, rest);
     await env.DB.prepare(
-      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(child_id, app, device_id, session_id) DO NOTHING`
     ).bind(
       childId,
@@ -583,7 +632,10 @@ async function onRequestPost9({ request, env }) {
       mode || null,
       score ?? null,
       total ?? null,
-      JSON.stringify(rest)
+      JSON.stringify(rest),
+      scope.grade,
+      scope.id,
+      scope.name
     ).run();
     accepted.push(sessionId);
   }
@@ -639,6 +691,16 @@ async function legacyCommands(env, device, currentChildId, app) {
   return results;
 }
 __name(legacyCommands, "legacyCommands");
+function sessionScope(app, rest) {
+  if (app === "spelling") {
+    return { grade: rest.listGrade || null, id: rest.listId || null, name: rest.listName || null };
+  }
+  if (app === "math") {
+    return { grade: rest.focusGrade || null, id: rest.focusId || null, name: rest.focusName || null };
+  }
+  return { grade: null, id: null, name: null };
+}
+__name(sessionScope, "sessionScope");
 function safeParse3(text) {
   try {
     return JSON.parse(text);
@@ -648,7 +710,7 @@ function safeParse3(text) {
 }
 __name(safeParse3, "safeParse");
 
-// ../.wrangler/tmp/pages-UIMCrY/functionsRoutes-0.322348396737979.mjs
+// ../.wrangler/tmp/pages-28fgz4/functionsRoutes-0.25032411239664887.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",
@@ -740,6 +802,13 @@ var routes = [
     method: "GET",
     middlewares: [],
     modules: [onRequestGet5]
+  },
+  {
+    routePath: "/api/summary",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet6]
   },
   {
     routePath: "/api/sync",
