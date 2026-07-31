@@ -858,7 +858,11 @@ tables are new, so there is no version of the schema where the old code breaks
 and the new code doesn't need them.
 
 *Checkpoint:* `SELECT name FROM sqlite_master WHERE type='table';` now also
-lists `commands`, `command_acks`, `child_state`.
+lists `commands`, `command_acks`, `child_state`, and
+`PRAGMA table_info(sessions);` shows the `grade` and `scope_id` columns.
+
+Those two columns are for the grade work, not for Phase 3, and nothing writes
+them yet — see §16.
 
 ### Step 5 — Bind the database to the site
 
@@ -1259,3 +1263,83 @@ Not verified: a live Worker with a real D1 instance. As with Phase 1, treat the
 next deploy as the first live test, and run `schema-phase3.sql` before it.
 
 ---
+## 16. Grade and the multi-year view
+
+Design settled; **not built**. `schema-phase3.sql` ships the two columns this
+needs (§12 Step 4b) and nothing writes them yet. The app-side half — word
+lists carrying a grade at all — is separate work, researched in a brief on
+`claude/grade-level-spelling-lists-7dkvjo`.
+
+Recorded here because these are decisions, not derivations: they will look
+arbitrary later, and there is no `spelling-star-spec.md` to hold them (that
+app's spec is the header comment block in its own file).
+
+### 16.1 What a final grade is
+
+**The highest Test score per list.** Not an average, not a term rollup, and
+not a value a parent types in.
+
+This is already the app's own semantic: `spelling-star-v6_3.html`'s kid-facing
+history filters `mode === "test" && total > 0` and keeps the best percentage
+per list. The dashboard adopts the same rule, keyed on `(grade, scope_id)`
+instead of on the list's name — which is the whole point, since a name is not
+unique across grades.
+
+**Perfect-pretest promotions count.** A perfect pretest writes a `test` session
+(`promotedFrom`, §9), and it counts toward the final grade like any other test.
+The child demonstrated the words; that the app recorded it without a second
+sitting is bookkeeping. The dashboard still labels those `auto` wherever they
+appear (§9), so the record stays legible.
+
+This decision also kept the schema smaller, which is worth noting because the
+opposite choice was not free: `promotedFrom` lives inside `payload`, so
+*excluding* promotions would have needed a third column and a backfill to
+filter on in SQL. Counting them makes the predicate
+`WHERE mode = 'test' AND total > 0`.
+
+### 16.2 A query, not a rollup table
+
+The obvious build is a summary table holding each list's final grade, written
+alongside the session. It is not needed, and the reason is arithmetic rather
+than taste.
+
+**Storage is not the constraint.** Two children at three sessions a day is
+~5 MB of D1 a year — roughly 1% of the free allowance after ten years. The
+server has never capped sessions, so the cloud already holds everything the
+tablet's 300-session cap drops (§8). Nothing has to be built for that cap to
+stay as it is.
+
+**Read cost is the constraint.** `/api/sessions` spreads `payload` into every
+row, so five years of history is ~25 MB down a phone. That is what makes a
+multi-year view unusable, and a projection fixes it: grouped to best-test-per-
+list, the same five years is a few hundred rows and a few KB.
+
+```sql
+SELECT grade, scope_id, MAX(score * 1.0 / total) AS best, COUNT(*) AS attempts
+FROM sessions
+WHERE child_id IN (...) AND app = ? AND mode = 'test' AND total > 0 AND deleted = 0
+GROUP BY grade, scope_id
+```
+
+A materialized rollup is what you add when that query gets slow. At these row
+counts it will not, and a second copy of a derived value is a second thing that
+can disagree with the first.
+
+### 16.3 Why columns rather than payload fields
+
+New session fields normally ride in `payload` for free — §6.3's split, and the
+reason the grade work needs no server change to *record* a grade. These two are
+the exception because the view **groups by** them, and a Worker cannot parse
+every payload to do that inside its CPU budget. Anything the server has to
+filter or aggregate on has to be a column; everything else stays in the blob.
+
+`scope_id` rather than `list_id` because §6.3 already treats "the scope field"
+as one slot with two app-specific fillings — a list for Spelling Star, a focus
+area for Math Star — and the multi-year view wants both.
+
+### 16.4 What this does not solve
+
+Families who never turn sync on. For them the 300-session cap is real data
+loss, and only CSV export or raising the cap addresses it. A server-side view
+is invisible to them, and it should not be allowed to stand in for that
+decision.

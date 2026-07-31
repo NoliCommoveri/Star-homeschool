@@ -50,6 +50,12 @@ CREATE TABLE sessions (
   total       INTEGER,
   deleted     INTEGER NOT NULL DEFAULT 0,
   payload     TEXT NOT NULL,         -- JSON (or ciphertext — see §10)
+  -- Columns rather than payload fields because the multi-year view GROUPs BY
+  -- them, and a Worker cannot parse every payload to do that inside its CPU
+  -- budget. Both stay NULL until the apps stamp them; NULL reads as
+  -- "before grades".
+  grade       TEXT,                  -- school grade when the session happened
+  scope_id    TEXT,                  -- list id (spelling) / focus area id (math)
   PRIMARY KEY (child_id, app, device_id, session_id)
 );
 CREATE INDEX idx_sessions_child_app ON sessions(child_id, app, occurred_at);
