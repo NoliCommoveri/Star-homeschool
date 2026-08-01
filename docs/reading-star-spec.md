@@ -24,7 +24,13 @@ do.
   go, log an end date, and rate how much they liked it.
 - Take a quiz on the book, if they want to — never required.
 - A parent can see reading history on their phone, the same way they already
-  see Spelling and Math history.
+  see Spelling and Math history, **and edit the book catalog from there** —
+  add a book the bundle doesn't have, fix a wrong quiz answer, write questions
+  for whatever their kid is reading now (§4.3).
+- Down the line: series-completion progress on the kid side, and grouping
+  books read by series and by genre. Not built at launch, but §4.2 makes v1
+  record what those displays will need, since the classification of a book a
+  kid read last spring can't be recovered later.
 - Down the line: points that scale adaptively — the same book worth more to a
   younger or reading-support kid than to an older neurotypical one. Not
   required at launch, but the data model should not need to change to add it
@@ -33,6 +39,8 @@ do.
 ### Non-goals (v1)
 
 - Adaptive point weighting itself (§7 designs the hook; it isn't built yet).
+- The series-progress and genre-grouping displays themselves (§4.2 designs
+  what they need recorded; the screens come later).
 - A large quiz catalog. It ships with whatever content exists (§4) and grows
   over time.
 - Forcing quiz completion, or gating "finishing" a book on taking one.
@@ -63,9 +71,10 @@ migration. `sessions.app = 'reading'` slots in next to `'spelling'` and
 `'math'`.
 
 It does *not* mean no server change at all. Two places in the Worker
-enumerate the apps they know about, and neither has a `reading` case today:
-the envelope-column mapping in `sync.js` (needed for v1 — §3.3) and the
-command-kind list in `_lib/auth.js` (only when Phase 2 lands — §7). Both are
+enumerate what they know about, and neither has a `reading` case today: the
+envelope-column mapping in `sync.js` (§3.3) and the command-kind list in
+`_lib/auth.js`, which needs `assign-book` / `delete-book` for parent catalog
+editing (§4.3) and `set-reading-support-level` later (§7). Both are
 one-line-ish and additive. Nothing about the schema or the API surface
 changes.
 
@@ -93,15 +102,28 @@ data.events = [{
   bookTitle,     // frozen at write time; becomes scope_name
   childGrade,    // the CHILD's school grade; becomes grade
 
+  // Classification, also frozen at write time (§4.2). Null where unknown —
+  // a standalone book, or a custom entry the kid didn't classify.
+  seriesKey, seriesNumber,
+  genre,         // array of vocabulary keys
+
   ...            // per-mode detail, see §3.2's payload row
 }]
+
+// Parent-authored catalog entries and overrides (§4.3), keyed by book_key
+// and merged over the bundled reading-catalog.json at load. Arrives by
+// assign-book command; never written by the kid.
+data.catalogOverlay = { [bookKey]: { title, author, seriesKey, seriesNumber,
+                                     genre: [], gradeLevel, questions: [] } }
 
 // The view. Rebuilt from data.events; cached in localStorage so the
 // currently-reading screen paints without a reduce on every render.
 data.books = [{
   id,            // client-minted uuid; equals data.events[].bookId
-  catalogId,     // e.g. "thoroughbred-1"; null for a custom/untracked title
-  title, author, series, seriesNumber,
+  catalogId,     // the catalog's book_key (§4.1); null for a custom title
+  title, author,
+  series,        // null for a standalone book — and for every custom entry
+  seriesNumber,  // null unless series is set
   gradeLevel,    // the BOOK's difficulty band from the catalog ("4-6");
                  // blank for custom entries. Not the child's school grade.
   status,        // 'reading' | 'finished' | 'abandoned' — derived: the latest
@@ -147,7 +169,7 @@ Math session row:
 | `scope_name` | the book's title, frozen at write time (§16.3 of the sync spec — the multi-year aggregate groups on this, so it has to be a column, and it already exists) |
 | `score` / `total` | quiz score/total when `mode = 'quiz'`; null otherwise |
 | `grade` | the **child's school grade** when the event happened, same as every other app. The book's difficulty band goes in `payload`. See below. |
-| `payload` | title and author (always, see below), plus whatever's specific to the event: rating on `finish`, minutes/pages/note on `log-session`, book difficulty band and missed-question ids on `quiz` |
+| `payload` | title and author (always, see below); `seriesKey`/`seriesNumber`/`genre` frozen at write time (§4.2); the book's difficulty band; plus whatever's specific to the event — rating on `finish`, minutes/pages/note on `log-session`, missed-question ids on `quiz` |
 
 No schema migration is needed: `scope_id`/`scope_name`/`grade` already exist
 on `sessions` (added in Phase 3/§16 for Spelling's list id and Math's focus
@@ -246,18 +268,149 @@ of the `data.books` cache. This is the main reason §3.1 has two structures.
 
 The source CSV is committed at
 `wordlists/reading/Thoroughbred_Quiz_Books_15.csv`, mirroring the spelling
-layout. One row per question, ten columns:
+layout. One row per question, eleven columns:
 
 ```
-series_name, series_number, book_title, author, grade_level,
+book_key,                                   <- identity; required, unique
+series_name, series_number,                 <- display only; blank for standalones
+book_title, author, grade_level,
 question, correct_answer, wrong_answer_1, wrong_answer_2, wrong_answer_3
 ```
 
 It holds **53 questions across books #1–5** of the Thoroughbred series — the
 "_15" in the filename is aspirational, not a row count, so the catalog
-launches small and grows. No blank cells; every question has exactly three
-distractors, so the converter can assume four options and doesn't need a
-variable-length answer path.
+launches small and grows. Every question has exactly three distractors, so the
+converter can assume four options and doesn't need a variable-length answer
+path.
+
+### 4.1 `book_key` is authored, not derived
+
+A book's identity is an explicit column that a human assigns once. It is
+**not** computed from series name and number, and not computed from the title.
+
+The immediate reason is that plenty of books aren't in a series at all —
+*Where the Red Fern Grows*, most of what independent reading actually looks
+like — and a `slug(series)-number` scheme has nothing to key them on. Making
+series required to satisfy the key format would be the data model bullying the
+content.
+
+But the singleton case only exposed a problem that was already there. A
+derived key means **identity changes whenever its inputs are edited**, and
+these inputs are exactly the fields most likely to get edited: a series
+renamed ("Thoroughbred" → "Thoroughbred Classics"), a typo fixed, a book
+renumbered when an omnibus or a prequel shows up. Any of those silently mints
+a *new* catalog key, and because question ids are `<book_key>-q<n>` (below),
+every question id under that book changes with it — so every `payload.missed`
+already recorded points at ids that no longer exist, and the trouble-items
+card in §6 quietly empties out.
+
+That is the same failure this spec already rules out twice: question ids are
+assigned once and never reused, and `scope_name` is a frozen copy so a rename
+can't relabel the past (§3.2, sync spec §16.3). Deriving the book key would
+have reintroduced it through the back door. An authored key is one column and
+makes the whole family of edits safe: fix the series name, fix the title, fix
+the numbering — the key doesn't move, and history stays attached.
+
+Rules for the converter, all of which should **fail the build loudly** rather
+than guess:
+
+- `book_key` is required on every row; a blank one is an error, not a
+  fallback to a derived value.
+- It must be unique per book and consistent across that book's rows — two
+  different `book_title`s under one key, or one title under two keys, is an
+  error.
+- It should be a readable slug (`thoroughbred-1`, `red-fern-grows`) so a
+  human maintaining the CSV can spot a duplicate by eye, but nothing depends
+  on its shape.
+- Once a key has shipped in a catalog, it is permanent. Renaming one is a
+  history-orphaning migration, not an edit.
+
+Series stops being what the system *keys on*. It does not stop mattering —
+§4.2.
+
+### 4.2 Classification: series and genre
+
+Two axes hang off a book, and both are wanted for more than decoration:
+series-completion progress on the kid side ("you've read 4 of the
+Thoroughbred books"), and grouping books read — by series, and by genre — on
+both sides. Neither display is v1. Both are cheap to add later **and
+impossible to add retroactively**, which is what makes them a v1 data-model
+question rather than a v1 feature question.
+
+This is §7's shape exactly: record the facts now, build the display whenever.
+
+**The numerator has to be recorded now. The denominator can arrive whenever.**
+"4 of 12 Thoroughbred books" needs two things: which books this kid finished
+and what series each belonged to (the numerator — only knowable at the moment
+the kid reads it), and how many books the series contains (the denominator —
+a static fact, lookup-able forever). Only the first is perishable. So v1
+stamps series and genre onto every event, and the series-length table can land
+years later with no backfill.
+
+**Both need stable keys, for the same reason `book_key` does (§4.1).** The CSV
+gains `series_key` and `genre` alongside the human-readable `series_name`.
+Renaming a series must not detach a kid's history from it, and it will get
+renamed — subtitles change, a publisher rebrands, someone fixes a typo. Same
+argument, second instance; §4.1 spells it out.
+
+**Stamped onto the event, not looked up from the catalog at read time.** The
+lookup version is tempting — one copy of the truth, corrections propagate —
+but it makes classification mutable after the fact, and §4.3 hands parents an
+editor that can re-genre a book in ten seconds. Then last year's reading
+silently re-sorts itself, and a genre breakdown means something different
+every time it's opened. Freezing is the same call `scope_name` already makes
+(§3.2), and the cost is a few dozen bytes an event.
+
+**Series lives in its own file.** `wordlists/reading/series.json` holds
+`{ series_key: { name, author?, totalBooks } }`. It is separate from the quiz
+CSV because a series is a different entity than a question: it exists whether
+or not any of its books have quizzes, and the quiz catalog will never be a
+complete list of a series — the Thoroughbred catalog holds 5 books out of a
+series that ran far longer. Deriving "how many Thoroughbred books are there"
+from the quiz CSV would answer 5, and the progress display would read *4 of 5*
+when the truth is *4 of many*. That is worse than showing nothing.
+
+`totalBooks` may be `null`, permanently and legitimately — an open-ended or
+still-running series has no total. `null` renders as a plain count ("4 books
+read"), never as a fraction or a percentage. The committed `series.json` has
+`totalBooks: null` for Thoroughbred; fill it in when you want the fraction.
+
+**Genre is multi-valued and needs a controlled vocabulary.** A book is often
+two things at once, so the CSV column is semicolon-delimited
+(`animal-fiction;realistic-fiction`) and the catalog emits an array. The
+values must come from a fixed list the converter validates against, because
+free-text genre degrades into `sci-fi` / `scifi` / `science fiction` as three
+distinct groups within about a month, and the grouping display is the entire
+point. An unknown genre should fail the conversion, not pass through — the
+same fail-loudly posture as `book_key`.
+
+The vocabulary itself isn't specified here; it's a content decision, and the
+list can grow. Adding a value is a one-line change with no migration, since
+genres are stamped as strings at write time. Committed values for the
+Thoroughbred rows are `animal-fiction;realistic-fiction` — a starting point,
+not a considered taxonomy.
+
+**Custom books need optional series and genre too.** A kid reading
+Thoroughbred #6 — not in the quiz catalog, typed in by hand — should still
+count toward series progress, or the number is wrong in the one direction
+that's demoralizing: it undercounts real reading. So the "type a custom title"
+flow (§5) offers an optional series picker over known series plus a genre
+pick. Optional, skippable, and a skipped one just doesn't group. Getting this
+in Phase 0b is what makes the eventual display honest; adding it later means a
+permanent hole in the middle of the history.
+
+**A caution about the kid-side percentage.** `docs/math-star-spec.md` states
+the rule plainly — *"Kid-facing views never show a percentage or a grade"* —
+and §5 of this spec inherits it for ratings. A series-progress display is a
+genuine edge case rather than a violation: the rule exists so a kid isn't
+graded on performance, and "how much of this series have you read" measures
+collection, not competence. Nothing is being scored.
+
+The safe form is also the better one: **show it as a count and a bar — "4 of
+12", eleven segments filled — not as "33%".** A count is concrete and reads as
+progress; a percentage is the register the other apps deliberately avoid, and
+a kid who sees `33%` on one screen has been taught that percentages are how
+this app talks about them. Keep the numerals; skip the percent sign.
 
 It becomes `reading-catalog.json` — a single static file, bundled, fetched at
 load, no build step at runtime:
@@ -269,31 +422,110 @@ load, no build step at runtime:
     "title": "A Horse Called Wonder", "author": "Joanna Campbell",
     "gradeLevel": "4-6",
     "questions": [
-      { "id": "tb1-q1",
+      { "id": "thoroughbred-1-q1",
         "q": "What was the name of the Griffen family's own farm...",
         "correct": "Edgardale",
         "wrong": ["Whitebrook", "Townsend Acres", "Saddlebrook"] }
     ]
+  },
+
+  "red-fern-grows": {
+    "series": null, "seriesNumber": null,
+    "title": "Where the Red Fern Grows", "author": "Wilson Rawls",
+    "gradeLevel": "4-6",
+    "questions": [ ... ]
   }
 }
 ```
 
-Answer order is shuffled at quiz time, not stored pre-shuffled.
-
-The catalog key (`thoroughbred-1`) is `slug(series_name)-series_number`.
-`gradeLevel` is the book's `grade_level` column verbatim — a difficulty band,
-not a school grade (§3.2).
+The top-level key is the CSV's `book_key`, verbatim (§4.1). `gradeLevel` is
+the `grade_level` column verbatim — a difficulty band, not a school grade
+(§3.2). Answer order is shuffled at quiz time, not stored pre-shuffled.
 
 **`id` on each question is required, and is assigned once and never reused.**
 It is what `payload.missed` records (§3.2). The conversion step assigns them
 and must be idempotent for questions that already have one, so that
 regenerating the catalog after adding a book doesn't renumber the existing
 ones and invalidate every quiz result already recorded. The simplest form that
-holds: `<bookKey>-q<n>` by first-appearance order within a book, with the
+holds: `<book_key>-q<n>` by first-appearance order within a book, with the
 script reading any existing `reading-catalog.json` and preserving ids for
 questions whose text it already knows. Appending a book is then purely
 additive; the failure mode to design against is a *reordered* or reworded
-source row silently inheriting a different id.
+source row silently inheriting a different id. Note this inherits its
+stability from `book_key`'s, which is the second reason §4.1 doesn't derive
+it.
+
+### 4.3 Parents editing the catalog
+
+A parent needs to add and edit catalog books from the phone — a book the
+family owns that isn't in the bundle, a fixed typo, a wrong quiz answer,
+questions written for whatever their kid is actually reading. This does not
+need a new mechanism either.
+
+**It's `assign-list` with a different noun.** The Phase 3 command queue (sync
+spec §15) is exactly "a parent action on the phone that becomes an instruction
+the tablet applies to its own `localStorage`," and Spelling already ships a
+whole word list through it. A book is the same shape and smaller: one
+`assign-book` command, payload `{ book: { key, title, author, seriesKey,
+seriesNumber, genre[], gradeLevel, questions[] } }`, plus `delete-book` to
+retire one. Well inside the 64 KB payload cap — the largest Thoroughbred book
+here is 11 questions, a couple of KB.
+
+**The bundled catalog is read-only; parent edits are an overlay.**
+`reading-catalog.json` is a static asset and the app cannot rewrite it. So
+edits land in a `data.catalogOverlay` map in `localStorage`, merged over the
+bundled catalog by key at load. Entry shape is identical in both, so the quiz
+runner, §5's search, and §6's card never know which one a book came from.
+An override keeps winning after a bundle update — the parent's fix is
+deliberate and shouldn't be silently reverted by a deploy — until the parent
+removes it.
+
+**Parent-minted keys are namespaced, and this is not optional.** §4.1 makes
+`book_key` permanent and authored; a parent creating a book has to mint one,
+and a hand-typed `red-fern-grows` would silently merge with a bundled
+`red-fern-grows` shipping six months later — two different question sets
+colliding under one key, with quiz history attached to both. Parent-created
+keys get a reserved prefix (`p-` plus a random suffix) that the converter
+refuses to emit. Same for question ids: parent-authored questions mint
+`p-…`-prefixed ids so they can never collide with the converter's
+`<book_key>-q<n>`.
+
+**Replace by key, not by name.** §15.3 makes `assign-list` replace-by-name
+because "ids are minted on whichever side created the thing." Books don't have
+that problem — §4.1 gave them an authored, stable key precisely so identity
+survives edits — so `assign-book` replaces by key, and renaming a book's title
+is an edit rather than a new book. This is the payoff for §4.1 showing up a
+second time.
+
+**Editing questions has to respect §4's id rule.** A question's id is assigned
+once and never reused, because `payload.missed` records it. So: correcting a
+question's wording or a wrong answer **keeps** its id — it's the same
+question, fixed, and past results stay meaningful. *Deleting* a question
+retires its id permanently. Adding mints a new one. The editor should make
+"fix this question" and "replace this question" visibly different actions,
+because they mean different things to history and the parent can't be expected
+to infer that.
+
+**The parent composes against reality via `syncState()`.** §15.4's child-state
+snapshot exists so the dashboard offers real choices instead of guessing.
+Reading's `syncState()` pushes the overlay's keys and a thin index of the
+bundled catalog — key, title, question count — so the phone can list what the
+tablet actually has and offer edit-versus-create correctly. Keys and counts
+only, not question text: the 128 KB state cap is generous but a full quiz bank
+would eventually strain it, and the parent doesn't need the text until they
+open one book to edit it.
+
+**This moves the `COMMAND_KINDS` edit earlier.** §7 treats the `auth.js`
+whitelist as a Phase 2 concern; parent catalog editing needs `assign-book` and
+`delete-book` in the same phase as sync. Same one-line change, same ordering
+rule (Worker before dashboard), just sooner — see §8.
+
+**This is not a replacement for the CSV pipeline.** Bulk content — a whole
+series at a time — stays a CSV conversion, which is reviewable in a diff and
+versioned in the repo. Parent editing is the one-off path for the book in
+front of them tonight. Both write the same entry shape, and a parent-authored
+book that turns out to be worth keeping can be exported and folded back into
+the CSV, which is a nice-to-have rather than a requirement.
 
 **This is a new pattern, not an existing one.** An earlier draft described it
 as "structured like `spelling-lists.json`," which is misleading in three
@@ -318,8 +550,12 @@ reading won't be in any bank.
 
 ## 5. Core flows
 
-- **Start a book.** Search the catalog (by series/title) or type a custom
-  title + author. Writes a `start` event, sets `status = 'reading'`.
+- **Start a book.** Search the catalog by title or author, or type a custom
+  title + author. Writes a `start` event, sets `status = 'reading'`. Series is
+  a way to *group* results, not the way to find them — a catalog that will
+  hold standalone books alongside series can't make browse-by-series the
+  primary path (§4.1). Titles with no series sort in by author or title
+  alongside the series headings rather than into an "Other" bucket.
 - **Log a session.** One tap ("I read today") from the currently-reading
   screen; optional minutes or pages, optional note. Writes a `log-session`
   event. No quiz, no pressure — this is the low-friction one, used the most.
@@ -350,14 +586,25 @@ A new card, same pattern as the Spelling/Math cards in §9 of the sync spec:
 - Currently reading, per child.
 - Reading history: title, author, dates, days spent, session count, rating,
   quiz score.
-- A "trouble items" analog: missed quiz questions, or weak
-  series/authors — the same "what needs work" instinct as Spelling's
-  trouble-words and Math's trouble-categories, just applied to reading
-  comprehension instead of spelling/arithmetic.
+- A "trouble items" analog: missed quiz questions, or weak authors and
+  series — the same "what needs work" instinct as Spelling's trouble-words and
+  Math's trouble-categories, just applied to reading comprehension instead of
+  spelling/arithmetic. Author is the dependable axis here, since series is
+  null for standalones (§4.1); grouping by series is a bonus where it exists,
+  not the basis of the card.
 
-All of this falls out of the event stream once it's pushed — no new
+- **A catalog editor** (§4.3): add a book, fix a title or a wrong answer,
+  write questions for what the kid is reading now. Composed against the
+  tablet's real catalog via the §15.4 state snapshot, delivered as
+  `assign-book` / `delete-book`, and showing delivery state the same way the
+  existing assignment UI does — `ackCount` from `GET /api/commands` already
+  reports which tablets have applied it.
+
+The history parts fall out of the event stream once it's pushed — no new
 aggregation mechanism, same `GET /api/sessions` the other cards already use,
-reading title and author out of `payload` (§3.2).
+reading title and author out of `payload` (§3.2). The editor is the one piece
+that isn't just a view, and it rides the existing command queue rather than
+anything new.
 
 Two hardcoded tables in `parent.html` also need a `reading` entry, and one of
 them carries a decision rather than a label:
@@ -395,17 +642,20 @@ instruction the tablet applies to its own `localStorage`. A new command kind,
 `set-reading-support-level`, fits that pattern directly — no new channel, no
 new endpoint, no schema change.
 
-It does need one line of Worker: `COMMAND_KINDS` in
-`functions/api/_lib/auth.js` is a server-side whitelist, and `/api/commands`
-rejects an unrecognized `kind` with a 400 before it reaches the queue. (Sync
-spec §15.3 both describes this check and concludes that a new kind ships "as
-an app change rather than a backend deploy" — the check is what's actually
-there, and the deploy is real if small.) The meaning of the payload stays
-entirely client-side, which is the part of §3 rule 3 that matters.
+It does need one line of Worker, the same line §4.3 already touches:
+`COMMAND_KINDS` in `functions/api/_lib/auth.js` is a server-side whitelist,
+and `/api/commands` rejects an unrecognized `kind` with a 400 before it
+reaches the queue. (Sync spec §15.3 both describes this check and concludes
+that a new kind ships "as an app change rather than a backend deploy" — the
+check is what's actually there, and the deploy is real if small.) The meaning
+of the payload stays entirely client-side, which is the part of §3 rule 3 that
+matters.
 
 Order matters here too, in the opposite direction from §3.3: the Worker must
 learn the kind *before* the parent dashboard offers the control, or the
-parent gets a 400 on every attempt with nothing queued.
+parent gets a 400 on every attempt with nothing queued. Since §4.3 brings
+`assign-book` / `delete-book` in earlier, the Phase 2 addition is just one
+more entry in a list reading already appears in.
 
 **What that input is called.** `readingSupportLevel` — a generic tier, not a
 diagnosis label. This repo doesn't collect sensitive fields anywhere today
@@ -425,27 +675,39 @@ backfill.
 
 ## 8. Build order
 
-0. **Phase 0a — content.** The source CSV is committed
-   (`wordlists/reading/Thoroughbred_Quiz_Books_15.csv`). What remains is the
-   CSV → JSON script that produces `reading-catalog.json` with stable question
-   ids (§4). Nothing else can start without it.
+0. **Phase 0a — content.** The source CSV and `series.json` are committed
+   under `wordlists/reading/`. What remains is the CSV → JSON script that
+   produces `reading-catalog.json` with stable question ids, validating
+   `book_key` uniqueness and the genre vocabulary (§4, §4.1, §4.2). Nothing
+   else can start without it.
 1. **Phase 0b — the app itself, no sync.** `reading-star-v1.html`:
    catalog + custom books, start/log/finish/rate/abandon, optional quiz, CSV
    export. Satisfies the whole request on its own, offline, same as any other
-   app before its sync phase. Shipping a new app file also means:
+   app before its sync phase. Two things here are cheap now and expensive
+   later, because they leave permanent holes in history if deferred:
+   series/genre stamped onto every event, and the optional series/genre
+   picker on custom books (§4.2). Shipping a new app file also means:
    - a tile in `index.html` (four hardcoded cards today);
    - `./reading-star-v1.html` and `./reading-catalog.json` added to
      `PRECACHE_URLS` in `sw.js`, **and** a `CACHE_VERSION` bump — without the
      bump, clients keep serving the old cache and the new page 404s offline;
    - a row in `tests/child-apps.test.mjs`, which is table-driven per app file.
-2. **Phase 1 — sync.** The two Worker edits in §3.3 deploy *first*, then
-   `app = 'reading'` events through the existing pipe (§3), then the
+2. **Phase 1 — sync.** `sessionScope()` in `sync.js` deploys *first* (§3.3),
+   then `app = 'reading'` events through the existing pipe (§3), then the
    `parent.html` card plus its `APPS`/`MODES` entries (§6). No schema
    migration. Worth an `api.test.mjs` case that a reading event round-trips
    with its scope columns populated, since the failure mode is silent.
-3. **Phase 2 — adaptive points.** `readingSupportLevel` command kind (§7,
-   including the `COMMAND_KINDS` line), `computePoints()`.
-4. **Later, ongoing.** Catalog ingestion tooling and expansion beyond the
+3. **Phase 1b — parent catalog editing** (§4.3). `assign-book` /
+   `delete-book` added to `COMMAND_KINDS` and deployed *before* the dashboard
+   offers the editor; `catalogOverlay` merge and `applyCommand` cases on the
+   tablet; the editor UI and the `syncState()` catalog index. Separable from
+   Phase 1 and worth separating — Phase 1 is read-only and can ship and settle
+   on its own.
+4. **Phase 2 — adaptive points.** `readingSupportLevel` command kind (§7 —
+   by then `COMMAND_KINDS` already lists reading kinds), `computePoints()`.
+5. **Later, ongoing.** Series-progress and genre grouping displays (§4.2 —
+   the data is already there by then, including `totalBooks` in
+   `series.json`), catalog ingestion tooling, and expansion beyond the
    Thoroughbred series.
 
 ---
@@ -479,3 +741,15 @@ without touching the data model.
   be reconcilable, or stays a separate entry forever. Leaning: stays separate.
   Merging means rewriting `scope_id` on already-pushed events, and the payoff
   is small.
+- **The genre vocabulary itself** (§4.2) — a content decision, not a
+  structural one. The committed values are a placeholder. Worth settling
+  before Phase 0b ships, because the picker on custom books needs a list, and
+  a vocabulary that gets rationalized *after* families have classified a
+  year of reading means either stale keys or a rewrite of frozen payloads.
+  Adding values later is free; renaming or merging them is not.
+- **Whether `totalBooks` is worth maintaining by hand** (§4.2). It's the only
+  field in this design whose accuracy depends on someone looking something up,
+  and it's wrong-by-default as series continue. `null` degrading to a plain
+  count is the escape hatch, so the real question is whether the fraction is
+  motivating enough to be worth the upkeep — a kid question more than a
+  data-model one.

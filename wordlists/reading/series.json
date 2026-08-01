@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "Series metadata, kept separate from the per-question quiz CSV because a",
+    "series is its own entity: it exists whether or not any of its books have",
+    "quizzes, and its length is a fact about the series rather than about a",
+    "row. See docs/reading-star-spec.md §4.2.",
+    "",
+    "totalBooks is the denominator for series-progress display. null means",
+    "'not known yet' and is a legitimate permanent value — an open-ended or",
+    "still-running series has no total. A null total must render as a count",
+    "('4 books read') and never as a fraction or a percentage."
+  ],
+
+  "thoroughbred": {
+    "name": "Thoroughbred",
+    "author": "Joanna Campbell",
+    "totalBooks": null
+  }
+}

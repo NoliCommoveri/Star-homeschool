@@ -6,7 +6,31 @@ the code and why the spec now reads the way it does — the corrections are
 mostly one-line claims whose reasons run much longer than the claims, and the
 next person to touch this will want the reasons. Section references are to the
 spec as it stood at review time; the corrected spec has renumbered slightly
-(§3.3 is new).
+(§3.3 and §4.1 are new).
+
+**One finding this review missed**, and now spec'd as §4.1: the catalog key
+was `slug(series_name)-series_number`, which has nothing to key a standalone
+book on — and, worse, made book identity move whenever a series was renamed or
+a book renumbered, cascading into the question ids built on it and orphaning
+every `payload.missed` already recorded. Recorded here because the review
+caught the identical mistake twice elsewhere (question ids by array index,
+`scope_name` as a lookup) and still walked past it in the catalog key. The
+pattern to check for is *derived identity*, wherever it appears; enumerating
+its instances one at a time is what let this one through.
+
+**Three requirements arrived after the review** and are specified rather than
+reviewed — §4.2 (series-completion progress and genre grouping) and §4.3
+(parent-side catalog editing). Each is designed against the same constraint
+the review established: v1 records what a later display will need, because
+classification and history can't be reconstructed after the fact. §4.3 in
+particular reuses the Phase 3 command queue rather than adding a channel,
+which is the same "third app on the existing path" argument §2 makes for
+sync. Two consequences worth flagging to a reader of this review: the
+`COMMAND_KINDS` edit the review dated to Phase 2 now lands in Phase 1b, and
+§4.2's kid-facing progress display runs into `math-star-spec.md`'s explicit
+"kid-facing views never show a percentage" rule — resolved in §4.2 by showing
+a count and a bar rather than a percent, which honors the rule and reads
+better anyway.
 
 Review of `docs/reading-star-spec.md` (design-only, not built) against the
 code as it actually stands. Verdict: **the core architectural claim holds —
