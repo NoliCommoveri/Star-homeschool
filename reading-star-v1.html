@@ -271,25 +271,25 @@ function startBook({ title, author, catalogId, series, seriesKey, seriesNumber, 
   addEvent("start", book, {}, dateISO);
   return book;
 }
+// Nested session/quiz records reuse their event's own id, rather than minting
+// a second one, so a parent's delete-session command (which names the id
+// /api/sessions handed back — i.e. the event id) can find and remove the
+// matching nested record. See applyRemoteSessionDelete below.
 function logSession(book, { minutes, pages, note, dateISO }) {
-  const at = dateISO || new Date().toISOString();
-  book.sessions.push({ id: freshId(), at, minutes: minutes || null, pages: pages || null, note: note || "" });
-  addEvent("log-session", book, { minutes: minutes || null, pages: pages || null, note: note || "" }, dateISO);
+  const e = addEvent("log-session", book, { minutes: minutes || null, pages: pages || null, note: note || "" }, dateISO);
+  book.sessions.push({ id: e.id, at: e.date, minutes: e.minutes, pages: e.pages, note: e.note });
 }
 function finishBook(book, { rating, dateISO }) {
-  const at = dateISO || new Date().toISOString();
-  book.status = "finished"; book.endedAt = at; book.rating = rating;
-  addEvent("finish", book, { rating }, dateISO);
+  const e = addEvent("finish", book, { rating }, dateISO);
+  book.status = "finished"; book.endedAt = e.date; book.rating = rating;
 }
 function abandonBook(book, { dateISO }) {
-  const at = dateISO || new Date().toISOString();
-  book.status = "abandoned"; book.endedAt = at;
-  addEvent("abandon", book, {}, dateISO);
+  const e = addEvent("abandon", book, {}, dateISO);
+  book.status = "abandoned"; book.endedAt = e.date;
 }
 function recordQuiz(book, { score, total, missed, dateISO }) {
-  const at = dateISO || new Date().toISOString();
-  book.quizzes.push({ score, total, answeredAt: at, missed: missed || [] });
-  addEvent("quiz", book, { score, total, missed: missed || [] }, dateISO);
+  const e = addEvent("quiz", book, { score, total, missed: missed || [] }, dateISO);
+  book.quizzes.push({ id: e.id, score, total, answeredAt: e.date, missed: missed || [] });
 }
 // Reconciling a custom book with a catalog entry (§9): sets catalogId and
 // backfills classification on the book going forward. Does not touch
@@ -309,7 +309,13 @@ function reconcileBook(book, catalogEntry) {
 const app = document.getElementById("app");
 let parentUnlocked = false;
 function lockAndHome() { parentUnlocked = false; go("home"); }
+// Read by the sync module (§15.5): a command is only safe to apply once the
+// kid has navigated off whatever they were mid-way through.
+let currentView = "home";
 function go(view, arg) {
+  Q = null; // cancel any in-progress quiz — a stale answerQuiz() must not fire post-navigation
+  currentView = view;
+  syncApplyPending();
   document.getElementById("homeBtn").style.display = view === "home" ? "none" : "";
   if (view === "home") return renderHome();
   if (view === "startBook") return renderStartBook();
@@ -322,7 +328,7 @@ function go(view, arg) {
 }
 
 // ---------- First-launch setup wizard ----------
-const setup = { pin: null, name: null };
+const setup = { pin: null, name: null, pairingCode: null };
 function renderSetup(step) {
   document.getElementById("homeBtn").style.display = "none";
   document.getElementById("greeting").innerHTML = "Welcome! &#128214;";
@@ -346,6 +352,11 @@ function renderSetup(step) {
         <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 3 &mdash; Who's reading?</div>
         <div class="muted" style="margin-bottom:14px">This name appears throughout the app and on exported history.</div>
         <input type="text" id="nameIn" placeholder="Child's first name" style="text-align:center;font-size:20px">
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+          <label for="pairCodeIn" class="muted" style="font-size:13px">Pairing code from your parent's phone (optional)</label>
+          <input type="text" id="pairCodeIn" placeholder="6-character code" maxlength="6" style="text-transform:uppercase;text-align:center;font-size:18px;letter-spacing:.2em">
+          <div class="muted" style="font-size:12px;margin-top:4px">Skip this if you don't have one yet — you can pair from the parent area later.</div>
+        </div>
         <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
         <button class="big" onclick="setupName()" style="margin-top:8px">Continue &rarr;</button>
       </div>`;
@@ -374,15 +385,28 @@ function setupName() {
   const v = document.getElementById("nameIn").value.trim();
   const msg = document.getElementById("setupMsg");
   if (!v) { msg.textContent = "Please enter a name."; return; }
-  setup.name = v; renderSetup(3);
+  setup.name = v;
+  setup.pairingCode = document.getElementById("pairCodeIn").value.trim().toUpperCase();
+  renderSetup(3);
 }
-function setupFinish(gradeLevel) {
+async function setupFinish(gradeLevel) {
   KEY = nameToKey(setup.name);
   const existing = localStorage.getItem(KEY);
   if (existing && !confirm(`This device already has saved data for a child named "${setup.name}". Continue and use that existing data?`)) return;
   if (existing) { data = load(KEY); }
   else { data = freshData(setup.name, setup.pin, gradeLevel); persist(); }
   applyTheme();
+  // §6.2: a code typed in at setup gets this profile onto its parent-assigned
+  // childId from its very first save — no local id ever minted to reconcile
+  // away later.
+  if (setup.pairingCode) {
+    try {
+      data.sync = await redeemPairingCode(setup.pairingCode, "/api", crypto.randomUUID());
+      persist();
+    } catch (err) {
+      alert("Couldn't connect with that pairing code (" + err.message + "). You can try again anytime from the parent area → Settings.");
+    }
+  }
   go("home");
 }
 
@@ -421,6 +445,7 @@ function pickProfile(key) {
   if (!data) return renderPicker();
   parentUnlocked = false;
   applyTheme();
+  syncPush();
   go("home");
 }
 
@@ -533,6 +558,7 @@ function confirmStartCatalog(key) {
     gradeLevel: b.gradeLevel, genre: b.genre, dateISO,
   });
   if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  syncPush();
   go("book", book.id);
 }
 function startCustomBook() {
@@ -552,6 +578,7 @@ function startCustomBook() {
     dateISO,
   });
   if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  syncPush();
   go("book", book.id);
 }
 // <input type=date> gives "YYYY-MM-DD" with no time; noon avoids UTC
@@ -628,6 +655,7 @@ function submitQuit(bookId) {
   const dateISO = dateFieldToISO(document.getElementById("qDate").value);
   abandonBook(b, { dateISO });
   if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  syncPush();
   go("home");
 }
 function reconcileConfirm(bookId, catalogKey) {
@@ -672,6 +700,7 @@ function submitLogSession(bookId) {
   const note = document.getElementById("lNote").value.trim();
   logSession(b, { minutes, pages, note, dateISO });
   if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  syncPush();
   go("book", bookId);
 }
 
@@ -703,6 +732,7 @@ function submitFinish(bookId) {
   const dateISO = dateFieldToISO(document.getElementById("fDate").value);
   finishBook(b, { rating: finishPick, dateISO });
   if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  syncPush();
   go("book", bookId);
 }
 
@@ -756,6 +786,7 @@ function finishQuiz() {
   const score = total - Q.missed.length;
   recordQuiz(b, { score, total, missed: Q.missed });
   const saved = persist();
+  syncPush();
   app.innerHTML = `
     <div class="card center">
       <div style="font-size:40px;margin-bottom:8px">${score === total ? "&#127881;" : "&#128214;"}</div>
@@ -820,6 +851,10 @@ function renderParentSettings() {
       <button class="outline" onclick="resetProfile()">Reset all progress</button>
       <button class="danger" onclick="deleteProfile()">Delete this profile</button>
     </div>
+  </div>
+  <div class="card">
+    <h2>Sync to your phone</h2>
+    ${syncSettingsHtml()}
   </div>`;
 }
 function setChildGrade(g) { data.childGrade = g; persist(); }
@@ -871,7 +906,240 @@ function exportCSV() {
   a.click();
 }
 
+// ---------- Sync (docs/parent-sync-spec.md §7, §8; reading-star-spec.md §3.3) ----------
+// Transport (pairing, push-on-persist, ackedIds, retry) is pasted in from
+// Spelling/Math unchanged (§3 rule 5) — only SYNC_APP and the syncState()/
+// applyCommand() seam differ, per reading-star-spec.md §3.2. Fire-and-forget:
+// nothing here blocks a render, and a sync failure is never visible to the
+// child.
+const SYNC_APP = "reading";
+
+function syncReady() { return !!(data.sync && data.sync.enabled && data.sync.deviceToken); }
+function syncEndpoint() { return (data.sync && data.sync.endpoint) || "/api"; }
+
+async function syncApi(path, body) {
+  const res = await fetch(syncEndpoint() + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.sync.deviceToken },
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+  let json = null;
+  try { json = await res.json(); } catch(e) {}
+  if (!res.ok) throw new Error((json && json.error) || ("sync failed (" + res.status + ")"));
+  return json;
+}
+
+// One child, one childId, across all apps (§6.2) — shared the same way
+// Spelling/Math do, keyed by the profile's name slug.
+function sharedChildIdKey() { return "starhomeschool-childid-" + childSlug(data.childName); }
+function sharedChildId() {
+  let id = null;
+  try { id = localStorage.getItem(sharedChildIdKey()); } catch(e) {}
+  if (id) return id;
+  id = (data.sync && data.sync.childId) || crypto.randomUUID();
+  try { localStorage.setItem(sharedChildIdKey(), id); } catch(e) {}
+  return id;
+}
+function syncChildId() {
+  if (!data.sync) return null;
+  const shared = sharedChildId();
+  if (data.sync.childId !== shared) {
+    data.sync.childId = shared;
+    data.sync.ackedIds = [];
+    persist();
+  }
+  return data.sync.childId;
+}
+
+// Always calls /api/sync, even with nothing pending — the response is how a
+// parent's command reaches this device (§15.2).
+let syncLastPullAt = 0;
+function syncPush() {
+  if (!syncReady()) return;
+  syncLastPullAt = Date.now();
+  const childId = syncChildId();
+  const acked = new Set(data.sync.ackedIds || []);
+  const pending = data.events.filter(e => !acked.has(e.id));
+  syncApi("/sync", {
+    app: SYNC_APP, childId, childName: data.childName, sessions: pending,
+    state: syncState(),
+    applied: data.sync.appliedCommandIds || [],
+  })
+    .then(res => {
+      if (!res) return;
+      if (Array.isArray(res.accepted) && res.accepted.length) {
+        const merged = new Set([...(data.sync.ackedIds || []), ...res.accepted]);
+        data.sync.ackedIds = [...merged].slice(-1000);
+      }
+      data.sync.lastPushAt = Date.now();
+      persist();
+      if (Array.isArray(res.commands) && res.commands.length) syncQueueCommands(res.commands);
+    })
+    .catch(() => { /* best-effort — the next event or boot retries */ });
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (Date.now() - syncLastPullAt < 60000) return;
+  syncPush();
+});
+
+function syncDelete(ids) {
+  if (!syncReady() || !ids.length) return;
+  syncApi("/delete", { app: SYNC_APP, childId: syncChildId(), sessionIds: ids }).catch(() => {});
+}
+
+// ---------- Parent -> child commands (§15) ----------
+// syncState()/applyCommand() are the declared per-app seam (§3 rule 5);
+// everything above is byte-identical to Spelling/Math.
+
+// §15.4: what this tablet has right now, so the future catalog-editor phase
+// (§4.3/Phase 1b) can offer real choices. Minimal for Phase 1, which is
+// read-only — just enough that a parent dashboard can already show something
+// true about the device without inventing a second snapshot shape later.
+function syncState() {
+  return {
+    childGrade: data.childGrade,
+    grades: GRADES,
+    currentlyReading: currentlyReading().length,
+  };
+}
+
+// A command arrives from a network callback that can fire at any moment,
+// including mid-quiz. Nothing is applied until the kid is somewhere safe
+// (§15.5) — see syncSafeToApply and go()'s `Q = null`.
+let syncPendingCommands = [];
+function syncSafeToApply() { return Q === null; }
+
+function syncQueueCommands(commands) {
+  syncPendingCommands = syncPendingCommands.concat(commands);
+  syncApplyPending(true);
+}
+
+function syncApplyPending(repaint) {
+  if (!data || !data.sync || !syncPendingCommands.length || !syncSafeToApply()) return;
+  const queue = syncPendingCommands;
+  syncPendingCommands = [];
+  const done = new Set(data.sync.appliedCommandIds || []);
+  let changed = false;
+  for (const cmd of queue) {
+    if (!cmd || !cmd.id || done.has(cmd.id)) continue;
+    try { if (applyCommand(cmd)) changed = true; } catch (e) {}
+    done.add(cmd.id);
+  }
+  data.sync.appliedCommandIds = [...done].slice(-200);
+  persist();
+  if (changed && repaint && !parentUnlocked && currentView === "home") renderHome();
+}
+
+// Phase 1 only recognizes the generic command (§8): reading-specific
+// `assign-book`/`delete-book` land in Phase 1b, once COMMAND_KINDS lists them.
+function applyCommand(cmd) {
+  const p = cmd.payload || {};
+  if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
+  return false;
+}
+
+// Reading-specific, not pasted in unchanged from Spelling (reading-star-spec
+// §3.3 finding 4): the local model nests sessions/quizzes inside a book
+// rather than keeping one flat data.sessions array, so this walks both.
+// Nested records share their originating event's id (see logSession /
+// recordQuiz / finishBook / abandonBook), which is what makes them findable
+// here — the id a parent deletes is always the event id.
+function applyRemoteSessionDelete(ids) {
+  const wanted = new Set((Array.isArray(ids) ? ids : []).map(String));
+  if (!wanted.size) return false;
+  let changed = false;
+  const beforeEvents = data.events.length;
+  data.events = data.events.filter(e => !wanted.has(String(e.id)));
+  if (data.events.length !== beforeEvents) changed = true;
+  data.books.forEach(b => {
+    const beforeS = b.sessions.length;
+    b.sessions = b.sessions.filter(s => !wanted.has(String(s.id)));
+    if (b.sessions.length !== beforeS) changed = true;
+    const beforeQ = b.quizzes.length;
+    b.quizzes = b.quizzes.filter(q => !wanted.has(String(q.id)));
+    if (b.quizzes.length !== beforeQ) changed = true;
+  });
+  return changed;
+}
+
+// Redeems a pairing code and builds the resulting data.sync block. Shared by
+// the Settings "Connect" button and the first-launch wizard.
+async function redeemPairingCode(code, endpoint, deviceId) {
+  const res = await fetch(endpoint + "/pair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ code, deviceId, role: "child", label: data.childName + "'s device" }),
+  });
+  let json = null;
+  try { json = await res.json(); } catch(e) {}
+  if (!res.ok) throw new Error((json && json.error) || "Could not connect — check the code and try again.");
+  const childId = json.childId || sharedChildId();
+  try { localStorage.setItem(sharedChildIdKey(), childId); } catch(e) {}
+  return {
+    enabled: true, endpoint,
+    childId,
+    deviceId, deviceToken: json.token, ackedIds: [], appliedCommandIds: [], lastPushAt: null,
+  };
+}
+
+async function connectSync() {
+  const code = document.getElementById("syncCodeIn").value.trim().toUpperCase();
+  const endpointIn = document.getElementById("syncEndpointIn").value.trim();
+  const msg = document.getElementById("syncMsg");
+  if (!code) { msg.textContent = "Enter the code shown on your phone."; return; }
+  msg.textContent = "Connecting…";
+  const endpoint = endpointIn || "/api";
+  const deviceId = (data.sync && data.sync.deviceId) || crypto.randomUUID();
+  try {
+    data.sync = await redeemPairingCode(code, endpoint, deviceId);
+    persist();
+    renderParent("settings");
+    syncPush();
+  } catch (err) {
+    msg.textContent = err.message + " If it keeps failing, generate a fresh code on your phone and try again.";
+  }
+}
+function disableSync() { if (!data.sync) return; data.sync.enabled = false; persist(); renderParent("settings"); }
+function enableSync() { if (!data.sync) return; data.sync.enabled = true; persist(); renderParent("settings"); syncPush(); }
+function resyncNow() {
+  if (!data.sync || !data.sync.deviceToken) return;
+  data.sync.ackedIds = []; // safe: /api/sync is an idempotent upsert
+  persist();
+  syncPush();
+}
+
+function syncSettingsHtml() {
+  const s = data.sync;
+  if (s && s.deviceToken) {
+    return `
+      <div class="muted">${s.enabled ? "Sending reading history to your phone, and picking up anything you send from it." : "Sync is paused on this device."}</div>
+      <div class="muted" style="margin-bottom:10px">Last synced: ${s.lastPushAt ? new Date(s.lastPushAt).toLocaleString() : "not yet"}</div>
+      <div class="row">
+        ${s.enabled ? `<button class="outline" onclick="disableSync()">Pause sync</button>` : `<button onclick="enableSync()">Resume sync</button>`}
+        <button class="outline" onclick="resyncNow()">Resync now</button>
+      </div>
+      <div class="muted" style="margin-top:8px">To stop this device permanently, revoke it from the parent dashboard on your phone (Devices tab).</div>`;
+  }
+  return `
+    <p class="muted">On your phone, open the parent dashboard &rarr; Devices &rarr; "Add a device" &rarr; "Child's tablet," then type the code it shows here.</p>
+    <label for="syncCodeIn">Pairing code</label>
+    <input type="text" id="syncCodeIn" placeholder="6-character code" maxlength="6" style="text-transform:uppercase;text-align:center;font-size:22px;letter-spacing:.25em">
+    <details style="margin:6px 0">
+      <summary class="muted" style="cursor:pointer">Advanced: custom sync server</summary>
+      <label for="syncEndpointIn" style="margin-top:6px">Sync server URL (leave blank for the default)</label>
+      <input type="text" id="syncEndpointIn" placeholder="https://your-worker.workers.dev/api">
+    </details>
+    <button onclick="connectSync()">Connect</button>
+    <div class="muted" id="syncMsg" style="color:var(--danger);min-height:16px"></div>`;
+}
+
 // ---------- Boot ----------
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 (async function boot() {
   await loadCatalog();
   const profiles = listProfiles();
@@ -879,8 +1147,6 @@ function exportCSV() {
   else if (profiles.length === 1) pickProfile(profiles[0].key);
   else renderPicker();
 })();
-
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 </script>
 </body>
 </html>

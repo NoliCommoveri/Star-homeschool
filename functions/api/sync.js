@@ -184,6 +184,13 @@ function sessionScope(app, rest) {
   if (app === 'math') {
     return { grade: rest.focusGrade || null, id: rest.focusId || null, name: rest.focusName || null };
   }
+  if (app === 'reading') {
+    // reading-star-spec.md §3.2: grade is the CHILD's school grade (stamped as
+    // childGrade), not the book's difficulty band — that stays in payload
+    // alongside bookTitle/author so it's still visible to a card reading off
+    // /api/sessions, which does not select the scope columns.
+    return { grade: rest.childGrade || null, id: rest.bookId || null, name: rest.bookTitle || null };
+  }
   return { grade: null, id: null, name: null };
 }
 

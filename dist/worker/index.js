@@ -431,7 +431,7 @@ async function onRequestPost7({ request, env }) {
   const now = Date.now();
   const codeHash = await sha256Hex(code);
   const pairing = await env.DB.prepare(
-    "SELECT family_id, role FROM pairing_codes WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?"
+    "SELECT family_id, role, child_id FROM pairing_codes WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?"
   ).bind(codeHash, now).first();
   if (!pairing) return json({ error: "invalid or expired code" }, { status: 401 });
   if (pairing.role !== role) return json({ error: "role does not match this code" }, { status: 400 });
@@ -454,7 +454,7 @@ async function onRequestPost7({ request, env }) {
        last_seen = excluded.last_seen,
        revoked = 0`
   ).bind(deviceId, pairing.family_id, tokenHash, role, label || null, now, now, Math.floor(now / 1e3)).run();
-  return json({ token, role });
+  return json({ token, role, childId: pairing.child_id || void 0 });
 }
 __name(onRequestPost7, "onRequestPost");
 
@@ -472,17 +472,30 @@ async function onRequestPost8({ request, env }) {
   } catch {
     return json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const role = body?.role;
+  const { role, childId, childName } = body || {};
   if (role !== "child" && role !== "parent") {
     return json({ error: 'role must be "child" or "parent"' }, { status: 400 });
   }
+  const now = Date.now();
+  let boundChildId = null;
+  if (role === "child" && childId) {
+    const existing = await env.DB.prepare(
+      "SELECT id FROM children WHERE id = ? AND family_id = ?"
+    ).bind(childId, device.family_id).first();
+    if (!existing) return json({ error: "not found" }, { status: 404 });
+    boundChildId = existing.id;
+  } else if (role === "child" && childName && String(childName).trim()) {
+    boundChildId = randomId();
+    await env.DB.prepare(
+      "INSERT INTO children (id, family_id, name, created_at) VALUES (?, ?, ?, ?)"
+    ).bind(boundChildId, device.family_id, String(childName).trim(), now).run();
+  }
   const code = randomPairingCode();
   const codeHash = await sha256Hex(code);
-  const now = Date.now();
   const expiresAt = now + 10 * 60 * 1e3;
   await env.DB.prepare(
-    "INSERT INTO pairing_codes (code_hash, family_id, role, expires_at) VALUES (?, ?, ?, ?)"
-  ).bind(codeHash, device.family_id, role, expiresAt).run();
+    "INSERT INTO pairing_codes (code_hash, family_id, role, child_id, expires_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(codeHash, device.family_id, role, boundChildId, expiresAt).run();
   return json({ code, expiresAt });
 }
 __name(onRequestPost8, "onRequestPost");
@@ -698,6 +711,9 @@ function sessionScope(app, rest) {
   if (app === "math") {
     return { grade: rest.focusGrade || null, id: rest.focusId || null, name: rest.focusName || null };
   }
+  if (app === "reading") {
+    return { grade: rest.childGrade || null, id: rest.bookId || null, name: rest.bookTitle || null };
+  }
   return { grade: null, id: null, name: null };
 }
 __name(sessionScope, "sessionScope");
@@ -710,7 +726,7 @@ function safeParse3(text) {
 }
 __name(safeParse3, "safeParse");
 
-// ../.wrangler/tmp/pages-28fgz4/functionsRoutes-0.25032411239664887.mjs
+// ../.wrangler/tmp/pages-OGmGA3/functionsRoutes-0.8726869807725655.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",
@@ -819,7 +835,7 @@ var routes = [
   }
 ];
 
-// ../../../../root/.npm/_npx/c943b712072b77c4/node_modules/path-to-regexp/dist.es2015/index.js
+// ../node_modules/path-to-regexp/dist.es2015/index.js
 function lexer(str) {
   var tokens = [];
   var i = 0;
@@ -1145,7 +1161,7 @@ function pathToRegexp(path, keys, options) {
 }
 __name(pathToRegexp, "pathToRegexp");
 
-// ../../../../root/.npm/_npx/c943b712072b77c4/node_modules/wrangler/templates/pages-template-worker.ts
+// ../node_modules/wrangler/templates/pages-template-worker.ts
 var escapeRegex = /[.+?^${}()|[\]\\]/g;
 function* executeRequest(request) {
   const requestPath = new URL(request.url).pathname;
