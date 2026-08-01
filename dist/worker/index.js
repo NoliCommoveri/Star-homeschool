@@ -46,8 +46,12 @@ var COMMAND_KINDS = [
   // math: add/replace a focus area, optionally make it active
   "set-active-focus",
   // math: switch which existing focus area is assigned
-  "delete-session"
+  "delete-session",
   // both: drop sessions from the tablet's own history
+  "assign-book",
+  // reading: add/replace a catalog book (parent editor, §4.3)
+  "delete-book"
+  // reading: retire a catalog overlay entry
 ];
 var MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024;
 var MAX_CHILD_STATE_BYTES = 128 * 1024;
@@ -726,7 +730,7 @@ function safeParse3(text) {
 }
 __name(safeParse3, "safeParse");
 
-// ../.wrangler/tmp/pages-OGmGA3/functionsRoutes-0.8726869807725655.mjs
+// ../.wrangler/tmp/pages-huVsz3/functionsRoutes-0.17993921506756405.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",

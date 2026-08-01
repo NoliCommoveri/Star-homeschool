@@ -158,6 +158,7 @@ function freshData(childName, pin, childGrade) {
     theme: "classic",
     events: [],
     books: [],
+    catalogOverlay: {},
   };
 }
 let lastLoadError = null;
@@ -172,6 +173,7 @@ function load(key) {
     if (!d.theme) d.theme = "classic";
     if (!d.events) d.events = [];
     if (!d.books) d.books = [];
+    if (!d.catalogOverlay) d.catalogOverlay = {};
     if (d.childGrade === undefined) d.childGrade = "2";
     return d;
   } catch(e) { lastLoadError = "corrupted"; return null; }
@@ -200,17 +202,23 @@ async function loadCatalog() {
   } catch(e) { CATALOG = {}; }
   catalogLoaded = true;
 }
+// Parent-authored/overridden books (§4.3) win by key over the bundled
+// catalog. Entry shape is identical in both, so search, the quiz runner,
+// and the book detail screen never know which one a book came from.
+function effectiveCatalog() {
+  return Object.assign({}, CATALOG, data.catalogOverlay || {});
+}
 function catalogSearch(term) {
   const t = term.trim().toLowerCase();
   if (!t) return [];
-  return Object.entries(CATALOG)
+  return Object.entries(effectiveCatalog())
     .filter(([key, b]) => b.title.toLowerCase().includes(t) || (b.author || "").toLowerCase().includes(t) || (b.series || "").toLowerCase().includes(t))
     .map(([key, b]) => ({ key, ...b }))
     .slice(0, 20);
 }
 function knownSeriesNames() {
   const names = new Set();
-  Object.values(CATALOG).forEach(b => { if (b.series) names.add(b.series); });
+  Object.values(effectiveCatalog()).forEach(b => { if (b.series) names.add(b.series); });
   (data.books || []).forEach(b => { if (b.series) names.add(b.series); });
   return [...names].sort();
 }
@@ -537,7 +545,7 @@ function renderSearchResults(term) {
     </div>`).join("") || (term.trim() ? `<div class="muted">No matches — try the custom entry below.</div>` : "");
 }
 function renderStartFromCatalog(key) {
-  const b = CATALOG[key];
+  const b = effectiveCatalog()[key];
   app.innerHTML = `
     <div class="card">
       <h2>${esc(b.title)}</h2>
@@ -550,7 +558,7 @@ function renderStartFromCatalog(key) {
     </div>`;
 }
 function confirmStartCatalog(key) {
-  const b = CATALOG[key];
+  const b = effectiveCatalog()[key];
   const dateISO = dateFieldToISO(document.getElementById("sDate").value);
   const book = startBook({
     title: b.title, author: b.author, catalogId: key,
@@ -592,7 +600,7 @@ function dateFieldToISO(dateStr) {
 function renderBookDetail(bookId) {
   const b = findBook(bookId);
   if (!b) return go("home");
-  const canQuiz = b.catalogId && CATALOG[b.catalogId] && CATALOG[b.catalogId].questions.length > 0;
+  const canQuiz = b.catalogId && effectiveCatalog()[b.catalogId] && effectiveCatalog()[b.catalogId].questions.length > 0;
   const matches = !b.catalogId ? catalogSearch(b.title) : [];
   app.innerHTML = `
     <button class="link" onclick="go('home')">&larr; Back</button>
@@ -660,7 +668,7 @@ function submitQuit(bookId) {
 }
 function reconcileConfirm(bookId, catalogKey) {
   const b = findBook(bookId);
-  const c = CATALOG[catalogKey];
+  const c = effectiveCatalog()[catalogKey];
   if (!confirm(`Link "${b.title}" to the catalog's "${c.title}"? This unlocks the quiz and keeps future sessions classified correctly. Nothing already logged changes.`)) return;
   reconcileBook(b, { key: catalogKey, ...c });
   persist();
@@ -740,7 +748,7 @@ function submitFinish(bookId) {
 let Q = null; // { bookId, questions: [{...shuffledChoices}], idx, missed: [] }
 function startQuiz(bookId) {
   const b = findBook(bookId);
-  const cat = CATALOG[b.catalogId];
+  const cat = effectiveCatalog()[b.catalogId];
   const questions = shuffle(cat.questions).map(q => ({
     id: q.id, q: q.q,
     choices: shuffle([q.correct, ...q.wrong]),
@@ -867,7 +875,9 @@ function changePin() {
   data.pin = np.trim(); persist(); alert("PIN updated.");
 }
 function resetProfile() {
-  const kept = { childName: data.childName, pin: data.pin, childGrade: data.childGrade, theme: data.theme };
+  // catalogOverlay is content a parent authored (§4.3), not reading history —
+  // kept through a reset the same way Spelling keeps its word lists.
+  const kept = { childName: data.childName, pin: data.pin, childGrade: data.childGrade, theme: data.theme, catalogOverlay: data.catalogOverlay };
   if (!confirm(`This clears ALL of ${kept.childName}'s reading history — every book, session, and quiz — back to zero. This can't be undone. Continue?`)) return;
   data = Object.assign(freshData(kept.childName, kept.pin, kept.childGrade), kept);
   persist();
@@ -994,15 +1004,23 @@ function syncDelete(ids) {
 // syncState()/applyCommand() are the declared per-app seam (§3 rule 5);
 // everything above is byte-identical to Spelling/Math.
 
-// §15.4: what this tablet has right now, so the future catalog-editor phase
-// (§4.3/Phase 1b) can offer real choices. Minimal for Phase 1, which is
-// read-only — just enough that a parent dashboard can already show something
-// true about the device without inventing a second snapshot shape later.
+// §15.4: what this tablet has right now, so the catalog-editor Assign tab
+// (§4.3) can offer real edit-versus-create choices. The bundled catalog gets
+// only a thin index — key, title, author, question count — since it can grow
+// into a full quiz bank and the parent doesn't need the text until they open
+// one book to edit it (the dashboard fetches reading-catalog.json itself for
+// that). The overlay is the parent's own content, small by construction, so
+// it rides along in full: that's what lets the editor prefill a book already
+// being edited.
 function syncState() {
   return {
     childGrade: data.childGrade,
     grades: GRADES,
     currentlyReading: currentlyReading().length,
+    catalogIndex: Object.entries(CATALOG).map(([key, b]) => ({
+      key, title: b.title, author: b.author || "", questionCount: (b.questions || []).length,
+    })),
+    catalogOverlay: data.catalogOverlay || {},
   };
 }
 
@@ -1033,12 +1051,37 @@ function syncApplyPending(repaint) {
   if (changed && repaint && !parentUnlocked && currentView === "home") renderHome();
 }
 
-// Phase 1 only recognizes the generic command (§8): reading-specific
-// `assign-book`/`delete-book` land in Phase 1b, once COMMAND_KINDS lists them.
 function applyCommand(cmd) {
   const p = cmd.payload || {};
   if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
+  if (cmd.kind === "assign-book") return applyAssignBook(p.book);
+  if (cmd.kind === "delete-book") return applyDeleteBook(p.key);
   return false;
+}
+
+// §4.3: the bundled catalog is a static asset the app can't rewrite, so a
+// parent's add/edit lands as an override in data.catalogOverlay, keyed by
+// book_key like the bundle itself — editing a bundled book just means the
+// overlay entry at that key now wins (effectiveCatalog()). Replaces by key,
+// not by name, per §4.1/§4.3: identity is the authored key, so re-sending one
+// is an edit, never a second book.
+function applyAssignBook(book) {
+  if (!book || !book.key || !book.title) return false;
+  data.catalogOverlay[book.key] = {
+    series: book.series || null, seriesKey: book.seriesKey || null, seriesNumber: book.seriesNumber || null,
+    title: book.title, author: book.author || "", gradeLevel: book.gradeLevel || "",
+    genre: Array.isArray(book.genre) ? book.genre : [],
+    questions: Array.isArray(book.questions) ? book.questions : [],
+  };
+  return true;
+}
+// Removes only the overlay entry. A bundled book at the same key, if any,
+// reappears rather than being tombstoned — there is no mechanism to hide a
+// bundled entry, only to override it, and this is the inverse of an override.
+function applyDeleteBook(key) {
+  if (!key || !(key in data.catalogOverlay)) return false;
+  delete data.catalogOverlay[key];
+  return true;
 }
 
 // Reading-specific, not pasted in unchanged from Spelling (reading-star-spec

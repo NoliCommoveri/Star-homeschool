@@ -35,10 +35,27 @@ const server = {
         { id: 'fraction-simplify', label: 'Simplify fractions', band: '3-5', strand: 'Fractions' },
         { id: 'fraction-mixed', label: 'Mixed numbers', band: '3-5', strand: 'Fractions' },
       ] } }],
+    // reading-star-spec.md §4.3 (Phase 1b): the bundled catalog itself isn't
+    // duplicated here — parent.html fetches the real reading-catalog.json
+    // directly from the static server, same as the tablet does. Only the
+    // overlay (a parent's own content) rides the snapshot.
+    reading: [{ childId: 'child-ada', deviceId: 'tablet-1', deviceLabel: "Ada's tablet", updatedAt: now - 600000,
+      state: {
+        childGrade: '4', grades: ['K','1','2','3','4','5','6','7'], currentlyReading: 1,
+        catalogIndex: [],
+        catalogOverlay: {
+          'p-existing1': {
+            title: 'A Parent Book', author: 'Mom', series: null, seriesKey: null, seriesNumber: null,
+            gradeLevel: '2-3', genre: ['fantasy'],
+            questions: [{ id: 'p-q9', q: "What is the dragon's name?", correct: 'Ember', wrong: ['Blaze', 'Cinder', 'Spark'] }],
+          },
+        },
+      } }],
   },
   commands: {
     spelling: [{ id: 'c-old', childId: 'child-ada', kind: 'set-active-list', payload: { listId: 'l99' }, createdAt: now - 90000, canceled: false, ackCount: 0, firstAppliedAt: null }],
     math: [],
+    reading: [],
   },
 };
 
@@ -242,6 +259,67 @@ await page.waitForTimeout(500);
 cmd = posted.filter((p) => p.path === '/commands').pop();
 check('grade travels with the assigned list', cmd.body.payload.list.grade === '5', cmd.body.payload.list);
 check('confirmation names the grade', (await page.textContent('#app')).includes('Grade 5'));
+
+console.log('\n[Assign — Reading Star: catalog editor (Phase 1b)]');
+await page.click('.app-toggle button:has-text("Reading Star")');
+await page.waitForTimeout(700);
+text = await page.textContent('#app');
+check('the real bundled catalog is fetched and listed', text.includes('A Horse Called Wonder'));
+check('overlay book listed too, marked Edited', text.includes('A Parent Book') && text.includes('Edited'));
+
+console.log('\n[Assign — Reading: edit an existing overlay book]');
+await page.click('tr:has-text("A Parent Book") button:has-text("Edit")');
+await page.waitForTimeout(300);
+check('editor prefilled from the overlay', await page.inputValue('#rbTitle') === 'A Parent Book');
+await page.fill('#rbTitle', 'A Parent Book (fixed)');
+await page.click('button:has-text("Send to the tablet")');
+await page.waitForTimeout(500);
+cmd = posted.filter((p) => p.path === '/commands').pop();
+check('assign-book posted, replacing by the existing key (§4.1/§4.3)', cmd.body.kind === 'assign-book' && cmd.body.payload.book.key === 'p-existing1', cmd.body);
+check('title edit carried', cmd.body.payload.book.title === 'A Parent Book (fixed)');
+check("an untouched question keeps its id — a fix, not a replace", cmd.body.payload.book.questions[0].id === 'p-q9', cmd.body.payload.book.questions);
+
+console.log('\n[Assign — Reading: add a brand new book]');
+await page.click('button:has-text("+ Add a book")');
+await page.waitForTimeout(300);
+await page.fill('#rbTitle', 'Brand New Book');
+await page.fill('#rbAuthor', 'New Author');
+await page.check('.rbGenre[value="fantasy"]');
+await page.click('button:has-text("+ Add a question")');
+await page.waitForTimeout(200);
+await page.fill('#rbQ0text', 'What happens first?');
+await page.fill('#rbQ0correct', 'This');
+await page.fill('#rbQ0wrong0', 'That');
+await page.fill('#rbQ0wrong1', 'Other');
+await page.fill('#rbQ0wrong2', 'Another');
+await page.click('button:has-text("Send to the tablet")');
+await page.waitForTimeout(500);
+cmd = posted.filter((p) => p.path === '/commands').pop();
+check('assign-book posted for the new book', cmd.body.kind === 'assign-book' && cmd.body.payload.book.title === 'Brand New Book', cmd.body);
+check('a fresh parent-minted key, p- prefixed (§4.3)', /^p-/.test(cmd.body.payload.book.key), cmd.body.payload.book.key);
+check('genre carried', JSON.stringify(cmd.body.payload.book.genre) === '["fantasy"]', cmd.body.payload.book.genre);
+check('the new question also got a p- id, never colliding with the converter\'s <key>-qN', /^p-/.test(cmd.body.payload.book.questions[0].id), cmd.body.payload.book.questions);
+
+console.log('\n[Assign — Reading: validation]');
+await page.click('button:has-text("+ Add a book")');
+await page.waitForTimeout(300);
+await page.fill('#rbTitle', 'Half Done');
+await page.click('button:has-text("+ Add a question")');
+await page.waitForTimeout(200);
+await page.fill('#rbQ0text', 'Only the question, nothing else');
+const beforeReadingSends = posted.filter((p) => p.path === '/commands').length;
+await page.click('button:has-text("Send to the tablet")');
+await page.waitForTimeout(300);
+check('an incomplete question blocks sending', posted.filter((p) => p.path === '/commands').length === beforeReadingSends);
+check('and says why', (await page.textContent('#app')).includes('Each question needs'));
+await page.click('button:has-text("Cancel")');
+await page.waitForTimeout(300);
+
+console.log('\n[Assign — Reading: delete an overlay book]');
+await page.click('tr:has-text("A Parent Book") button:has-text("Delete")');
+await page.waitForTimeout(500);
+cmd = posted.filter((p) => p.path === '/commands').pop();
+check('delete-book posted with the overlay key', cmd.body.kind === 'delete-book' && cmd.body.payload.key === 'p-existing1', cmd.body);
 
 console.log('\n[General]');
 check('no page errors anywhere', errors.length === 0, errors);

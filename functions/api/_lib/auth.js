@@ -58,6 +58,8 @@ export const COMMAND_KINDS = [
   'assign-focus',      // math: add/replace a focus area, optionally make it active
   'set-active-focus',  // math: switch which existing focus area is assigned
   'delete-session',    // both: drop sessions from the tablet's own history
+  'assign-book',        // reading: add/replace a catalog book (parent editor, §4.3)
+  'delete-book',        // reading: retire a catalog overlay entry
 ];
 
 // Payload and snapshot ceilings (§15.6). A word list or focus area is a few
