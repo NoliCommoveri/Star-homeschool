@@ -108,9 +108,20 @@
     content: ""; position: absolute; left: 50%; top: 8%; width: 7px; height: 7px; margin-left: -3.5px;
     border-radius: 50%; background: #F2C230; box-shadow: 0 0 0 1.5px rgba(90,60,10,.55);
   }
+  /* Only spines wide enough to hold a legible glyph column get a title (see
+     SPINE_TITLE_MIN_W); narrower ones stay title-on-hover/tap as before. */
+  .spine-title {
+    position: absolute; top: 18%; bottom: 6%; left: 50%; transform: translateX(-50%);
+    writing-mode: vertical-rl; text-orientation: mixed;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: rgba(255,255,255,.95); text-shadow: 0 0 2px rgba(0,0,0,.65), 0 1px 1px rgba(0,0,0,.5);
+    font-weight: 700; letter-spacing: .2px; pointer-events: none;
+  }
   .shelf-plank { height: 15px; background-image: url(./reading-shelf.png); background-size: 100% 100%; border-radius: 0 0 3px 3px; }
   .bookend { flex: none; align-self: flex-end; background-image: url(./reading-bookend.png); background-size: 100% 100%; }
-  .bookend.right { transform: scaleX(-1); }
+  /* Sprite faces right; on the left end that points into the stack, so only
+     the left bookend gets flipped — both ends should face away from the books. */
+  .bookend.left { transform: scaleX(-1); }
   .shelf-caption { font-size: 13px; color: var(--muted); margin-top: 8px; }
   /* The new spine drops in and settles once, then stays put. */
   @keyframes shelve {
@@ -575,6 +586,7 @@ const GENRE_SPINES = {
   "_none":                ["B10", "C12"],
 };
 const SPINE_GAP = 1;
+const SPINE_TITLE_MIN_W = 15;    // scaled px a spine needs before title text fits legibly
 const SHELF_SCALE = 0.44;        // tallest spine ≈ 89px
 const SHELF_SCALE_FULL = 0.36;   // history view fits more per row
 const BOOKEND_RATIO = 1.05;      // bookend height, as a multiple of the tallest spine
@@ -599,12 +611,17 @@ function spineKeyFor(b) {
 function spineHtml(b, scale, shelving) {
   const s = SPINES[spineKeyFor(b)];
   const cls = ["spine", b.rating === 5 ? "loved" : "", shelving ? "shelving" : ""].filter(Boolean).join(" ");
-  const title = [b.title, b.author].filter(Boolean).join(" — ");
-  return `<div class="${cls}" title="${esc(title)}" onclick="go('book','${b.id}')" style="`
-    + `width:${(s.w * scale).toFixed(1)}px;height:${(s.h * scale).toFixed(1)}px;`
+  const tip = [b.title, b.author].filter(Boolean).join(" — ");
+  const w = s.w * scale, h = s.h * scale;
+  const titleFont = Math.max(5.5, Math.min(7.5, w - 11));
+  const titleHtml = w >= SPINE_TITLE_MIN_W && b.title
+    ? `<div class="spine-title" style="font-size:${titleFont.toFixed(1)}px">${esc(b.title)}</div>`
+    : "";
+  return `<div class="${cls}" title="${esc(tip)}" onclick="go('book','${b.id}')" style="`
+    + `width:${w.toFixed(1)}px;height:${h.toFixed(1)}px;`
     + `background-image:url(./reading-spines.png);`
     + `background-size:${(SPINE_SHEET.w * scale).toFixed(1)}px ${(SPINE_SHEET.h * scale).toFixed(1)}px;`
-    + `background-position:-${(s.x * scale).toFixed(1)}px -${((SPINE_SHEET.h - s.h) * scale).toFixed(1)}px"></div>`;
+    + `background-position:-${(s.x * scale).toFixed(1)}px -${((SPINE_SHEET.h - s.h) * scale).toFixed(1)}px">${titleHtml}</div>`;
 }
 // Width available inside a .card, measured off the live #app so the shelf packs
 // correctly on a phone as well as a desktop. Falls back to a sane guess if the
@@ -687,7 +704,8 @@ function renderHome() {
 function bookCardHtml(b) {
   const sub = [b.author, b.series ? `${esc(b.series)}${b.seriesNumber ? " #" + b.seriesNumber : ""}` : null].filter(Boolean).map(esc).join(" · ");
   return `<div class="book-card" onclick="go('book','${b.id}')">
-    <div class="book-title">${esc(b.title)}</div>
+    <span class="badge ${b.status}">${b.status}</span>
+    <div class="book-title" style="margin-top:6px">${esc(b.title)}</div>
     ${sub ? `<div class="book-author">${sub}</div>` : ""}
     <div class="muted" style="margin-top:6px">${b.sessions.length} session${b.sessions.length===1?"":"s"} logged &middot; started ${fmtDate(b.startedAt)}</div>
   </div>`;
