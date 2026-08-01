@@ -21,7 +21,9 @@ do.
 
 - A kid can identify the book they're currently reading (from a catalog, or
   typed in if it's not there), log a start date, log reading sessions as they
-  go, log an end date, and rate how much they liked it.
+  go, log an end date, and rate how much they liked it. More than one book can
+  be "currently reading" at once — starting a new one never requires finishing
+  or quitting whatever's already in progress (§9).
 - Take a quiz on the book, if they want to — never required.
 - A parent can see reading history on their phone, the same way they already
   see Spelling and Math history, **and edit the book catalog from there** —
@@ -592,7 +594,8 @@ keeping today's.
 
 A new card, same pattern as the Spelling/Math cards in §9 of the sync spec:
 
-- Currently reading, per child.
+- Currently reading, per child — a list, since a kid can have more than one
+  book going at once (§9).
 - Reading history: title, author, dates, days spent, session count, rating,
   quiz score.
 - A "trouble items" analog: missed quiz questions, or weak authors and
@@ -772,10 +775,25 @@ question was whether that manual upkeep is worth doing at all; it is: fill it
 in for series worth showing a fraction for, leave it `null` (plain count) for
 the rest.
 
-**Still open — UI only, not data model:**
+**Abandonment gets an explicit kid-facing control.** Not inference, not
+parent-side only: a "I quit this book" button on the book's screen, next to
+Finish. It writes the same `abandon` event §5 already specifies — this closes
+the UI question, not the data model, which was already settled.
 
-- Whether the kid gets an explicit "I stopped reading this" button for
-  abandonment, or the app infers it from inactivity and offers it as a
-  prompt, or it stays parent-side only. All three write the same `abandon`
-  event (§5), so this can be settled during Phase 0b without touching
-  anything above.
+**A kid can be reading more than one book at a time.** Nothing in the data
+model assumed otherwise — `status` is derived per `bookId` (§3.1: "the latest
+`start` with no later `finish`/`abandon` **for the same bookId**"), so two
+books independently land on `status: 'reading'` for free. What was implicit
+needs to be explicit in two places once it's a stated goal rather than an
+accident of the model:
+
+- The "currently reading" screen (§3.1, §5, §6) is a *list*, not a slot. Home
+  shows every book with `status: 'reading'`, each with its own Log-a-session /
+  Finish / Quit / Quiz actions, and "Start a book" is never blocked by an
+  already-active book.
+- Any flow that writes to *a* book — logging a session, finishing, quitting,
+  taking a quiz — has to know *which* book first. In practice this falls out
+  of the UI shape for free: those actions live on a specific book's row or
+  detail screen, not behind a single global button, so there's no new
+  "which book?" picker to design — the screen the kid is already on answers
+  it.
