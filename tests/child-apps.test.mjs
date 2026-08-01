@@ -395,6 +395,8 @@ function readingProfile() {
   b1 = d.books.find((b) => b.id === 'book-1');
   check('finishing sets status + kid-language rating', b1.status === 'finished' && b1.rating === 5, b1);
   check('the other book is still reading, untouched', d.books.find((b) => b.id === 'book-2').status === 'reading');
+  const shelvedText = await t.page.textContent('#app');
+  check('finishing lands on the shelving celebration, not back on the book detail', shelvedText.includes('On the shelf!'), shelvedText);
 
   // Take the quiz on the catalog-linked book.
   await t.page.evaluate(() => go('quiz', 'book-1'));
@@ -420,6 +422,26 @@ function readingProfile() {
   const b2 = d.books.find((b) => b.id === 'book-2');
   check('quitting sets status abandoned with the chosen date', b2.status === 'abandoned' && b2.endedAt.startsWith('2026-07-15'), b2);
   check('an abandon event was appended', d.events.some((e) => e.mode === 'abandon' && e.bookId === 'book-2'));
+
+  // The bookshelf. Spines are derived from data.books at render time and
+  // nothing about them is persisted, so what is worth pinning down is which
+  // books earn one and that a book's spine never changes under the kid.
+  await t.page.evaluate(() => go('home'));
+  await t.page.waitForTimeout(150);
+  const shelf = await t.page.evaluate(() => ({
+    spines: document.querySelectorAll('.spine').length,
+    loved: document.querySelectorAll('.spine.loved').length,
+    bookends: document.querySelectorAll('.bookend').length,
+    stable: spineKeyFor(findBook('book-1')) === spineKeyFor(findBook('book-1')),
+    inFamily: GENRE_SPINES['animal-fiction'].includes(spineKeyFor(findBook('book-1'))),
+    unclassified: GENRE_SPINES._none.includes(spineKeyFor(findBook('book-2'))),
+  }));
+  check('the finished book earns a spine; the abandoned one stays off the shelf', shelf.spines === 1, shelf);
+  check('a 5-star book gets the gold foil marker', shelf.loved === 1, shelf);
+  check('a part-filled shelf is propped by one bookend', shelf.bookends === 1, shelf);
+  check('a spine is stable, not re-rolled on every render', shelf.stable, shelf);
+  check('genre picks the colour family', shelf.inFamily, shelf);
+  check('a book with no genre falls back to the neutral family', shelf.unclassified, shelf);
 
   check('no page errors', t.errors.length === 0, t.errors);
   await t.close();

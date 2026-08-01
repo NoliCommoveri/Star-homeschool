@@ -26,6 +26,16 @@
     --soft: #ECE5F5; --soft-text: #5D4A85; --chip: #E6DEF2; --muted: #6E6482; --border: #C8BEDB;
     --line: #E6DFF1; --input-bg: #FDFCFE; --eyebrow: #6A4FA3; --body-text: #4C4163;
   }
+  /* Stable: oat and hay for the page, saddle tan for the accent, pasture green
+     kept in the same slot the other themes use for "good/correct" so anything
+     keyed off --green keeps meaning the same thing. */
+  body[data-theme="horse"] {
+    --bg: #F6EEE2; --text: #3B2A1C; --card: #FFFDF9; --card-shadow: rgba(59,42,28,.12);
+    --accent: #8A5A2B; --accent-soft: #F0E2CE; --green: #5C7A45; --green-soft: #E1E9D6; --green-dark: #466034;
+    --danger: #B04A32; --gold: #C98A1E; --gold-soft: #F7E6C4;
+    --soft: #EFE2CF; --soft-text: #7A5326; --chip: #E9DAC3; --muted: #7C6A57; --border: #C9B394;
+    --line: #E7D8C2; --input-bg: #FFFCF6; --eyebrow: #8A5A2B; --body-text: #4E3B29;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
@@ -637,6 +647,7 @@ function renderKidSettings() {
     { id: "classic", name: "Classic", bg: "#FDF6EC", accent: "#2A5D9F" },
     { id: "mint", name: "Mint", bg: "#EDF7F4", accent: "#1F7A70" },
     { id: "lavender", name: "Lavender", bg: "#F5F1FA", accent: "#6A4FA3" },
+    { id: "horse", name: "Horse", bg: "#F6EEE2", accent: "#8A5A2B" },
   ];
   app.innerHTML = `
     <div class="card">
