@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reading Star</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="theme-color" content="#2A5D9F">
+<style>
+  :root {
+    --bg: #FDF6EC; --text: #2A3A50; --card: #FFFFFF; --card-shadow: rgba(42,58,80,.10);
+    --accent: #2A5D9F; --accent-soft: #E3EDF9; --green: #2E8B57; --green-soft: #DCEBDD; --green-dark: #2E6B45;
+    --danger: #C4553B; --gold: #E8A013; --gold-soft: #FBEBC8;
+    --soft: #F2EBDD; --soft-text: #8A6A3B; --chip: #EDE4D3; --muted: #6B7686; --border: #C9CDD4;
+    --line: #EDE4D3; --input-bg: #FFFDF8; --eyebrow: #B0763A; --body-text: #4A5568;
+  }
+  body[data-theme="mint"] {
+    --bg: #EDF7F4; --text: #1F3D38; --card: #FFFFFF; --card-shadow: rgba(31,61,56,.10);
+    --accent: #1F7A70; --accent-soft: #D8EFEA; --green: #2E8B57; --green-soft: #DCEBDD; --green-dark: #256B45;
+    --danger: #C4553B; --gold: #D99114; --gold-soft: #FBEBC8;
+    --soft: #DDEFE9; --soft-text: #2F6B5E; --chip: #D8EAE4; --muted: #5C7370; --border: #B9CFC9;
+    --line: #DCEAE5; --input-bg: #FBFEFD; --eyebrow: #1F7A70; --body-text: #3D5A54;
+  }
+  body[data-theme="lavender"] {
+    --bg: #F5F1FA; --text: #372B4E; --card: #FFFFFF; --card-shadow: rgba(55,43,78,.10);
+    --accent: #6A4FA3; --accent-soft: #EAE3F6; --green: #2E8B57; --green-soft: #DCEBDD; --green-dark: #2E6B45;
+    --danger: #C4553B; --gold: #D99114; --gold-soft: #F9EBC9;
+    --soft: #ECE5F5; --soft-text: #5D4A85; --chip: #E6DEF2; --muted: #6E6482; --border: #C8BEDB;
+    --line: #E6DFF1; --input-bg: #FDFCFE; --eyebrow: #6A4FA3; --body-text: #4C4163;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: 'Lexend', 'Trebuchet MS', 'Comic Sans MS', sans-serif;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .eyebrow { font-size: 13px; font-weight: 600; color: var(--eyebrow); letter-spacing: .12em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: 30px; font-weight: 800; }
+  h2 { margin: 0 0 6px; font-size: 20px; font-weight: 800; }
+  .card { background: var(--card); border-radius: 20px; padding: 24px; box-shadow: 0 2px 10px var(--card-shadow); margin-bottom: 16px; }
+  button { font-family: inherit; font-weight: 600; font-size: 15px; padding: 10px 18px; border-radius: 14px; border: none; background: var(--accent); color: #fff; cursor: pointer; letter-spacing: .02em; }
+  button.big { font-size: 20px; padding: 16px 28px; }
+  button.outline { background: transparent; border: 2.5px solid var(--accent); color: var(--accent); }
+  button.green { background: var(--green); }
+  button.gold { background: var(--gold); color: var(--text); }
+  button.danger { background: var(--danger); }
+  button.link { background: none; color: var(--muted); font-size: 13px; text-decoration: underline; padding: 4px; }
+  button:disabled { background: var(--border); color: #fff; cursor: default; border-color: var(--border); }
+  button.small { font-size: 13px; padding: 7px 12px; border-radius: 10px; }
+  input[type=text], input[type=password], input[type=number], input[type=date] {
+    font-family: inherit; font-size: 15px; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--border);
+    width: 100%; margin-bottom: 8px; background: var(--input-bg); color: var(--text);
+  }
+  textarea { font-family: inherit; font-size: 15px; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--border); width: 100%; margin-bottom: 8px; background: var(--input-bg); color: var(--text); resize: vertical; }
+  select { font-family: inherit; font-size: 15px; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--border); background: var(--input-bg); color: var(--text); width: 100%; margin-bottom: 8px; }
+  label { font-size: 13px; font-weight: 600; color: var(--muted); display: block; margin: 10px 0 2px; }
+  .hint { background: var(--soft); border-radius: 14px; padding: 14px 18px; font-size: 15px; line-height: 1.5; margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .chip { background: var(--chip); border-radius: 10px; padding: 4px 12px; font-size: 13px; display: inline-block; margin: 3px 3px 3px 0; }
+  .center { text-align: center; }
+  details { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; font-size: 15px; }
+  .book-card { border: 2px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; cursor: pointer; }
+  .book-card:hover { border-color: var(--accent); }
+  .book-title { font-weight: 800; font-size: 17px; }
+  .book-author { color: var(--muted); font-size: 13px; margin-top: 1px; }
+  .badge { display: inline-block; border-radius: 8px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+  .badge.reading { background: var(--accent-soft); color: var(--accent); }
+  .badge.finished { background: var(--green-soft); color: var(--green-dark); }
+  .badge.abandoned { background: var(--chip); color: var(--muted); }
+  .rating-row { display: flex; gap: 8px; justify-content: center; margin: 10px 0; }
+  button.rating-btn { background: var(--card); color: var(--text); border: 2.5px solid var(--border); font-size: 14px; padding: 12px 10px; flex: 1; }
+  button.rating-btn.sel { border-color: var(--gold); background: var(--gold-soft); }
+  button.quiz-choice { background: var(--card); color: var(--text); border: 3px solid var(--border); display: block; width: 100%; text-align: left; margin-bottom: 10px; padding: 14px 16px; font-size: 16px; }
+  button.quiz-choice.ok { border-color: var(--green); background: var(--green-soft); color: var(--green-dark); }
+  button.quiz-choice.bad { border-color: var(--danger); background: #FBEAE6; color: var(--danger); }
+  button.quiz-choice:disabled { opacity: .85; }
+  .search-result { border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; cursor: pointer; }
+  .search-result:hover { border-color: var(--accent); }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid var(--line); }
+  .tabs button { background: none; color: var(--muted); border-radius: 12px 12px 0 0; padding: 10px 16px; }
+  .tabs button.active { color: var(--accent); background: var(--accent-soft); }
+  .swatch { width: 84px; height: 56px; border-radius: 14px; border: 3px solid var(--border); cursor: pointer; display: inline-flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; font-size: 12px; font-weight: 700; }
+  .swatch.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Reading Star</div>
+      <h1 id="greeting">Welcome! &#128214;</h1>
+    </div>
+    <button class="outline" id="homeBtn" style="display:none" onclick="lockAndHome()">Home</button>
+  </header>
+  <div id="app"></div>
+</div>
+
+<script>
+// ============================================================================
+// Reading Star v1 — Phase 0a/0b of docs/reading-star-spec.md. No sync yet
+// (Phase 1): this file is a complete, offline, single-device app on its own,
+// same as any other app before its sync phase (§8). data.events is kept as
+// the append-only log the future sync phase will push verbatim (§3.1/§3.2);
+// data.books is maintained alongside it, action by action, as the derived
+// view the UI actually reads.
+// ============================================================================
+
+// ---------- Storage keys / profiles ----------
+function listProfiles() {
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith("readingstar-")) continue;
+    try {
+      const d = JSON.parse(localStorage.getItem(k));
+      if (d && d.childName && d.pin) { out.push({ key: k, name: d.childName, corrupted: false }); continue; }
+      out.push({ key: k, name: k.replace(/^readingstar-/, "") || "profile", corrupted: true });
+    } catch(e) {
+      out.push({ key: k, name: k.replace(/^readingstar-/, "") || "profile", corrupted: true });
+    }
+  }
+  return out.sort((a,b) => a.name.localeCompare(b.name));
+}
+// Same slugging as Spelling/Math (parent-sync-spec §3 rule 5) so the same
+// child name lands on a compatible key pattern across apps.
+function childSlug(name) {
+  const s = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s || "child";
+}
+function nameToKey(name) { return "readingstar-" + childSlug(name); }
+let KEY = null;
+let data = null;
+
+const GRADES = ["K","1","2","3","4","5","6","7"];
+// The controlled genre vocabulary (§4.2) — must match
+// wordlists/reading/build-catalog.js's GENRE_VOCAB exactly, since a custom
+// book's genre has to mean the same thing as a catalog book's.
+const GENRE_VOCAB = [
+  "adventure", "animal-fiction", "biography-nonfiction", "fantasy",
+  "historical-fiction", "humor", "mystery", "realistic-fiction",
+  "science-fiction", "poetry",
+];
+const RATINGS = [
+  { v: 1, label: "Not for me" }, { v: 2, label: "It was okay" },
+  { v: 3, label: "Pretty good" }, { v: 4, label: "Really liked it" },
+  { v: 5, label: "Loved it!" },
+];
+
+function freshData(childName, pin, childGrade) {
+  return {
+    childName, pin,
+    childGrade: childGrade || "2",
+    theme: "classic",
+    events: [],
+    books: [],
+  };
+}
+let lastLoadError = null;
+function load(key) {
+  lastLoadError = null;
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  let d;
+  try { d = JSON.parse(raw); } catch(e) { lastLoadError = "corrupted"; return null; }
+  try {
+    KEY = key;
+    if (!d.theme) d.theme = "classic";
+    if (!d.events) d.events = [];
+    if (!d.books) d.books = [];
+    if (d.childGrade === undefined) d.childGrade = "2";
+    return d;
+  } catch(e) { lastLoadError = "corrupted"; return null; }
+}
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(data)); return true; }
+  catch(e) { return false; }
+}
+function saveFailedBannerHtml() {
+  return `<div class="card" style="background:var(--gold-soft);border:2px solid var(--gold)">
+    <div style="font-weight:700;margin-bottom:4px">&#9888;&#65039; This wasn't saved</div>
+    <div class="muted" style="font-size:14px">The device may be low on storage. Freeing up some space and trying again should fix it.</div>
+  </div>`;
+}
+
+// ---------- Catalog (§4) ----------
+// Bundled, fetched once at boot, no build step at runtime (§4.2). Falls back
+// to an empty catalog if the fetch fails (e.g. very first offline load before
+// the service worker has precached it) — custom titles still work either way.
+let CATALOG = {};
+let catalogLoaded = false;
+async function loadCatalog() {
+  try {
+    const res = await fetch("./reading-catalog.json");
+    CATALOG = await res.json();
+  } catch(e) { CATALOG = {}; }
+  catalogLoaded = true;
+}
+function catalogSearch(term) {
+  const t = term.trim().toLowerCase();
+  if (!t) return [];
+  return Object.entries(CATALOG)
+    .filter(([key, b]) => b.title.toLowerCase().includes(t) || (b.author || "").toLowerCase().includes(t) || (b.series || "").toLowerCase().includes(t))
+    .map(([key, b]) => ({ key, ...b }))
+    .slice(0, 20);
+}
+function knownSeriesNames() {
+  const names = new Set();
+  Object.values(CATALOG).forEach(b => { if (b.series) names.add(b.series); });
+  (data.books || []).forEach(b => { if (b.series) names.add(b.series); });
+  return [...names].sort();
+}
+
+// ---------- Helpers ----------
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function shuffle(a){ a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function fmtDate(iso) { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString(); }
+// A fresh id per event, even for two events minted in the same gesture/ms
+// (§3.2's caution about Date.now()-only ids).
+let _idSeq = 0;
+function freshId() { return Date.now() + "-" + (_idSeq++); }
+
+function applyTheme() {
+  document.body.dataset.theme = data && data.theme !== "classic" ? data.theme : "";
+  if (data) document.getElementById("greeting").innerHTML = `Hi, ${esc(data.childName)}! &#128214;`;
+}
+
+// ---------- Event log + book cache (§3.1/§3.2) ----------
+// Appends one event and returns it. `dateISO` defaults to now but every call
+// site accepts an override — every event is backdatable (§9), not just start.
+function addEvent(mode, book, extra, dateISO) {
+  const e = Object.assign({
+    id: freshId(),
+    date: dateISO || new Date().toISOString(),
+    mode,
+    bookId: book.id,
+    bookTitle: book.title,
+    childGrade: data.childGrade,
+    catalogId: book.catalogId || null,
+    seriesKey: book.seriesKey || null,
+    seriesNumber: book.seriesNumber || null,
+    seriesName: book.series || null,
+    genre: book.genre || [],
+    gradeLevel: book.gradeLevel || null,
+    author: book.author || null,
+    score: null, total: null,
+  }, extra || {});
+  data.events.push(e);
+  return e;
+}
+
+function findBook(bookId) { return data.books.find(b => b.id === bookId); }
+function currentlyReading() { return data.books.filter(b => b.status === "reading"); }
+function pastBooks() { return data.books.filter(b => b.status !== "reading").slice().reverse(); }
+
+function startBook({ title, author, catalogId, series, seriesKey, seriesNumber, gradeLevel, genre, dateISO }) {
+  const book = {
+    id: crypto.randomUUID(), catalogId: catalogId || null,
+    title, author: author || null,
+    series: series || null, seriesKey: seriesKey || null, seriesNumber: seriesNumber || null,
+    gradeLevel: gradeLevel || null, genre: genre || [],
+    status: "reading", startedAt: dateISO || new Date().toISOString(), endedAt: null,
+    sessions: [], rating: null, quizzes: [],
+  };
+  data.books.push(book);
+  addEvent("start", book, {}, dateISO);
+  return book;
+}
+function logSession(book, { minutes, pages, note, dateISO }) {
+  const at = dateISO || new Date().toISOString();
+  book.sessions.push({ id: freshId(), at, minutes: minutes || null, pages: pages || null, note: note || "" });
+  addEvent("log-session", book, { minutes: minutes || null, pages: pages || null, note: note || "" }, dateISO);
+}
+function finishBook(book, { rating, dateISO }) {
+  const at = dateISO || new Date().toISOString();
+  book.status = "finished"; book.endedAt = at; book.rating = rating;
+  addEvent("finish", book, { rating }, dateISO);
+}
+function abandonBook(book, { dateISO }) {
+  const at = dateISO || new Date().toISOString();
+  book.status = "abandoned"; book.endedAt = at;
+  addEvent("abandon", book, {}, dateISO);
+}
+function recordQuiz(book, { score, total, missed, dateISO }) {
+  const at = dateISO || new Date().toISOString();
+  book.quizzes.push({ score, total, answeredAt: at, missed: missed || [] });
+  addEvent("quiz", book, { score, total, missed: missed || [] }, dateISO);
+}
+// Reconciling a custom book with a catalog entry (§9): sets catalogId and
+// backfills classification on the book going forward. Does not touch
+// scope_id/bookId or any past event — only events written after this point
+// carry the corrected classification. Local-only; no new event mode, since
+// nothing here is pushed anywhere yet (Phase 0b has no sync).
+function reconcileBook(book, catalogEntry) {
+  book.catalogId = catalogEntry.key;
+  book.series = catalogEntry.series || book.series;
+  book.seriesKey = catalogEntry.seriesKey || book.seriesKey;
+  book.seriesNumber = catalogEntry.seriesNumber != null ? catalogEntry.seriesNumber : book.seriesNumber;
+  book.gradeLevel = catalogEntry.gradeLevel || book.gradeLevel;
+  if (catalogEntry.genre && catalogEntry.genre.length) book.genre = catalogEntry.genre;
+}
+
+// ---------- Router / lock ----------
+const app = document.getElementById("app");
+let parentUnlocked = false;
+function lockAndHome() { parentUnlocked = false; go("home"); }
+function go(view, arg) {
+  document.getElementById("homeBtn").style.display = view === "home" ? "none" : "";
+  if (view === "home") return renderHome();
+  if (view === "startBook") return renderStartBook();
+  if (view === "book") return renderBookDetail(arg);
+  if (view === "logSession") return renderLogSession(arg);
+  if (view === "finishBook") return renderFinishBook(arg);
+  if (view === "quiz") return startQuiz(arg);
+  if (view === "history") return renderHistoryKid();
+  if (view === "parent") return parentGate();
+}
+
+// ---------- First-launch setup wizard ----------
+const setup = { pin: null, name: null };
+function renderSetup(step) {
+  document.getElementById("homeBtn").style.display = "none";
+  document.getElementById("greeting").innerHTML = "Welcome! &#128214;";
+  parentUnlocked = false;
+  if (step === 1) {
+    app.innerHTML = `
+      <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
+        <div style="font-size:34px;margin-bottom:10px">&#128274;</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 1 of 3 &mdash; Set a parent PIN</div>
+        <div class="muted" style="margin-bottom:14px">You'll need this PIN to open the parent area, where you see reading history and settings.</div>
+        <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="New PIN (at least 4 digits)" style="text-align:center;font-size:22px;letter-spacing:.3em">
+        <input type="password" id="pinIn2" inputmode="numeric" maxlength="8" placeholder="Repeat PIN" style="text-align:center;font-size:22px;letter-spacing:.3em">
+        <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+        <button class="big" onclick="setupPin()" style="margin-top:8px">Continue &rarr;</button>
+      </div>`;
+    document.getElementById("pinIn").focus();
+  } else if (step === 2) {
+    app.innerHTML = `
+      <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
+        <div style="font-size:34px;margin-bottom:10px">&#128075;</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 2 of 3 &mdash; Who's reading?</div>
+        <div class="muted" style="margin-bottom:14px">This name appears throughout the app and on exported history.</div>
+        <input type="text" id="nameIn" placeholder="Child's first name" style="text-align:center;font-size:20px">
+        <div id="setupMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+        <button class="big" onclick="setupName()" style="margin-top:8px">Continue &rarr;</button>
+      </div>`;
+    document.getElementById("nameIn").focus();
+  } else {
+    app.innerHTML = `
+      <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
+        <div style="font-size:34px;margin-bottom:10px">&#127891;</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Step 3 of 3 &mdash; What grade level?</div>
+        <div class="muted" style="margin-bottom:16px">Used to keep reading history grouped by school year. You can change this later.</div>
+        <div class="row center" style="justify-content:center;max-width:320px;margin:0 auto">
+          ${GRADES.map(g => `<button class="outline" style="width:60px" onclick="setupFinish('${g}')">${g}</button>`).join("")}
+        </div>
+      </div>`;
+  }
+}
+function setupPin() {
+  const v = document.getElementById("pinIn").value.trim();
+  const v2 = document.getElementById("pinIn2").value.trim();
+  const msg = document.getElementById("setupMsg");
+  if (v.length < 4) { msg.textContent = "PIN must be at least 4 digits."; return; }
+  if (v !== v2) { msg.textContent = "PINs don't match — try again."; return; }
+  setup.pin = v; renderSetup(2);
+}
+function setupName() {
+  const v = document.getElementById("nameIn").value.trim();
+  const msg = document.getElementById("setupMsg");
+  if (!v) { msg.textContent = "Please enter a name."; return; }
+  setup.name = v; renderSetup(3);
+}
+function setupFinish(gradeLevel) {
+  KEY = nameToKey(setup.name);
+  const existing = localStorage.getItem(KEY);
+  if (existing && !confirm(`This device already has saved data for a child named "${setup.name}". Continue and use that existing data?`)) return;
+  if (existing) { data = load(KEY); }
+  else { data = freshData(setup.name, setup.pin, gradeLevel); persist(); }
+  applyTheme();
+  go("home");
+}
+
+// ---------- Profile picker ----------
+function renderPicker() {
+  document.getElementById("homeBtn").style.display = "none";
+  document.getElementById("greeting").innerHTML = "Welcome! &#128214;";
+  const profiles = listProfiles();
+  const healthy = profiles.filter(p => !p.corrupted);
+  const damaged = profiles.filter(p => p.corrupted);
+  app.innerHTML = `
+    <div class="card center" style="padding:36px;max-width:420px;margin:0 auto">
+      <div style="font-size:34px;margin-bottom:10px">&#128075;</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:16px">Who's reading today?</div>
+      <div style="display:flex;flex-direction:column;gap:12px;align-items:center">
+        ${healthy.map(p => `<button class="big" style="width:260px" onclick="pickProfile('${p.key}')">${esc(p.name)}</button>`).join("")}
+        <button class="outline" style="width:260px" onclick="renderSetup(1)">+ Add a new child</button>
+      </div>
+    </div>
+    ${damaged.length ? `<div class="card" style="max-width:420px;margin:16px auto 0;background:var(--gold-soft);border:2px solid var(--gold)">
+      <div style="font-weight:700;margin-bottom:6px">&#9888;&#65039; Damaged profile data found</div>
+      <div class="muted" style="font-size:14px;margin-bottom:10px">This device has saved data that can't be read. It can't be recovered automatically.</div>
+      ${damaged.map(p => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)">
+        <span>${esc(p.name)}</span>
+        <button class="link" style="color:var(--danger)" onclick="discardCorruptedProfile('${p.key}')">Remove &amp; start fresh</button>
+      </div>`).join("")}
+    </div>` : ""}`;
+}
+function discardCorruptedProfile(key) {
+  if (!confirm("This permanently deletes the damaged data at this profile so you can set it up fresh under the same name. This can't be undone. Continue?")) return;
+  try { localStorage.removeItem(key); } catch(e) {}
+  renderPicker();
+}
+function pickProfile(key) {
+  data = load(key);
+  if (!data) return renderPicker();
+  parentUnlocked = false;
+  applyTheme();
+  go("home");
+}
+
+// ---------- Parent gate ----------
+function parentGate() {
+  if (parentUnlocked) return renderParent("history");
+  app.innerHTML = `
+    <div class="card center" style="padding:36px;max-width:400px;margin:0 auto">
+      <div style="font-size:34px;margin-bottom:10px">&#128274;</div>
+      <div style="font-weight:700;font-size:18px;margin-bottom:6px">Parents only</div>
+      <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="Enter PIN" style="text-align:center;font-size:22px;letter-spacing:.3em">
+      <div id="pinMsg" class="muted" style="min-height:20px;color:var(--danger)"></div>
+      <button class="big" onclick="pinSubmit()" style="margin-top:8px">Unlock</button>
+    </div>`;
+  const pi = document.getElementById("pinIn");
+  pi.focus();
+  pi.addEventListener("keydown", e => { if (e.key==="Enter") pinSubmit(); });
+}
+function pinSubmit() {
+  const v = document.getElementById("pinIn").value.trim();
+  if (v === data.pin) { parentUnlocked = true; renderParent("history"); }
+  else { document.getElementById("pinMsg").textContent = "That's not the right PIN."; document.getElementById("pinIn").value = ""; }
+}
+
+// ---------- Home (kid) ----------
+function renderHome() {
+  const reading = currentlyReading();
+  app.innerHTML = `
+    <div class="card">
+      <h2>Currently reading</h2>
+      ${reading.length === 0 ? `<div class="muted" style="margin-bottom:12px">Nothing yet — start a book below.</div>` : reading.map(bookCardHtml).join("")}
+      <button class="big green" style="width:100%;margin-top:6px" onclick="go('startBook')">+ Start a book</button>
+    </div>
+    <div class="row" style="justify-content:center;gap:12px">
+      <button class="outline" onclick="go('history')">My history</button>
+      <button class="link" onclick="go('parent')">Parents</button>
+    </div>`;
+}
+function bookCardHtml(b) {
+  const sub = [b.author, b.series ? `${esc(b.series)}${b.seriesNumber ? " #" + b.seriesNumber : ""}` : null].filter(Boolean).map(esc).join(" · ");
+  return `<div class="book-card" onclick="go('book','${b.id}')">
+    <div class="book-title">${esc(b.title)}</div>
+    ${sub ? `<div class="book-author">${sub}</div>` : ""}
+    <div class="muted" style="margin-top:6px">${b.sessions.length} session${b.sessions.length===1?"":"s"} logged &middot; started ${fmtDate(b.startedAt)}</div>
+  </div>`;
+}
+
+// ---------- Start a book (§5) ----------
+let startPick = null; // holds a catalog match once chosen, or null for custom
+function renderStartBook() {
+  startPick = null;
+  app.innerHTML = `
+    <div class="card">
+      <h2>Start a book</h2>
+      <label for="searchIn">Search the catalog</label>
+      <input type="text" id="searchIn" placeholder="Title or author" oninput="renderSearchResults(this.value)">
+      <div id="searchResults"></div>
+      <details style="margin-top:14px">
+        <summary>Can't find it? Type it in yourself</summary>
+        <div style="padding-top:10px">
+          <label for="cTitle">Title</label>
+          <input type="text" id="cTitle" placeholder="Book title">
+          <label for="cAuthor">Author (optional)</label>
+          <input type="text" id="cAuthor" placeholder="Author">
+          <label for="cSeries">Series (optional)</label>
+          <input type="text" id="cSeries" list="seriesList" placeholder="Series name, if any">
+          <datalist id="seriesList">${knownSeriesNames().map(s => `<option value="${esc(s)}">`).join("")}</datalist>
+          <label for="cSeriesNum">Book number in series (optional)</label>
+          <input type="number" id="cSeriesNum" min="1" placeholder="e.g. 3">
+          <label for="cGenre">Genre (optional)</label>
+          <select id="cGenre">
+            <option value="">Skip</option>
+            ${GENRE_VOCAB.map(g => `<option value="${g}">${g.replace(/-/g," ")}</option>`).join("")}
+          </select>
+          <label for="cDate">Start date</label>
+          <input type="date" id="cDate" value="${todayISO()}">
+          <button class="big green" style="width:100%;margin-top:8px" onclick="startCustomBook()">Start reading</button>
+        </div>
+      </details>
+    </div>`;
+  document.getElementById("searchIn").focus();
+}
+function renderSearchResults(term) {
+  const results = catalogSearch(term);
+  document.getElementById("searchResults").innerHTML = results.map(r => `
+    <div class="search-result" onclick="renderStartFromCatalog('${r.key}')">
+      <strong>${esc(r.title)}</strong><br>
+      <span class="muted">${esc(r.author || "")}${r.series ? " · " + esc(r.series) + (r.seriesNumber ? " #" + r.seriesNumber : "") : ""}</span>
+    </div>`).join("") || (term.trim() ? `<div class="muted">No matches — try the custom entry below.</div>` : "");
+}
+function renderStartFromCatalog(key) {
+  const b = CATALOG[key];
+  app.innerHTML = `
+    <div class="card">
+      <h2>${esc(b.title)}</h2>
+      <div class="muted" style="margin-bottom:14px">${esc(b.author || "")}${b.series ? " · " + esc(b.series) + (b.seriesNumber ? " #" + b.seriesNumber : "") : ""}</div>
+      <label for="sDate">Start date</label>
+      <input type="date" id="sDate" value="${todayISO()}">
+      <div class="muted" style="margin:6px 0 14px">The date is filled in with today, but you can change it — it's fine to log a book you already started.</div>
+      <button class="big green" style="width:100%" onclick="confirmStartCatalog('${key}')">Start reading</button>
+      <button class="link" style="margin-top:8px" onclick="go('startBook')">&larr; Back to search</button>
+    </div>`;
+}
+function confirmStartCatalog(key) {
+  const b = CATALOG[key];
+  const dateISO = dateFieldToISO(document.getElementById("sDate").value);
+  const book = startBook({
+    title: b.title, author: b.author, catalogId: key,
+    series: b.series, seriesKey: b.seriesKey, seriesNumber: b.seriesNumber,
+    gradeLevel: b.gradeLevel, genre: b.genre, dateISO,
+  });
+  if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  go("book", book.id);
+}
+function startCustomBook() {
+  const title = document.getElementById("cTitle").value.trim();
+  if (!title) { alert("Please enter a title."); return; }
+  const author = document.getElementById("cAuthor").value.trim();
+  const seriesName = document.getElementById("cSeries").value.trim();
+  const seriesNumRaw = document.getElementById("cSeriesNum").value;
+  const genre = document.getElementById("cGenre").value;
+  const dateISO = dateFieldToISO(document.getElementById("cDate").value);
+  const book = startBook({
+    title, author,
+    series: seriesName || null,
+    seriesKey: seriesName ? childSlug(seriesName) : null,
+    seriesNumber: seriesNumRaw ? Number(seriesNumRaw) : null,
+    genre: genre ? [genre] : [],
+    dateISO,
+  });
+  if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  go("book", book.id);
+}
+// <input type=date> gives "YYYY-MM-DD" with no time; noon avoids UTC
+// day-shifting on display in most timezones for a date the kid actually typed.
+function dateFieldToISO(dateStr) {
+  if (!dateStr) return new Date().toISOString();
+  return new Date(dateStr + "T12:00:00").toISOString();
+}
+
+// ---------- Book detail ----------
+function renderBookDetail(bookId) {
+  const b = findBook(bookId);
+  if (!b) return go("home");
+  const canQuiz = b.catalogId && CATALOG[b.catalogId] && CATALOG[b.catalogId].questions.length > 0;
+  const matches = !b.catalogId ? catalogSearch(b.title) : [];
+  app.innerHTML = `
+    <button class="link" onclick="go('home')">&larr; Back</button>
+    <div class="card">
+      <span class="badge ${b.status}">${b.status}</span>
+      <h2 style="margin-top:8px">${esc(b.title)}</h2>
+      <div class="muted">${esc(b.author || "")}${b.series ? " · " + esc(b.series) + (b.seriesNumber ? " #" + b.seriesNumber : "") : ""}</div>
+      ${b.genre && b.genre.length ? b.genre.map(g => `<span class="chip">${esc(g.replace(/-/g," "))}</span>`).join("") : ""}
+      <div class="muted" style="margin-top:10px">Started ${fmtDate(b.startedAt)}${b.endedAt ? " · Ended " + fmtDate(b.endedAt) : ""}</div>
+      ${b.rating ? `<div class="muted">Rating: ${esc(RATINGS.find(r=>r.v===b.rating)?.label || b.rating)}</div>` : ""}
+
+      ${b.sessions.length ? `<div style="margin-top:14px">
+        <div style="font-weight:700;margin-bottom:6px">Sessions logged (${b.sessions.length})</div>
+        ${b.sessions.slice().reverse().map(s => `<div class="muted" style="padding:4px 0;border-top:1px solid var(--line)">
+          ${fmtDate(s.at)}${s.minutes ? " · " + s.minutes + " min" : ""}${s.pages ? " · " + s.pages + " pages" : ""}${s.note ? " · " + esc(s.note) : ""}
+        </div>`).join("")}
+      </div>` : ""}
+
+      ${b.quizzes.length ? `<div style="margin-top:14px">
+        <div style="font-weight:700;margin-bottom:6px">Quiz attempts</div>
+        ${b.quizzes.slice().reverse().map(q => `<div class="muted" style="padding:4px 0;border-top:1px solid var(--line)">${fmtDate(q.answeredAt)} · ${q.score}/${q.total}</div>`).join("")}
+      </div>` : ""}
+
+      ${b.status === "reading" ? `
+        <div class="row" style="margin-top:18px">
+          <button class="green" onclick="go('logSession','${b.id}')">I read today</button>
+          ${canQuiz ? `<button class="gold" onclick="go('quiz','${b.id}')">Take the quiz</button>` : ""}
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button onclick="go('finishBook','${b.id}')">Finish &amp; rate</button>
+          <button class="outline" style="border-color:var(--danger);color:var(--danger)" onclick="quitBookConfirm('${b.id}')">I quit this book</button>
+        </div>` : ""}
+
+      ${b.status !== "reading" && canQuiz ? `<button class="gold" style="margin-top:14px" onclick="go('quiz','${b.id}')">${b.quizzes.length ? "Retake the quiz" : "Take the quiz"}</button>` : ""}
+
+      ${!b.catalogId && matches.length ? `<details style="margin-top:16px">
+        <summary>This might be in our catalog</summary>
+        <div style="padding-top:10px">
+          ${matches.map(m => `<div class="search-result" onclick="reconcileConfirm('${b.id}','${m.key}')">
+            <strong>${esc(m.title)}</strong><br><span class="muted">${esc(m.author||"")}</span>
+          </div>`).join("")}
+        </div>
+      </details>` : ""}
+    </div>`;
+}
+function quitBookConfirm(bookId) {
+  const b = findBook(bookId);
+  if (!confirm(`Mark "${b.title}" as quit? You can still see it in your history.`)) return;
+  app.innerHTML = `
+    <div class="card">
+      <h2>When did you stop?</h2>
+      <label for="qDate">Date</label>
+      <input type="date" id="qDate" value="${todayISO()}">
+      <button class="big danger" style="width:100%;margin-top:8px" onclick="submitQuit('${bookId}')">Confirm — I quit this book</button>
+      <button class="link" style="margin-top:8px" onclick="go('book','${bookId}')">Never mind</button>
+    </div>`;
+}
+function submitQuit(bookId) {
+  const b = findBook(bookId);
+  const dateISO = dateFieldToISO(document.getElementById("qDate").value);
+  abandonBook(b, { dateISO });
+  if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  go("home");
+}
+function reconcileConfirm(bookId, catalogKey) {
+  const b = findBook(bookId);
+  const c = CATALOG[catalogKey];
+  if (!confirm(`Link "${b.title}" to the catalog's "${c.title}"? This unlocks the quiz and keeps future sessions classified correctly. Nothing already logged changes.`)) return;
+  reconcileBook(b, { key: catalogKey, ...c });
+  persist();
+  go("book", bookId);
+}
+
+// ---------- Log a session ----------
+function renderLogSession(bookId) {
+  const b = findBook(bookId);
+  app.innerHTML = `
+    <div class="card">
+      <h2>Log today's reading</h2>
+      <div class="muted" style="margin-bottom:10px">${esc(b.title)}</div>
+      <label for="lDate">Date</label>
+      <input type="date" id="lDate" value="${todayISO()}">
+      <div class="row">
+        <div style="flex:1">
+          <label for="lMinutes">Minutes (optional)</label>
+          <input type="number" id="lMinutes" min="0" placeholder="e.g. 20">
+        </div>
+        <div style="flex:1">
+          <label for="lPages">Pages (optional)</label>
+          <input type="number" id="lPages" min="0" placeholder="e.g. 15">
+        </div>
+      </div>
+      <label for="lNote">Note (optional)</label>
+      <textarea id="lNote" rows="2" placeholder="Anything you want to remember"></textarea>
+      <button class="big green" style="width:100%;margin-top:8px" onclick="submitLogSession('${bookId}')">Save</button>
+      <button class="link" style="margin-top:8px" onclick="go('book','${bookId}')">Cancel</button>
+    </div>`;
+}
+function submitLogSession(bookId) {
+  const b = findBook(bookId);
+  const dateISO = dateFieldToISO(document.getElementById("lDate").value);
+  const minutes = document.getElementById("lMinutes").value ? Number(document.getElementById("lMinutes").value) : null;
+  const pages = document.getElementById("lPages").value ? Number(document.getElementById("lPages").value) : null;
+  const note = document.getElementById("lNote").value.trim();
+  logSession(b, { minutes, pages, note, dateISO });
+  if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  go("book", bookId);
+}
+
+// ---------- Finish & rate ----------
+let finishPick = null;
+function renderFinishBook(bookId) {
+  finishPick = null;
+  app.innerHTML = `
+    <div class="card">
+      <h2>Finish this book</h2>
+      <div class="muted" style="margin-bottom:10px">${esc(findBook(bookId).title)}</div>
+      <label for="fDate">End date</label>
+      <input type="date" id="fDate" value="${todayISO()}">
+      <label>How was it?</label>
+      <div class="rating-row" id="ratingRow">
+        ${RATINGS.map(r => `<button class="rating-btn" id="rate-${r.v}" onclick="pickRating(${r.v})">${r.label}</button>`).join("")}
+      </div>
+      <button class="big green" style="width:100%;margin-top:8px" id="finishSubmit" disabled onclick="submitFinish('${bookId}')">Finish</button>
+      <button class="link" style="margin-top:8px" onclick="go('book','${bookId}')">Cancel</button>
+    </div>`;
+}
+function pickRating(v) {
+  finishPick = v;
+  RATINGS.forEach(r => document.getElementById("rate-" + r.v).classList.toggle("sel", r.v === v));
+  document.getElementById("finishSubmit").disabled = false;
+}
+function submitFinish(bookId) {
+  const b = findBook(bookId);
+  const dateISO = dateFieldToISO(document.getElementById("fDate").value);
+  finishBook(b, { rating: finishPick, dateISO });
+  if (!persist()) { app.innerHTML = saveFailedBannerHtml() + app.innerHTML; }
+  go("book", bookId);
+}
+
+// ---------- Quiz (§5, §4.2) ----------
+let Q = null; // { bookId, questions: [{...shuffledChoices}], idx, missed: [] }
+function startQuiz(bookId) {
+  const b = findBook(bookId);
+  const cat = CATALOG[b.catalogId];
+  const questions = shuffle(cat.questions).map(q => ({
+    id: q.id, q: q.q,
+    choices: shuffle([q.correct, ...q.wrong]),
+    correct: q.correct,
+  }));
+  Q = { bookId, questions, idx: 0, missed: [], answered: false };
+  renderQuizQuestion();
+}
+function renderQuizQuestion() {
+  const total = Q.questions.length;
+  const item = Q.questions[Q.idx];
+  app.innerHTML = `
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">Question ${Q.idx + 1} of ${total}</div>
+      <h2>${esc(item.q)}</h2>
+      <div style="margin-top:14px">
+        ${item.choices.map((c, i) => `<button class="quiz-choice" id="choice-${i}" onclick="answerQuiz(${i})">${esc(c)}</button>`).join("")}
+      </div>
+    </div>`;
+}
+function answerQuiz(i) {
+  if (Q.answered) return;
+  Q.answered = true;
+  const item = Q.questions[Q.idx];
+  const chosen = item.choices[i];
+  const ok = chosen === item.correct;
+  if (!ok) Q.missed.push(item.id);
+  item.choices.forEach((c, j) => {
+    const btn = document.getElementById("choice-" + j);
+    btn.disabled = true;
+    if (c === item.correct) btn.classList.add("ok");
+    else if (j === i) btn.classList.add("bad");
+  });
+  setTimeout(() => {
+    Q.answered = false;
+    if (Q.idx < Q.questions.length - 1) { Q.idx++; renderQuizQuestion(); }
+    else finishQuiz();
+  }, 900);
+}
+function finishQuiz() {
+  const b = findBook(Q.bookId);
+  const total = Q.questions.length;
+  const score = total - Q.missed.length;
+  recordQuiz(b, { score, total, missed: Q.missed });
+  const saved = persist();
+  app.innerHTML = `
+    <div class="card center">
+      <div style="font-size:40px;margin-bottom:8px">${score === total ? "&#127881;" : "&#128214;"}</div>
+      <h2>${score} out of ${total}</h2>
+      ${!saved ? saveFailedBannerHtml() : ""}
+      <button class="big" style="margin-top:12px" onclick="go('book','${b.id}')">Done</button>
+    </div>`;
+  Q = null;
+}
+
+// ---------- Kid-facing history ----------
+function renderHistoryKid() {
+  const past = pastBooks();
+  app.innerHTML = `
+    <button class="link" onclick="go('home')">&larr; Back</button>
+    <div class="card">
+      <h2>My reading history</h2>
+      ${past.length === 0 ? `<div class="muted">Nothing finished or quit yet.</div>` : past.map(bookCardHtml).join("")}
+    </div>`;
+}
+
+// ---------- Parent area ----------
+function renderParent(tab) {
+  const all = data.books.slice().reverse();
+  app.innerHTML = `
+    <div class="tabs">
+      <button class="${tab==='history'?'active':''}" onclick="renderParent('history')">History</button>
+      <button class="${tab==='settings'?'active':''}" onclick="renderParent('settings')">Settings</button>
+    </div>
+    ${tab === "history" ? renderParentHistory(all) : renderParentSettings()}`;
+}
+function renderParentHistory(all) {
+  if (all.length === 0) return `<div class="card muted">No books logged yet.</div>`;
+  return `<div class="card">
+    ${all.map(b => `<div style="padding:10px 0;border-top:1px solid var(--line)">
+      <div style="font-weight:700">${esc(b.title)} <span class="badge ${b.status}">${b.status}</span></div>
+      <div class="muted" style="font-size:13px">${esc(b.author||"")}${b.series?" · "+esc(b.series):""}</div>
+      <div class="muted" style="font-size:13px">Started ${fmtDate(b.startedAt)}${b.endedAt?" · Ended "+fmtDate(b.endedAt):""} · ${b.sessions.length} session(s)${b.rating?" · Rated "+b.rating+"/5":""}${b.quizzes.length?" · Best quiz "+Math.max(...b.quizzes.map(q=>q.score))+"/"+b.quizzes[0].total:""}</div>
+    </div>`).join("")}
+  </div>
+  <div class="card">
+    <button onclick="exportCSV()">Export CSV</button>
+  </div>`;
+}
+function renderParentSettings() {
+  return `<div class="card">
+    <h2>${esc(data.childName)}</h2>
+    <label>Grade level</label>
+    <select onchange="setChildGrade(this.value)">
+      ${GRADES.map(g => `<option value="${g}" ${g===data.childGrade?"selected":""}>${g}</option>`).join("")}
+    </select>
+    <label>Theme</label>
+    <div class="row">
+      <div class="swatch ${data.theme==='classic'?'sel':''}" style="background:#FDF6EC" onclick="setTheme('classic')">Classic</div>
+      <div class="swatch ${data.theme==='mint'?'sel':''}" style="background:#EDF7F4" onclick="setTheme('mint')">Mint</div>
+      <div class="swatch ${data.theme==='lavender'?'sel':''}" style="background:#F5F1FA" onclick="setTheme('lavender')">Lavender</div>
+    </div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+      <button onclick="changePin()">Change PIN</button>
+    </div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+      <button class="outline" onclick="resetProfile()">Reset all progress</button>
+      <button class="danger" onclick="deleteProfile()">Delete this profile</button>
+    </div>
+  </div>`;
+}
+function setChildGrade(g) { data.childGrade = g; persist(); }
+function setTheme(t) { data.theme = t; persist(); applyTheme(); renderParent("settings"); }
+function changePin() {
+  const cur = prompt("Enter current PIN:");
+  if (cur !== data.pin) { alert("Wrong PIN."); return; }
+  const np = prompt("New PIN (at least 4 digits):");
+  if (!np || np.trim().length < 4) { alert("PIN must be at least 4 digits."); return; }
+  data.pin = np.trim(); persist(); alert("PIN updated.");
+}
+function resetProfile() {
+  const kept = { childName: data.childName, pin: data.pin, childGrade: data.childGrade, theme: data.theme };
+  if (!confirm(`This clears ALL of ${kept.childName}'s reading history — every book, session, and quiz — back to zero. This can't be undone. Continue?`)) return;
+  data = Object.assign(freshData(kept.childName, kept.pin, kept.childGrade), kept);
+  persist();
+  applyTheme();
+  renderParent("settings");
+}
+function deleteProfile() {
+  const name = data.childName;
+  const enteredPin = prompt(`Type ${name}'s PIN to permanently delete this profile:`);
+  if (enteredPin === null) return;
+  if (enteredPin !== data.pin) { alert("Wrong PIN — nothing was deleted."); return; }
+  if (!confirm(`This permanently deletes ${name}'s entire reading profile. This can't be undone. Continue?`)) return;
+  try { localStorage.removeItem(KEY); } catch(e) {}
+  data = null; KEY = null;
+  parentUnlocked = false;
+  if (listProfiles().length === 0) renderSetup(1);
+  else renderPicker();
+}
+function exportCSV() {
+  const rows = [["child","status","title","author","series","seriesNumber","started","ended","sessions","minutesTotal","pagesTotal","rating","bestQuizScore","bestQuizTotal"]];
+  data.books.forEach(b => {
+    const minutesTotal = b.sessions.reduce((n,s) => n + (s.minutes||0), 0);
+    const pagesTotal = b.sessions.reduce((n,s) => n + (s.pages||0), 0);
+    const best = b.quizzes.length ? b.quizzes.reduce((m,q) => q.score/q.total > m.score/m.total ? q : m) : null;
+    rows.push([
+      data.childName, b.status, b.title, b.author||"", b.series||"", b.seriesNumber||"",
+      fmtDate(b.startedAt), fmtDate(b.endedAt), b.sessions.length, minutesTotal, pagesTotal,
+      b.rating||"", best?best.score:"", best?best.total:"",
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${childSlug(data.childName)}-reading-history.csv`;
+  a.click();
+}
+
+// ---------- Boot ----------
+(async function boot() {
+  await loadCatalog();
+  const profiles = listProfiles();
+  if (profiles.length === 0) renderSetup(1);
+  else if (profiles.length === 1) pickProfile(profiles[0].key);
+  else renderPicker();
+})();
+
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+</script>
+</body>
+</html>

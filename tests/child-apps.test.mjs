@@ -347,6 +347,84 @@ async function run({ file, key, profile, responses, label }) {
   await t.close();
 }
 
+// ------------------------------------------------------------ reading -----
+// No sync yet (Phase 0b of docs/reading-star-spec.md) — this exercises the
+// offline app itself: concurrent "currently reading" books (§9), backdating
+// every event, the explicit quit control, and the bundled quiz catalog.
+function readingProfile() {
+  const now = new Date().toISOString();
+  return {
+    childName: 'Ada', pin: '1234', childGrade: '4', theme: 'classic',
+    events: [
+      { id: 'e1', date: now, mode: 'start', bookId: 'book-1', bookTitle: 'A Horse Called Wonder', childGrade: '4', catalogId: 'thoroughbred-1', seriesKey: 'thoroughbred', seriesNumber: 1, seriesName: 'Thoroughbred', genre: ['animal-fiction', 'realistic-fiction'], gradeLevel: '4-6', author: 'Joanna Campbell', score: null, total: null },
+      { id: 'e2', date: now, mode: 'start', bookId: 'book-2', bookTitle: 'Where the Red Fern Grows', childGrade: '4', catalogId: null, seriesKey: null, seriesNumber: null, seriesName: null, genre: [], gradeLevel: null, author: 'Wilson Rawls', score: null, total: null },
+    ],
+    books: [
+      { id: 'book-1', catalogId: 'thoroughbred-1', title: 'A Horse Called Wonder', author: 'Joanna Campbell', series: 'Thoroughbred', seriesKey: 'thoroughbred', seriesNumber: 1, gradeLevel: '4-6', genre: ['animal-fiction', 'realistic-fiction'], status: 'reading', startedAt: now, endedAt: null, sessions: [], rating: null, quizzes: [] },
+      { id: 'book-2', catalogId: null, title: 'Where the Red Fern Grows', author: 'Wilson Rawls', series: null, seriesKey: null, seriesNumber: null, gradeLevel: null, genre: [], status: 'reading', startedAt: now, endedAt: null, sessions: [], rating: null, quizzes: [] },
+    ],
+  };
+}
+
+{
+  const t = await run({
+    file: 'reading-star-v1.html', key: 'readingstar-ada', profile: readingProfile(), label: 'Reading Star',
+    responses: [],
+  });
+  const homeText = await t.page.textContent('#app');
+  check('home shows both concurrently-reading books', homeText.includes('A Horse Called Wonder') && homeText.includes('Where the Red Fern Grows'), homeText);
+
+  // Log a backdated session on book-1.
+  await t.page.evaluate(() => go('logSession', 'book-1'));
+  await t.page.waitForTimeout(150);
+  await t.page.fill('#lDate', '2026-07-01');
+  await t.page.fill('#lMinutes', '20');
+  await t.page.evaluate(() => submitLogSession('book-1'));
+  await t.page.waitForTimeout(150);
+  let d = await t.read();
+  let b1 = d.books.find((b) => b.id === 'book-1');
+  check('session logged with the backdated date, not today', b1.sessions.length === 1 && b1.sessions[0].at.startsWith('2026-07-01'), b1.sessions);
+  check('a matching log-session event was appended', d.events.some((e) => e.mode === 'log-session' && e.bookId === 'book-1'));
+
+  // Finish + rate book-1; book-2 is untouched (concurrent reading, §9).
+  await t.page.evaluate(() => go('finishBook', 'book-1'));
+  await t.page.waitForTimeout(150);
+  await t.page.evaluate(() => { pickRating(5); submitFinish('book-1'); });
+  await t.page.waitForTimeout(150);
+  d = await t.read();
+  b1 = d.books.find((b) => b.id === 'book-1');
+  check('finishing sets status + kid-language rating', b1.status === 'finished' && b1.rating === 5, b1);
+  check('the other book is still reading, untouched', d.books.find((b) => b.id === 'book-2').status === 'reading');
+
+  // Take the quiz on the catalog-linked book.
+  await t.page.evaluate(() => go('quiz', 'book-1'));
+  await t.page.waitForTimeout(150);
+  const qCount = await t.page.evaluate(() => Q.questions.length);
+  check('quiz loaded real catalog questions', qCount > 0, qCount);
+  for (let i = 0; i < qCount; i++) {
+    await t.page.evaluate(() => answerQuiz(0));
+    await t.page.waitForTimeout(1000);
+  }
+  d = await t.read();
+  b1 = d.books.find((b) => b.id === 'book-1');
+  check('a quiz attempt was recorded against the book', b1.quizzes.length === 1 && b1.quizzes[0].total === qCount, b1.quizzes);
+  check('missed questions recorded by stable id, not index', b1.quizzes[0].missed.every((id) => typeof id === 'string' && id.startsWith('thoroughbred-1-q')), b1.quizzes[0].missed);
+
+  // Quit book-2 via the explicit kid-facing control (§9), backdated.
+  await t.page.evaluate(() => { window.confirm = () => true; go('book', 'book-2'); quitBookConfirm('book-2'); });
+  await t.page.waitForTimeout(150);
+  await t.page.fill('#qDate', '2026-07-15');
+  await t.page.evaluate(() => submitQuit('book-2'));
+  await t.page.waitForTimeout(150);
+  d = await t.read();
+  const b2 = d.books.find((b) => b.id === 'book-2');
+  check('quitting sets status abandoned with the chosen date', b2.status === 'abandoned' && b2.endedAt.startsWith('2026-07-15'), b2);
+  check('an abandon event was appended', d.events.some((e) => e.mode === 'abandon' && e.bookId === 'book-2'));
+
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
 await browser.close();
 await server.close();
 process.exit(report('child-apps') ? 1 : 0);
