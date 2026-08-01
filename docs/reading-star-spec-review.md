@@ -1,5 +1,13 @@
 # Reading Star spec — review
 
+Status: **all findings below have been folded into
+`docs/reading-star-spec.md`.** Kept as the record of what was checked against
+the code and why the spec now reads the way it does — the corrections are
+mostly one-line claims whose reasons run much longer than the claims, and the
+next person to touch this will want the reasons. Section references are to the
+spec as it stood at review time; the corrected spec has renumbered slightly
+(§3.3 is new).
+
 Review of `docs/reading-star-spec.md` (design-only, not built) against the
 code as it actually stands. Verdict: **the core architectural claim holds —
 reading really is an append-only event app and needs no schema migration —
@@ -200,10 +208,12 @@ value, not just UI.
   and the spelling *app* fetches no content JSON at all. `reading-catalog.json`
   as a single bundled title→content map is a reasonable new pattern — it just
   isn't an existing one, so don't describe it as following one.
-- **The source CSV isn't in the repo.** `Thoroughbred_Quiz_Books_15.csv` is
-  referenced in §4 as "uploaded" but exists nowhere in the tree. Phase 0 can't
-  start until it's committed (presumably under `wordlists/reading/`, mirroring
-  the spelling layout).
+- **The source CSV wasn't in the repo.** `Thoroughbred_Quiz_Books_15.csv` was
+  referenced in §4 as "uploaded" but existed nowhere in the tree. *Resolved:*
+  committed at `wordlists/reading/Thoroughbred_Quiz_Books_15.csv`. Verified
+  contents — 53 question rows, books #1–5, ten columns, no blank cells, three
+  distractors per question — are now recorded in §4 so the converter can be
+  written against a known shape.
 - **§8 Phase 0 is missing its integration checklist.** A new app file also
   needs: a tile in `index.html` (currently four hardcoded `<a class="card">`),
   `./reading-star-v1.html` + `./reading-catalog.json` added to
