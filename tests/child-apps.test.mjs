@@ -425,6 +425,90 @@ function readingProfile() {
   await t.close();
 }
 
+// reading-star-spec.md §4.3 (Phase 1b): a parent's assign-book/delete-book
+// commands ride the same command queue Spelling's assign-list already uses.
+function readingSyncProfile() {
+  return {
+    childName: 'Ada', pin: '1234', childGrade: '4', theme: 'classic',
+    events: [], books: [], catalogOverlay: {},
+    sync: { enabled: true, endpoint: '/api', childId: 'child-ada', deviceId: 'tablet-1', deviceToken: 'tok', ackedIds: [], appliedCommandIds: [], lastPushAt: null },
+  };
+}
+{
+  const assignCmd = {
+    id: 'rb-1', kind: 'assign-book',
+    payload: { book: {
+      key: 'p-custom1', title: 'My Custom Book', author: 'A. Parent',
+      series: null, seriesKey: null, seriesNumber: null, gradeLevel: '3-5',
+      genre: ['adventure'],
+      questions: [{ id: 'p-q1', q: 'What color is the sky?', correct: 'Blue', wrong: ['Red', 'Green', 'Yellow'] }],
+    } },
+    createdAt: Date.now(),
+  };
+  const deleteCmd = { id: 'rb-2', kind: 'delete-book', payload: { key: 'p-custom1' }, createdAt: Date.now() };
+  // reading-star-spec.md §7: a parent-set generic tier, the hook for future
+  // point weighting. Same COMMAND_KINDS whitelist, no formula behind it yet.
+  const setLevelCmd = { id: 'sr-1', kind: 'set-reading-support-level', payload: { level: 'extra-support' }, createdAt: Date.now() };
+  const badLevelCmd = { id: 'sr-2', kind: 'set-reading-support-level', payload: { level: 'diagnosis-label' }, createdAt: Date.now() };
+
+  const t = await run({
+    file: 'reading-star-v1.html', key: 'readingstar-ada', profile: readingSyncProfile(), label: 'Reading Star: parent catalog editing (Phase 1b)',
+    responses: [
+      { accepted: [], commands: [assignCmd] }, { accepted: [], commands: [deleteCmd] },
+      { accepted: [], commands: [setLevelCmd] }, { accepted: [], commands: [badLevelCmd] },
+      { accepted: [], commands: [] },
+    ],
+  });
+
+  const first = t.syncBodies[0];
+  check('boot state carries a thin bundled catalog index, no question text',
+    Array.isArray(first.state.catalogIndex) && first.state.catalogIndex.length === 5 && !('questions' in first.state.catalogIndex[0]),
+    first.state.catalogIndex);
+  check('boot state carries the (empty) overlay in full', JSON.stringify(first.state.catalogOverlay) === '{}', first.state.catalogOverlay);
+
+  let d = await t.read();
+  check('assign-book landed in the overlay', d.catalogOverlay['p-custom1']?.title === 'My Custom Book', d.catalogOverlay);
+  check('assign-book command acked', d.sync.appliedCommandIds.includes('rb-1'), d.sync.appliedCommandIds);
+
+  const found = await t.page.evaluate(() => catalogSearch('Custom Book').map((b) => b.key));
+  check('the parent-authored book is searchable alongside the bundle', found.includes('p-custom1'), found);
+  const qCount = await t.page.evaluate(() => effectiveCatalog()['p-custom1'].questions.length);
+  check('its quiz question merged in too', qCount === 1, qCount);
+
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  const second = t.syncBodies[1];
+  check('once applied, the overlay entry rides the next state snapshot', second.state.catalogOverlay['p-custom1']?.title === 'My Custom Book', second.state.catalogOverlay);
+
+  d = await t.read();
+  check('delete-book removed the overlay entry', !('p-custom1' in d.catalogOverlay), d.catalogOverlay);
+  check('delete-book command acked', d.sync.appliedCommandIds.includes('rb-2'), d.sync.appliedCommandIds);
+  const goneFromSearch = await t.page.evaluate(() => catalogSearch('Custom Book').map((b) => b.key));
+  check('no longer searchable after delete', !goneFromSearch.includes('p-custom1'), goneFromSearch);
+
+  check('starts unset', d.readingSupportLevel === null, d.readingSupportLevel);
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  d = await t.read();
+  check('set-reading-support-level applied', d.readingSupportLevel === 'extra-support', d.readingSupportLevel);
+  check('command acked', d.sync.appliedCommandIds.includes('sr-1'), d.sync.appliedCommandIds);
+
+  // This push's own outgoing state was built and sent before its response
+  // (carrying setLevelCmd) came back, so the level only shows up on the *next*
+  // push's request body — same "once applied, rides the next snapshot" shape
+  // as the assign-book check above, one push later.
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  const third = t.syncBodies[t.syncBodies.length - 1];
+  check('the applied level rides the next state snapshot', third.state.readingSupportLevel === 'extra-support', third.state.readingSupportLevel);
+  d = await t.read();
+  check('a value outside the controlled vocabulary is rejected, previous level kept', d.readingSupportLevel === 'extra-support', d.readingSupportLevel);
+  check('the rejected command is still acked so it is never resent', d.sync.appliedCommandIds.includes('sr-2'), d.sync.appliedCommandIds);
+
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
 await browser.close();
 await server.close();
 process.exit(report('child-apps') ? 1 : 0);

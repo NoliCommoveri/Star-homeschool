@@ -110,6 +110,21 @@
 
 const API = '/api';
 const SYNC_KEY = 'star-parent-sync';
+// Must match reading-star-v1.html's GENRE_VOCAB exactly (reading-star-spec.md
+// §4.2) — a book classified here has to mean the same thing as one classified
+// on the tablet.
+const READING_GENRE_VOCAB = [
+  'adventure', 'animal-fiction', 'biography-nonfiction', 'fantasy',
+  'historical-fiction', 'humor', 'mystery', 'realistic-fiction',
+  'science-fiction', 'poetry',
+];
+// Must match reading-star-v1.html's READING_SUPPORT_LEVELS exactly
+// (reading-star-spec.md §7) — a generic tier, not a diagnosis label.
+const READING_SUPPORT_LEVELS = [
+  { v: 'standard', label: 'Standard' },
+  { v: 'extra-support', label: 'Extra support' },
+  { v: 'significant-support', label: 'Significant support' },
+];
 const APPS = [
   { id: 'spelling', label: 'Spelling Star' },
   { id: 'math', label: 'Math Star' },
@@ -195,6 +210,11 @@ const state = {
   // of things sent to it. Both are per child+app and reloaded on every switch.
   snapshots: [], commands: [], assignErr: '', assignNote: '',
   years: [], // Previous years (§16): one aggregate row per (grade, list)
+  // Reading's catalog editor (§4.3): the bundled catalog fetched directly
+  // (same-origin static asset — cheaper than duplicating full question text
+  // into every child_state row, per §15.4's size argument) and the book
+  // currently being added/edited, or null when the list view is showing.
+  readingCatalog: null, readingEditor: null,
 };
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
@@ -858,14 +878,22 @@ async function renderAssign() {
     const [snap, cmds] = await Promise.all([api('/child-state?' + qs), api('/commands?' + qs)]);
     state.snapshots = snap.snapshots || [];
     state.commands = cmds.commands || [];
+    // Fetched once and cached: the bundled catalog's full question text
+    // rides on this static asset rather than in every child_state snapshot
+    // (§15.4). Only the overlay — the parent's own, small by construction —
+    // needs to travel with the snapshot in full.
+    if (appDef.id === 'reading' && !state.readingCatalog) {
+      try { state.readingCatalog = await fetch('./reading-catalog.json', { cache: 'no-store' }).then((r) => r.json()); }
+      catch { state.readingCatalog = {}; }
+    }
     paintAssign();
   } catch (err) {
     appEl.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
   }
 }
 
-function selectAssignChild(id) { state.detailChildId = id; state.assignErr = ''; state.assignNote = ''; renderAssign(); }
-function selectAssignApp(appId) { state.detailApp = appId; state.assignErr = ''; state.assignNote = ''; renderAssign(); }
+function selectAssignChild(id) { state.detailChildId = id; state.assignErr = ''; state.assignNote = ''; state.readingEditor = null; renderAssign(); }
+function selectAssignApp(appId) { state.detailApp = appId; state.assignErr = ''; state.assignNote = ''; state.readingEditor = null; renderAssign(); }
 
 function paintAssign() {
   const child = state.children.find((c) => c.id === state.detailChildId);
@@ -885,11 +913,8 @@ function paintAssign() {
   const body = !snapshot
     ? `<div class="card empty">${esc(child.name || 'This child')}'s tablet hasn't reported what it has for ${esc(appDef.label)} yet.
         <br><br><span class="muted">It reports on the next sync — opening the app on the tablet is enough. A tablet still on the older app version syncs results but can't be assigned to until it's updated.</span></div>`
-    // Reading's catalog editor (assign-book/delete-book) is Phase 1b
-    // (reading-star-spec.md §4.3, §8) — Phase 1 is read-only sync only, so
-    // there's nothing to compose here yet rather than a wrong app's UI.
     : appDef.id === 'reading'
-      ? `<div class="card empty">Adding and editing ${esc(appDef.label)}'s book catalog from here is coming soon. For now, the catalog ships with the app itself.</div>`
+      ? renderReadingAssign(child, snapshot)
       : appDef.id === 'spelling'
         ? renderSpellingAssign(child, snapshot)
         : renderMathAssign(child, snapshot);
@@ -1022,6 +1047,228 @@ function renderMathAssign(child, snapshot) {
     </div>` : ''}`;
 }
 
+// ---------- Reading's catalog editor (§4.3) ----------
+// The bundled catalog is read-only, so an add/edit/delete lands as an
+// assign-book / delete-book command that the tablet applies into its own
+// data.catalogOverlay, keyed by book_key like the bundle itself (§4.1).
+// state.readingEditor holds the book being composed, or null for the list
+// view — text fields are read from the DOM only when a row is added/removed
+// or the book is sent, the same "read at submit time" pattern the word-list
+// and focus-area composers above already use.
+
+function readingMergedCatalog(snapshot) {
+  const bundled = state.readingCatalog || {};
+  const overlay = (snapshot && snapshot.state && snapshot.state.catalogOverlay) || {};
+  const keys = new Set([...Object.keys(bundled), ...Object.keys(overlay)]);
+  return [...keys].map((key) => ({ key, ...(overlay[key] || bundled[key]), overridden: key in overlay }))
+    .sort((a, b) => (a.series || '').localeCompare(b.series || '')
+      || (a.seriesNumber || 0) - (b.seriesNumber || 0) || a.title.localeCompare(b.title));
+}
+
+function mintReadingId() { return 'p-' + crypto.randomUUID().slice(0, 8); }
+
+// Reuses an existing series' key when the typed name matches one already in
+// use (case-insensitively), so "Thoroughbred" from two different books lands
+// on the same seriesKey rather than two — same identity argument as book_key
+// (§4.1), applied to series.
+function readingSeriesKeyFor(seriesName, merged) {
+  if (!seriesName) return null;
+  const known = merged.find((b) => b.series && b.series.toLowerCase() === seriesName.toLowerCase());
+  if (known && known.seriesKey) return known.seriesKey;
+  return String(seriesName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'series';
+}
+
+function renderReadingAssign(child, snapshot) {
+  if (state.readingEditor) return renderReadingEditor(child, snapshot);
+  const merged = readingMergedCatalog(snapshot);
+  const overlay = (snapshot.state && snapshot.state.catalogOverlay) || {};
+  const rows = merged.map((b) => {
+    const qCount = (b.questions || []).length;
+    const sub = [b.author, b.series ? esc(b.series) + (b.seriesNumber ? ' #' + b.seriesNumber : '') : null].filter(Boolean).map((s) => esc(String(s))).join(' · ');
+    return `<tr>
+      <td><strong>${esc(b.title)}</strong>${sub ? `<br><span class="muted">${sub}</span>` : ''}</td>
+      <td class="muted">${qCount} question${qCount === 1 ? '' : 's'}${b.overridden ? ' · <span class="badge warn">Edited</span>' : ''}</td>
+      <td>
+        <button class="small outline" onclick="${esc(`startEditReadingBook(${JSON.stringify(b.key)})`)}">Edit</button>
+        ${b.key in overlay ? `<button class="link" style="color:var(--danger)" onclick="${esc(`deleteReadingBook(${JSON.stringify(b.key)}, ${JSON.stringify(b.title)})`)}">Delete</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+    ${renderReadingSupportCard(child, snapshot)}
+    <div class="card">
+      <h2>Book catalog on the tablet</h2>
+      <p class="muted">${esc(child.name || 'They')} can start any of these and take its quiz. Editing a bundled book saves your change as an override on the tablet — a later app update won't undo it.</p>
+      <table>
+        <thead><tr><th>Book</th><th>Quiz</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" class="muted">No books reported.</td></tr>'}</tbody>
+      </table>
+      <button style="margin-top:12px" onclick="startNewReadingBook()">+ Add a book</button>
+    </div>`;
+}
+
+// §7: a generic tier, not a diagnosis label — the hook for future point
+// weighting (computePoints(), not built yet). Reported back in the tablet's
+// own state snapshot (§15.4) the same way an assigned list/focus area is, so
+// this card shows what's actually applied rather than guessing.
+function renderReadingSupportCard(child, snapshot) {
+  const current = snapshot.state && snapshot.state.readingSupportLevel;
+  const currentLabel = (READING_SUPPORT_LEVELS.find((l) => l.v === current) || {}).label || 'Standard (not set)';
+  const options = READING_SUPPORT_LEVELS.map((l) => `<option value="${l.v}" ${l.v === current ? 'selected' : ''}>${esc(l.label)}</option>`).join('');
+  return `
+    <div class="card">
+      <h2>Reading support level</h2>
+      <p class="muted">A general tier, not a diagnosis — it's a hook for future point weighting and doesn't change anything yet. Currently on the tablet: <strong>${esc(currentLabel)}</strong>.</p>
+      <select id="readingSupportSel">${options}</select>
+      <button onclick="sendReadingSupportLevel()">Set</button>
+    </div>`;
+}
+function sendReadingSupportLevel() {
+  const level = document.getElementById('readingSupportSel').value;
+  const label = (READING_SUPPORT_LEVELS.find((l) => l.v === level) || {}).label || level;
+  sendCommand('set-reading-support-level', { level }, `Set reading support level to “${label}”.`);
+}
+
+function startNewReadingBook() {
+  state.readingEditor = {
+    key: mintReadingId(), isNew: true, title: '', author: '', series: '', seriesNumber: '', gradeLevel: '',
+    genre: [], questions: [],
+  };
+  state.assignErr = ''; state.assignNote = '';
+  paintAssign();
+}
+
+function startEditReadingBook(key) {
+  const b = readingMergedCatalog(state.snapshots[0]).find((x) => x.key === key);
+  if (!b) return;
+  state.readingEditor = {
+    key: b.key, isNew: false, title: b.title, author: b.author || '',
+    series: b.series || '', seriesNumber: b.seriesNumber || '', gradeLevel: b.gradeLevel || '',
+    genre: [...(b.genre || [])],
+    questions: (b.questions || []).map((q) => ({ id: q.id, q: q.q, correct: q.correct, wrong: [...(q.wrong || [])] })),
+  };
+  state.assignErr = ''; state.assignNote = '';
+  paintAssign();
+}
+
+function cancelReadingEdit() { state.readingEditor = null; state.assignErr = ''; paintAssign(); }
+
+function deleteReadingBook(key, title) {
+  const revertsToBundled = !!(state.readingCatalog && state.readingCatalog[key]);
+  const msg = revertsToBundled
+    ? `Remove your changes to "${title}"? It reverts to the version that shipped with the app.`
+    : `Delete "${title}" from the catalog? This can't be undone.`;
+  if (!confirm(msg)) return;
+  sendCommand('delete-book', { key }, `Removed “${title}”.`);
+}
+
+// Pulls current field values out of the DOM into the in-memory editor before
+// a repaint (adding/removing a question row) would otherwise wipe them.
+function syncReadingEditorFromDom() {
+  const ed = state.readingEditor;
+  if (!ed) return;
+  const val = (id) => document.getElementById(id)?.value ?? '';
+  ed.title = val('rbTitle').trim();
+  ed.author = val('rbAuthor').trim();
+  ed.series = val('rbSeries').trim();
+  ed.seriesNumber = val('rbSeriesNum');
+  ed.gradeLevel = val('rbGradeLevel').trim();
+  ed.genre = [...document.querySelectorAll('.rbGenre:checked')].map((el) => el.value);
+  ed.questions.forEach((q, i) => {
+    q.q = val(`rbQ${i}text`).trim();
+    q.correct = val(`rbQ${i}correct`).trim();
+    q.wrong = [0, 1, 2].map((j) => val(`rbQ${i}wrong${j}`).trim());
+  });
+}
+
+function addReadingQuestionRow() {
+  syncReadingEditorFromDom();
+  state.readingEditor.questions.push({ id: mintReadingId(), q: '', correct: '', wrong: ['', '', ''] });
+  paintAssign();
+}
+function removeReadingQuestionRow(idx) {
+  syncReadingEditorFromDom();
+  state.readingEditor.questions.splice(idx, 1);
+  paintAssign();
+}
+
+function renderReadingEditor(child, snapshot) {
+  const ed = state.readingEditor;
+  const merged = readingMergedCatalog(snapshot);
+  const seriesNames = [...new Set(merged.map((b) => b.series).filter(Boolean))].sort();
+
+  const genreBoxes = READING_GENRE_VOCAB.map((g) => `
+    <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text);padding:2px 0">
+      <input type="checkbox" class="rbGenre" value="${g}" ${ed.genre.includes(g) ? 'checked' : ''} style="width:auto;margin:0">
+      ${g.replace(/-/g, ' ')}
+    </label>`).join('');
+
+  const qRows = ed.questions.map((q, i) => `
+    <div class="card" style="background:var(--bg);margin-bottom:8px">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <strong>Question ${i + 1}</strong>
+        <button class="link" style="color:var(--danger)" onclick="removeReadingQuestionRow(${i})">Remove</button>
+      </div>
+      <label for="rbQ${i}text">Question</label>
+      <textarea id="rbQ${i}text" rows="2">${esc(q.q)}</textarea>
+      <label for="rbQ${i}correct">Correct answer</label>
+      <input type="text" id="rbQ${i}correct" value="${esc(q.correct)}">
+      <label>Wrong answers</label>
+      ${[0, 1, 2].map((j) => `<input type="text" id="rbQ${i}wrong${j}" value="${esc(q.wrong[j] || '')}" placeholder="Wrong answer ${j + 1}">`).join('')}
+    </div>`).join('');
+
+  return `
+    <div class="card">
+      <h2>${ed.isNew ? 'Add a book' : 'Edit book'}</h2>
+      <label for="rbTitle">Title</label>
+      <input type="text" id="rbTitle" value="${esc(ed.title)}" placeholder="Book title">
+      <label for="rbAuthor">Author (optional)</label>
+      <input type="text" id="rbAuthor" value="${esc(ed.author)}" placeholder="Author">
+      <label for="rbSeries">Series (optional)</label>
+      <input type="text" id="rbSeries" list="rbSeriesList" value="${esc(ed.series)}" placeholder="Series name, if any">
+      <datalist id="rbSeriesList">${seriesNames.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
+      <label for="rbSeriesNum">Book number in series (optional)</label>
+      <input type="number" id="rbSeriesNum" min="1" value="${esc(String(ed.seriesNumber || ''))}">
+      <label for="rbGradeLevel">Grade level band (optional, e.g. 4-6)</label>
+      <input type="text" id="rbGradeLevel" value="${esc(ed.gradeLevel)}" placeholder="e.g. 4-6">
+      <label>Genre (optional, pick any that fit)</label>
+      ${genreBoxes}
+      <div style="margin-top:14px">
+        <div style="font-weight:700;margin-bottom:4px">Quiz questions (optional)</div>
+        <p class="muted" style="margin-top:0">Editing a question's wording keeps it linked to any past results for it. To replace one so old results stop counting toward it, remove it and add a fresh one instead.</p>
+        ${qRows}
+        <button class="outline" onclick="addReadingQuestionRow()">+ Add a question</button>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="big green" onclick="saveReadingBook()">Send to the tablet</button>
+        <button class="outline" onclick="cancelReadingEdit()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function saveReadingBook() {
+  syncReadingEditorFromDom();
+  const ed = state.readingEditor;
+  if (!ed.title) return setAssignError('Give the book a title.');
+  for (const q of ed.questions) {
+    if (!q.q || !q.correct || q.wrong.some((w) => !w)) {
+      return setAssignError("Each question needs its text, a correct answer, and three wrong answers — remove any you don't want.");
+    }
+  }
+  const merged = readingMergedCatalog(state.snapshots[0]);
+  const book = {
+    key: ed.key, title: ed.title, author: ed.author,
+    series: ed.series || null, seriesKey: readingSeriesKeyFor(ed.series, merged),
+    seriesNumber: ed.seriesNumber ? Number(ed.seriesNumber) : null,
+    gradeLevel: ed.gradeLevel || null, genre: ed.genre,
+    questions: ed.questions.map((q) => ({ id: q.id, q: q.q, correct: q.correct, wrong: q.wrong })),
+  };
+  state.readingEditor = null;
+  const qCount = book.questions.length;
+  sendCommand('assign-book', { book }, `Sent “${book.title}”${qCount ? ` — ${qCount} question${qCount === 1 ? '' : 's'}` : ''}.`);
+}
+
 // Human-readable summary of a queued command, for the "Sent recently" card.
 // Falls back to the raw kind so a command from a newer parent build still
 // shows up as something rather than vanishing.
@@ -1032,6 +1279,9 @@ function describeCommand(cmd) {
   if (cmd.kind === 'assign-focus') return `New focus area “${p.focus?.name || '?'}”`;
   if (cmd.kind === 'set-active-focus') return 'Switch the assigned focus area';
   if (cmd.kind === 'delete-session') return `Delete ${(p.sessionIds || []).length} session${(p.sessionIds || []).length === 1 ? '' : 's'}`;
+  if (cmd.kind === 'assign-book') return `Book “${p.book?.title || '?'}”${(p.book?.questions || []).length ? ` (${p.book.questions.length} question${p.book.questions.length === 1 ? '' : 's'})` : ''}`;
+  if (cmd.kind === 'delete-book') return 'Remove a book from the catalog';
+  if (cmd.kind === 'set-reading-support-level') return `Reading support level → “${(READING_SUPPORT_LEVELS.find((l) => l.v === p.level) || {}).label || p.level}”`;
   return cmd.kind;
 }
 

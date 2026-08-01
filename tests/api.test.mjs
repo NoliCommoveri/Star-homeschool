@@ -335,6 +335,26 @@ let [, rsess] = await body(await sessionsMod.onRequestGet(get(`http://x/api/sess
 const quizRow = rsess.sessions.find((s) => s.id === '7002');
 check('title/author/missed ride in payload, readable off /api/sessions', quizRow.bookTitle === 'A Horse Called Wonder' && quizRow.author === 'Joanna Campbell' && JSON.stringify(quizRow.missed) === '["thoroughbred-1-q3","thoroughbred-1-q7"]', quizRow);
 
+// reading-star-spec.md §4.3 (Phase 1b): assign-book/delete-book ride the same
+// COMMAND_KINDS whitelist as assign-list — this only checks the server's
+// whitelist accepts them and queues a command; what the tablet does with the
+// payload is exercised in tests/child-apps.test.mjs.
+console.log('\n[§4.3] assign-book / delete-book are known command kinds');
+let [abst, abr] = await body(await commands.onRequestPost(post('http://x/api/commands', {
+  app: 'reading', childIds: [KID], kind: 'assign-book',
+  payload: { book: { key: 'p-abc123', title: 'Custom Book', author: 'A Parent', questions: [] } },
+}, parentToken)));
+check('assign-book queued', abst === 200 && abr.commands.length === 1, abr);
+let [dbst, dbr] = await body(await commands.onRequestPost(post('http://x/api/commands', {
+  app: 'reading', childIds: [KID], kind: 'delete-book', payload: { key: 'p-abc123' },
+}, parentToken)));
+check('delete-book queued', dbst === 200 && dbr.commands.length === 1, dbr);
+
+let [srst, srr] = await body(await commands.onRequestPost(post('http://x/api/commands', {
+  app: 'reading', childIds: [KID], kind: 'set-reading-support-level', payload: { level: 'extra-support' },
+}, parentToken)));
+check('set-reading-support-level queued', srst === 200 && srr.commands.length === 1, srr);
+
 console.log('\n[§16] a deleted session leaves the record');
 await sessionDelete.onRequestPost(post('http://x/api/sessions/delete', {
   app: 'spelling', childIds: [KID], sessionIds: ['5002'],
