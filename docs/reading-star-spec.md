@@ -797,3 +797,37 @@ accident of the model:
   detail screen, not behind a single global button, so there's no new
   "which book?" picker to design — the screen the kid is already on answers
   it.
+
+## 10. The bookshelf
+
+Finishing a book used to be the flattest moment in the app: `submitFinish`
+wrote the event and dropped the kid back on the same detail screen they came
+from, and the only lasting trace was a grey `finished` badge in history. The
+quiz, a lesser accomplishment, got a celebration screen. The shelf inverts
+that back: a finished book earns a spine, and the spines accumulate.
+
+**Derived, never stored.** A spine is computed from `data.books` at render
+time. There is no shelf in the data model, no new field on a book, no new
+event mode, and nothing for the sync phases to carry — which is the whole
+reason this could land without touching §3. Genre picks a colour family and
+a hash of `book.id` pins which variant inside it, so a book keeps the same
+spine forever, on every device, without anyone persisting the choice. A book
+with no genre (a custom book a parent has not classified yet) falls back to
+a neutral grey family rather than being left off.
+
+**Only `finished` books get a spine.** Abandoned books stay in history and
+off the shelf. §9 made quitting a book blameless and the shelf is not the
+place to reopen that — it is a pile of wins, not a ledger.
+
+**No counters beyond the total.** The caption says how many books are on the
+shelf and nothing else: no pace, no goals, no streak, no "behind" state. The
+moment a shelf carries a target it stops being a reward, and a kid who is
+behind stops opening the app.
+
+**Sizing is art, not data.** Spine height and width come from the sprite the
+book was assigned, which gives a roughly 1.9× height spread across the set.
+An earlier draft scaled height by `gradeLevel` so that longer books visibly
+took more shelf — deliberately dropped, because every catalog entry today
+carries the same `'4-6'` band and a custom book carries `null`, so it would
+have been dead code dressed up as a rule. Worth revisiting when the catalog
+spans real grade bands.
