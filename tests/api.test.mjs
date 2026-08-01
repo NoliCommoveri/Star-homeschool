@@ -309,6 +309,32 @@ let [, msum] = await body(await summary.onRequestGet(get(`http://x/api/summary?c
 check('math drill summarized', msum.lists.length === 1 && msum.lists[0].best === 0.8, msum.lists);
 check('math practice excluded', msum.lists[0].attempts === 1, msum.lists[0].attempts);
 
+// reading-star-spec.md §3.3 finding 1: sessionScope() had no `reading` branch
+// at all until this Worker edit, so every reading event landed with grade/
+// scope_id/scope_name silently NULL — the INSERT still succeeded, so nothing
+// but a query like this would have caught it.
+console.log("\n[§16] reading stamps grade from the CHILD, scope from the book");
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'reading', childId: KID, childName: 'Mo',
+  sessions: [
+    { id: 7001, date: day(15), mode: 'start', bookId: 'book-1', bookTitle: 'A Horse Called Wonder', childGrade: '4', catalogId: 'thoroughbred-1', author: 'Joanna Campbell' },
+    { id: 7002, date: day(10), mode: 'quiz', score: 9, total: 11, bookId: 'book-1', bookTitle: 'A Horse Called Wonder', childGrade: '4', catalogId: 'thoroughbred-1', author: 'Joanna Campbell', missed: ['thoroughbred-1-q3', 'thoroughbred-1-q7'] },
+    { id: 7003, date: day(9),  mode: 'log-session', bookId: 'book-1', bookTitle: 'A Horse Called Wonder', childGrade: '4', minutes: 20 },
+  ],
+}, tabletToken));
+const readingRow = await DB.prepare("SELECT grade, scope_id, scope_name FROM sessions WHERE session_id = '7002'").bind().first();
+check('grade is the CHILD\'s school grade, not the book\'s difficulty band', readingRow.grade === '4', readingRow);
+check('scope_id is the book id', readingRow.scope_id === 'book-1', readingRow);
+check('scope_name is the book title, frozen at write time', readingRow.scope_name === 'A Horse Called Wonder', readingRow);
+
+let [, rsum] = await body(await summary.onRequestGet(get(`http://x/api/summary?childId=${KID}&app=reading&mode=quiz`, parentToken)));
+check('reading summarizes like any other app: best quiz score per book', rsum.lists.length === 1 && Math.abs(rsum.lists[0].best - 9/11) < 1e-9, rsum.lists);
+check('start/log-session (no score) drop out on their own, no new server code', rsum.lists[0].attempts === 1, rsum.lists[0].attempts);
+
+let [, rsess] = await body(await sessionsMod.onRequestGet(get(`http://x/api/sessions?childId=${KID}&app=reading`, parentToken)));
+const quizRow = rsess.sessions.find((s) => s.id === '7002');
+check('title/author/missed ride in payload, readable off /api/sessions', quizRow.bookTitle === 'A Horse Called Wonder' && quizRow.author === 'Joanna Campbell' && JSON.stringify(quizRow.missed) === '["thoroughbred-1-q3","thoroughbred-1-q7"]', quizRow);
+
 console.log('\n[§16] a deleted session leaves the record');
 await sessionDelete.onRequestPost(post('http://x/api/sessions/delete', {
   app: 'spelling', childIds: [KID], sessionIds: ['5002'],

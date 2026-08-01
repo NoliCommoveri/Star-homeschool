@@ -113,6 +113,7 @@ const SYNC_KEY = 'star-parent-sync';
 const APPS = [
   { id: 'spelling', label: 'Spelling Star' },
   { id: 'math', label: 'Math Star' },
+  { id: 'reading', label: 'Reading Star' },
 ];
 
 // What kind of sitting a session was. A pretest, a test and a practice all
@@ -134,9 +135,33 @@ const MODES = {
     drill:    { label: 'Drill',    tone: 'graded' },
     practice: { label: 'Practice', tone: 'practice' },
   },
+  // reading-star-spec.md §6: quiz is the graded sitting, the same way Test is
+  // for Spelling and Drill is for Math. The other four modes never carry a
+  // score, so they read as "practice" tone rather than graded/diagnostic.
+  reading: {
+    start:        { label: 'Started',        tone: 'practice' },
+    'log-session':{ label: 'Reading session', tone: 'practice' },
+    finish:       { label: 'Finished',       tone: 'practice' },
+    abandon:      { label: 'Quit',           tone: 'practice' },
+    quiz:         { label: 'Quiz',           tone: 'graded' },
+  },
 };
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Which payload field names "what this session was about," per app — the
+// scope columns in the schema are generic (§16.3), so only the client that
+// wrote a session knows what to call it back.
+function scopeOf(appId, s) {
+  if (appId === 'spelling') return s.listName;
+  if (appId === 'reading') return s.bookTitle;
+  return s.focusName || (s.categories || []).join(', ');
+}
+function scopeColumnLabel(appId, long) {
+  if (appId === 'spelling') return 'List';
+  if (appId === 'reading') return 'Book';
+  return long ? 'Focus area' : 'Focus';
+}
 
 // Unknown modes still render — a future app screen shows its raw mode rather
 // than vanishing from the dashboard.
@@ -496,15 +521,21 @@ function renderChildAppCard(child, app, sessions) {
     }).join('');
 
   const recentList = sessions.slice(-8).reverse().map((s) => {
-    const scope = app.id === 'spelling' ? s.listName : (s.focusName || (s.categories || []).join(', '));
+    const scope = scopeOf(app.id, s);
     const p = pct(s.score, s.total);
+    // Reading's non-quiz modes (start/log-session/finish/abandon) carry no
+    // score — total > 0 is exactly the condition /api/summary already uses
+    // to mean "this row is scored" (§6).
+    const scoreCell = s.total ? `${s.score}/${s.total}${p != null ? ` (${p}%)` : ''}` : '—';
     return `<tr class="clickable" onclick="openSessionDetail('${child.id}','${app.id}','${esc(s.id)}')">
       <td>${fmtDate(s.date)}<br><span class="muted">${fmtTime(s.date)}</span></td><td>${modeBadge(app.id, s)}</td><td>${esc(scope || '—')}</td>
-      <td>${s.score}/${s.total}${p != null ? ` (${p}%)` : ''}</td></tr>`;
+      <td>${scoreCell}</td></tr>`;
   }).join('');
 
   const trouble = app.id === 'spelling'
     ? rankTrouble(sessions, (r) => r.word, (r) => r.word)
+    : app.id === 'reading'
+    ? rankReadingTrouble(sessions)
     : rankTrouble(sessions, (r) => r.category ? (r.category + (r.subgroup ? ' · ' + r.subgroup : '')) : null, (r) => r.category + (r.subgroup ? ' · ' + r.subgroup : ''));
 
   const troubleHtml = trouble.length
@@ -529,7 +560,7 @@ function renderChildAppCard(child, app, sessions) {
       <details style="margin-top:10px">
         <summary class="muted" style="cursor:pointer">Recent sessions</summary>
         <table style="margin-top:8px">
-          <thead><tr><th>Date</th><th>Type</th><th>${app.id === 'spelling' ? 'List' : 'Focus'}</th><th>Score</th></tr></thead>
+          <thead><tr><th>Date</th><th>Type</th><th>${scopeColumnLabel(app.id)}</th><th>Score</th></tr></thead>
           <tbody>${recentList}</tbody>
         </table>
       </details>
@@ -568,22 +599,67 @@ function rankTrouble(sessions, keyFn, labelFn) {
   return [...byKey.values()].filter((e) => e.misses > 0).sort((a, b) => b.weight - a.weight).slice(0, 10);
 }
 
+// Reading has no per-item results array (§6) — a quiz event carries only
+// score/total and a `missed` array of stable question ids (reading-star-spec
+// §3.2, §4.1). No catalog is loaded here to turn an id into question text, so
+// this ranks by book instead, the same "weak spots" instinct one level up:
+// which books' quizzes are actually giving trouble, not which question.
+function rankReadingTrouble(sessions) {
+  const now = Date.now();
+  const byKey = new Map();
+  for (const s of sessions) {
+    if (s.mode !== 'quiz' || !Array.isArray(s.missed) || !s.missed.length) continue;
+    const key = s.bookTitle || 'Untitled';
+    const label = s.author ? `${key} — ${s.author}` : key;
+    const occurred = Date.parse(s.date) || now;
+    const ageDays = (now - occurred) / 86400000;
+    const recencyMult = ageDays <= 7 ? 2 : ageDays <= 30 ? 1.3 : 1;
+    if (!byKey.has(key)) byKey.set(key, { label, misses: 0, weight: 0 });
+    const entry = byKey.get(key);
+    entry.misses += s.missed.length;
+    entry.weight += s.missed.length * recencyMult;
+  }
+  return [...byKey.values()].sort((a, b) => b.weight - a.weight).slice(0, 10);
+}
+
+// A reading event's mode-specific detail, read straight off the session
+// (payload fields spread onto it by /api/sessions) rather than a results[].
+function readingDetailHtml(session) {
+  if (session.mode === 'log-session') {
+    const parts = [];
+    if (session.minutes) parts.push(`${session.minutes} min`);
+    if (session.pages) parts.push(`${session.pages} pages`);
+    if (session.note) parts.push(esc(session.note));
+    return parts.length ? `<p>${parts.join(' · ')}</p>` : '';
+  }
+  if (session.mode === 'finish' && session.rating) return `<p>Rating: ${session.rating}/5</p>`;
+  if (session.mode === 'quiz' && Array.isArray(session.missed)) {
+    return `<p>${session.missed.length} question${session.missed.length === 1 ? '' : 's'} missed out of ${session.total}</p>`;
+  }
+  return '';
+}
+
 // ---------- Session detail ----------
 function openSessionDetail(childId, appId, sessionId) {
   const sessions = state.sessionsByKey[childId + ':' + appId] || [];
   const session = sessions.find((s) => String(s.id) === String(sessionId));
   if (!session) return;
   const child = state.children.find((c) => c.id === childId);
-  const scope = appId === 'spelling' ? session.listName : (session.focusName || (session.categories || []).join(', '));
+  const scope = scopeOf(appId, session);
 
-  const rows = (session.results || []).map((r) => {
-    const label = appId === 'spelling'
-      ? esc(r.word)
-      : esc(r.prompt || (r.category + (r.subgroup ? ' · ' + r.subgroup : '')));
-    const answer = appId === 'math' && r.answer != null ? ` <span class="muted">(${esc(String(r.answer))})</span>` : '';
-    return `<div class="result-row"><span>${label}${answer}</span>
-      <span class="${r.correct ? 'mark-ok' : 'mark-bad'}">${r.correct ? '✓' : '✗'} ${r.attempts ? `· ${r.attempts} try${r.attempts === 1 ? '' : 'ies'}` : ''}</span></div>`;
-  }).join('');
+  // Reading has no per-item results array — its mode-specific detail (minutes/
+  // pages/note, a rating, a missed-question count) lives directly on the
+  // session, not in a `results[]` (§6).
+  const rows = appId === 'reading'
+    ? readingDetailHtml(session)
+    : (session.results || []).map((r) => {
+        const label = appId === 'spelling'
+          ? esc(r.word)
+          : esc(r.prompt || (r.category + (r.subgroup ? ' · ' + r.subgroup : '')));
+        const answer = appId === 'math' && r.answer != null ? ` <span class="muted">(${esc(String(r.answer))})</span>` : '';
+        return `<div class="result-row"><span>${label}${answer}</span>
+          <span class="${r.correct ? 'mark-ok' : 'mark-bad'}">${r.correct ? '✓' : '✗'} ${r.attempts ? `· ${r.attempts} try${r.attempts === 1 ? '' : 'ies'}` : ''}</span></div>`;
+      }).join('');
 
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
@@ -592,7 +668,7 @@ function openSessionDetail(childId, appId, sessionId) {
     <div class="card">
       <h2>${esc(child?.name || 'Session')}</h2>
       <p style="margin:6px 0">${modeBadge(appId, session)}</p>
-      <p class="muted">${esc(fmtDateTime(session.date))}${scope ? ' · ' + esc(scope) : ''} · ${session.score}/${session.total}</p>
+      <p class="muted">${esc(fmtDateTime(session.date))}${scope ? ' · ' + esc(scope) : ''}${session.total ? ' · ' + session.score + '/' + session.total : ''}</p>
       ${session.promotedFrom ? '<p class="muted">Recorded automatically from a perfect pretest — the same sitting as that pretest, not a second one.</p>' : ''}
       <div>${rows || '<p class="muted">No item detail recorded.</p>'}</div>
       <div class="error" id="sessionDeleteErr"></div>
@@ -731,7 +807,7 @@ function paintYears() {
         <p class="muted">${rows.length} list${rows.length === 1 ? '' : 's'}${span ? ' · ' + esc(span) : ''} · best scores average <strong>${mean}%</strong></p>
         ${!grade ? '<p class="muted">Recorded before word lists carried a grade. These keep their scores; they just have no year to file under.</p>' : ''}
         <table>
-          <thead><tr><th>${appDef.id === 'spelling' ? 'List' : 'Focus area'}</th><th>Sittings</th><th>Best</th></tr></thead>
+          <thead><tr><th>${scopeColumnLabel(appDef.id, true)}</th><th>Sittings</th><th>Best</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>`;
@@ -809,9 +885,14 @@ function paintAssign() {
   const body = !snapshot
     ? `<div class="card empty">${esc(child.name || 'This child')}'s tablet hasn't reported what it has for ${esc(appDef.label)} yet.
         <br><br><span class="muted">It reports on the next sync — opening the app on the tablet is enough. A tablet still on the older app version syncs results but can't be assigned to until it's updated.</span></div>`
-    : appDef.id === 'spelling'
-      ? renderSpellingAssign(child, snapshot)
-      : renderMathAssign(child, snapshot);
+    // Reading's catalog editor (assign-book/delete-book) is Phase 1b
+    // (reading-star-spec.md §4.3, §8) — Phase 1 is read-only sync only, so
+    // there's nothing to compose here yet rather than a wrong app's UI.
+    : appDef.id === 'reading'
+      ? `<div class="card empty">Adding and editing ${esc(appDef.label)}'s book catalog from here is coming soon. For now, the catalog ships with the app itself.</div>`
+      : appDef.id === 'spelling'
+        ? renderSpellingAssign(child, snapshot)
+        : renderMathAssign(child, snapshot);
 
   document.getElementById('app').innerHTML = `
     <div class="card picker">

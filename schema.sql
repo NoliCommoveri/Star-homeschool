@@ -41,7 +41,7 @@ CREATE TABLE pairing_codes (
 
 CREATE TABLE sessions (
   child_id    TEXT NOT NULL REFERENCES children(id),
-  app         TEXT NOT NULL,         -- 'spelling' | 'math'
+  app         TEXT NOT NULL,         -- 'spelling' | 'math' | 'reading'
   device_id   TEXT NOT NULL REFERENCES devices(id),
   session_id  TEXT NOT NULL,         -- the client's Date.now() id, as text
   occurred_at INTEGER NOT NULL,      -- from the client
@@ -56,7 +56,7 @@ CREATE TABLE sessions (
   -- budget. Both stay NULL until the apps stamp them; NULL reads as
   -- "before grades".
   grade       TEXT,                  -- school grade when the session happened
-  scope_id    TEXT,                  -- list id (spelling) / focus area id (math)
+  scope_id    TEXT,                  -- list id (spelling) / focus area id (math) / book id (reading)
   scope_name  TEXT,                  -- its label, frozen at write time
   PRIMARY KEY (child_id, app, device_id, session_id)
 );
@@ -73,7 +73,7 @@ CREATE TABLE commands (
   id          TEXT PRIMARY KEY,      -- 128-bit random hex
   family_id   TEXT NOT NULL REFERENCES families(id),
   child_id    TEXT NOT NULL REFERENCES children(id),
-  app         TEXT NOT NULL,         -- 'spelling' | 'math'
+  app         TEXT NOT NULL,         -- 'spelling' | 'math' | 'reading'
   kind        TEXT NOT NULL,         -- §15.3's fixed set
   payload     TEXT NOT NULL,         -- JSON
   created_at  INTEGER NOT NULL,

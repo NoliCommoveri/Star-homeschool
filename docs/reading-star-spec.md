@@ -21,7 +21,9 @@ do.
 
 - A kid can identify the book they're currently reading (from a catalog, or
   typed in if it's not there), log a start date, log reading sessions as they
-  go, log an end date, and rate how much they liked it.
+  go, log an end date, and rate how much they liked it. More than one book can
+  be "currently reading" at once — starting a new one never requires finishing
+  or quitting whatever's already in progress (§9).
 - Take a quiz on the book, if they want to — never required.
 - A parent can see reading history on their phone, the same way they already
   see Spelling and Math history, **and edit the book catalog from there** —
@@ -120,7 +122,9 @@ data.catalogOverlay = { [bookKey]: { title, author, seriesKey, seriesNumber,
 // currently-reading screen paints without a reduce on every render.
 data.books = [{
   id,            // client-minted uuid; equals data.events[].bookId
-  catalogId,     // the catalog's book_key (§4.1); null for a custom title
+  catalogId,     // the catalog's book_key (§4.1); null for a custom title.
+                 // Settable after the fact too, not just at start — see §9's
+                 // catalog-reconciliation flow.
   title, author,
   series,        // null for a standalone book — and for every custom entry
   seriesNumber,  // null unless series is set
@@ -550,12 +554,19 @@ reading won't be in any bank.
 
 ## 5. Core flows
 
+Every flow below writes a date on its event. It's prefilled with now, but
+always editable (§9) — a kid logging Tuesday's reading on Thursday, or
+starting the app partway through a book, types the real date instead of
+keeping today's.
+
 - **Start a book.** Search the catalog by title or author, or type a custom
   title + author. Writes a `start` event, sets `status = 'reading'`. Series is
   a way to *group* results, not the way to find them — a catalog that will
   hold standalone books alongside series can't make browse-by-series the
   primary path (§4.1). Titles with no series sort in by author or title
-  alongside the series headings rather than into an "Other" bucket.
+  alongside the series headings rather than into an "Other" bucket. A custom
+  title can be pointed at a matching catalog entry later, from the book's
+  detail screen, once one exists (§9).
 - **Log a session.** One tap ("I read today") from the currently-reading
   screen; optional minutes or pages, optional note. Writes a `log-session`
   event. No quiz, no pressure — this is the low-friction one, used the most.
@@ -583,7 +594,8 @@ reading won't be in any bank.
 
 A new card, same pattern as the Spelling/Math cards in §9 of the sync spec:
 
-- Currently reading, per child.
+- Currently reading, per child — a list, since a kid can have more than one
+  book going at once (§9).
 - Reading history: title, author, dates, days spent, session count, rating,
   quiz score.
 - A "trouble items" analog: missed quiz questions, or weak authors and
@@ -712,7 +724,7 @@ backfill.
 
 ---
 
-## 9. Decided, and still open
+## 9. Decided
 
 **Quiz retakes: allowed, append-only, best score displayed.** This was listed
 as undecided, but the existing machinery decides it. Distinct `session_id`s
@@ -730,26 +742,58 @@ days) and offer it as a prompt — or does it stay parent-side entirely? All
 three write the same `abandon` event, so this can be settled during Phase 0b
 without touching the data model.
 
-**Still genuinely open:**
+**Every event's date is backdatable, not just `start`'s.** A kid isn't going
+to remember to open the app the moment they sit down to read, or the moment
+they put a book down. The date field on every write — `start`, `log-session`,
+`finish`, `abandon`, `quiz` — is prefilled with now for convenience but always
+editable; the app helpfully fills in the system date, it never requires it.
+Nothing breaks doing this: `/api/sessions` orders by `occurred_at`, and
+`/api/summary`'s aggregate doesn't care what order events arrived in either.
 
-- Whether reading `start` events should be backdatable. A kid adopting the app
-  mid-book wants to log a realistic start date, but a backdated `occurred_at`
-  lands behind rows the server already has. Nothing breaks — `/api/sessions`
-  orders by `occurred_at` and the aggregate doesn't care — but it's worth
-  deciding whether the UI offers it before someone discovers it doesn't.
-- Whether a custom (non-catalog) book that later appears in the catalog should
-  be reconcilable, or stays a separate entry forever. Leaning: stays separate.
-  Merging means rewriting `scope_id` on already-pushed events, and the payoff
-  is small.
-- **The genre vocabulary itself** (§4.2) — a content decision, not a
-  structural one. The committed values are a placeholder. Worth settling
-  before Phase 0b ships, because the picker on custom books needs a list, and
-  a vocabulary that gets rationalized *after* families have classified a
-  year of reading means either stale keys or a rewrite of frozen payloads.
-  Adding values later is free; renaming or merging them is not.
-- **Whether `totalBooks` is worth maintaining by hand** (§4.2). It's the only
-  field in this design whose accuracy depends on someone looking something up,
-  and it's wrong-by-default as series continue. `null` degrading to a plain
-  count is the escape hatch, so the real question is whether the fraction is
-  motivating enough to be worth the upkeep — a kid question more than a
-  data-model one.
+**Custom books reconcile with the catalog.** `data.books[].catalogId` (§3.1)
+already exists and is already nullable — reconciling a custom entry is just
+setting it after the fact, from the book's detail screen, once a matching
+catalog book exists (freshly added via §4.3, or already there and missed on
+search). This needs no server change and does **not** rewrite `scope_id`:
+past events keep whatever `bookId` and classification they were written with,
+same "renaming doesn't relabel history" rule §4.1 and §4.2 already apply
+elsewhere, and events written *after* reconciliation freeze the catalog's
+series/genre/gradeLevel like any other event. The book's `id` — and therefore
+every already-pushed event's `scope_id` — never moves. The payoff is real
+even without touching history: it unlocks the catalog's quiz for a book that
+started as a typed-in title, and correct series-progress counting for
+everything logged from that point on.
+
+**Genre vocabulary ships as committed** (§4.2's placeholder list). Adding
+values later is free; the actual risk was only ever renaming or merging
+existing ones after a year of classified reading, so there's no reason to
+hold Phase 0b on nailing the taxonomy up front.
+
+**`totalBooks` is maintained by hand, `null` where unknown.** This is already
+§4.2's design — Thoroughbred ships with `totalBooks: null`. The only open
+question was whether that manual upkeep is worth doing at all; it is: fill it
+in for series worth showing a fraction for, leave it `null` (plain count) for
+the rest.
+
+**Abandonment gets an explicit kid-facing control.** Not inference, not
+parent-side only: a "I quit this book" button on the book's screen, next to
+Finish. It writes the same `abandon` event §5 already specifies — this closes
+the UI question, not the data model, which was already settled.
+
+**A kid can be reading more than one book at a time.** Nothing in the data
+model assumed otherwise — `status` is derived per `bookId` (§3.1: "the latest
+`start` with no later `finish`/`abandon` **for the same bookId**"), so two
+books independently land on `status: 'reading'` for free. What was implicit
+needs to be explicit in two places once it's a stated goal rather than an
+accident of the model:
+
+- The "currently reading" screen (§3.1, §5, §6) is a *list*, not a slot. Home
+  shows every book with `status: 'reading'`, each with its own Log-a-session /
+  Finish / Quit / Quiz actions, and "Start a book" is never blocked by an
+  already-active book.
+- Any flow that writes to *a* book — logging a session, finishing, quitting,
+  taking a quiz — has to know *which* book first. In practice this falls out
+  of the UI shape for free: those actions live on a specific book's row or
+  detail screen, not behind a single global button, so there's no new
+  "which book?" picker to design — the screen the kid is already on answers
+  it.
