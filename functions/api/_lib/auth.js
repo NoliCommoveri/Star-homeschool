@@ -60,6 +60,7 @@ export const COMMAND_KINDS = [
   'delete-session',    // both: drop sessions from the tablet's own history
   'assign-book',        // reading: add/replace a catalog book (parent editor, §4.3)
   'delete-book',        // reading: retire a catalog overlay entry
+  'set-reading-support-level', // reading: a parent-set generic tier, hook for future point weighting (§7)
 ];
 
 // Payload and snapshot ceilings (§15.6). A word list or focus area is a few

@@ -150,6 +150,15 @@ const RATINGS = [
   { v: 3, label: "Pretty good" }, { v: 4, label: "Really liked it" },
   { v: 5, label: "Loved it!" },
 ];
+// §7: a generic tier a parent sets from the phone, never a diagnosis label —
+// this is the hook for future point weighting, not used for anything yet
+// ("designed now, built later"). Must match parent.html's
+// READING_SUPPORT_LEVELS exactly.
+const READING_SUPPORT_LEVELS = [
+  { v: "standard", label: "Standard" },
+  { v: "extra-support", label: "Extra support" },
+  { v: "significant-support", label: "Significant support" },
+];
 
 function freshData(childName, pin, childGrade) {
   return {
@@ -159,6 +168,7 @@ function freshData(childName, pin, childGrade) {
     events: [],
     books: [],
     catalogOverlay: {},
+    readingSupportLevel: null,
   };
 }
 let lastLoadError = null;
@@ -174,6 +184,7 @@ function load(key) {
     if (!d.events) d.events = [];
     if (!d.books) d.books = [];
     if (!d.catalogOverlay) d.catalogOverlay = {};
+    if (d.readingSupportLevel === undefined) d.readingSupportLevel = null;
     if (d.childGrade === undefined) d.childGrade = "2";
     return d;
   } catch(e) { lastLoadError = "corrupted"; return null; }
@@ -846,6 +857,8 @@ function renderParentSettings() {
     <select onchange="setChildGrade(this.value)">
       ${GRADES.map(g => `<option value="${g}" ${g===data.childGrade?"selected":""}>${g}</option>`).join("")}
     </select>
+    <label>Reading support level</label>
+    <div class="muted" style="margin-bottom:8px">${esc((READING_SUPPORT_LEVELS.find(l => l.v === data.readingSupportLevel) || { label: "Standard (not set)" }).label)} — set from your phone, not here.</div>
     <label>Theme</label>
     <div class="row">
       <div class="swatch ${data.theme==='classic'?'sel':''}" style="background:#FDF6EC" onclick="setTheme('classic')">Classic</div>
@@ -1021,6 +1034,7 @@ function syncState() {
       key, title: b.title, author: b.author || "", questionCount: (b.questions || []).length,
     })),
     catalogOverlay: data.catalogOverlay || {},
+    readingSupportLevel: data.readingSupportLevel,
   };
 }
 
@@ -1056,7 +1070,17 @@ function applyCommand(cmd) {
   if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
   if (cmd.kind === "assign-book") return applyAssignBook(p.book);
   if (cmd.kind === "delete-book") return applyDeleteBook(p.key);
+  if (cmd.kind === "set-reading-support-level") return applySetReadingSupportLevel(p.level);
   return false;
+}
+
+// §7: stored for a future computePoints() to read — v1 has no formula yet,
+// so applying this command only stores the value. The parent sets it from
+// the phone; the kid never sees or sets it on the tablet.
+function applySetReadingSupportLevel(level) {
+  if (!READING_SUPPORT_LEVELS.some(l => l.v === level)) return false;
+  data.readingSupportLevel = level;
+  return true;
 }
 
 // §4.3: the bundled catalog is a static asset the app can't rewrite, so a

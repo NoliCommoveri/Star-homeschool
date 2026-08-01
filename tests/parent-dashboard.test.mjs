@@ -43,6 +43,7 @@ const server = {
       state: {
         childGrade: '4', grades: ['K','1','2','3','4','5','6','7'], currentlyReading: 1,
         catalogIndex: [],
+        readingSupportLevel: 'standard',
         catalogOverlay: {
           'p-existing1': {
             title: 'A Parent Book', author: 'Mom', series: null, seriesKey: null, seriesNumber: null,
@@ -266,6 +267,16 @@ await page.waitForTimeout(700);
 text = await page.textContent('#app');
 check('the real bundled catalog is fetched and listed', text.includes('A Horse Called Wonder'));
 check('overlay book listed too, marked Edited', text.includes('A Parent Book') && text.includes('Edited'));
+
+console.log('\n[Assign — Reading: support level (§7)]');
+check('current level reported from the tablet snapshot', text.includes('Standard'));
+await page.selectOption('#readingSupportSel', 'extra-support');
+await page.click('button:has-text("Set")');
+await page.waitForTimeout(500);
+cmd = posted.filter((p) => p.path === '/commands').pop();
+check('set-reading-support-level posted', cmd.body.kind === 'set-reading-support-level' && cmd.body.app === 'reading', cmd.body);
+check('the chosen level carried', cmd.body.payload.level === 'extra-support', cmd.body.payload);
+check('confirmation names the level', (await page.textContent('#app')).includes('Extra support'));
 
 console.log('\n[Assign — Reading: edit an existing overlay book]');
 await page.click('tr:has-text("A Parent Book") button:has-text("Edit")');

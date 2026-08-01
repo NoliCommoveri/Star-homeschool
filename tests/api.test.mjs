@@ -350,6 +350,11 @@ let [dbst, dbr] = await body(await commands.onRequestPost(post('http://x/api/com
 }, parentToken)));
 check('delete-book queued', dbst === 200 && dbr.commands.length === 1, dbr);
 
+let [srst, srr] = await body(await commands.onRequestPost(post('http://x/api/commands', {
+  app: 'reading', childIds: [KID], kind: 'set-reading-support-level', payload: { level: 'extra-support' },
+}, parentToken)));
+check('set-reading-support-level queued', srst === 200 && srr.commands.length === 1, srr);
+
 console.log('\n[§16] a deleted session leaves the record');
 await sessionDelete.onRequestPost(post('http://x/api/sessions/delete', {
   app: 'spelling', childIds: [KID], sessionIds: ['5002'],

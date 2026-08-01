@@ -50,8 +50,10 @@ var COMMAND_KINDS = [
   // both: drop sessions from the tablet's own history
   "assign-book",
   // reading: add/replace a catalog book (parent editor, §4.3)
-  "delete-book"
+  "delete-book",
   // reading: retire a catalog overlay entry
+  "set-reading-support-level"
+  // reading: a parent-set generic tier, hook for future point weighting (§7)
 ];
 var MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024;
 var MAX_CHILD_STATE_BYTES = 128 * 1024;
@@ -730,7 +732,7 @@ function safeParse3(text) {
 }
 __name(safeParse3, "safeParse");
 
-// ../.wrangler/tmp/pages-huVsz3/functionsRoutes-0.17993921506756405.mjs
+// ../.wrangler/tmp/pages-Iwfi1u/functionsRoutes-0.7693155950865498.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",

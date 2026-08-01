@@ -118,6 +118,13 @@ const READING_GENRE_VOCAB = [
   'historical-fiction', 'humor', 'mystery', 'realistic-fiction',
   'science-fiction', 'poetry',
 ];
+// Must match reading-star-v1.html's READING_SUPPORT_LEVELS exactly
+// (reading-star-spec.md §7) — a generic tier, not a diagnosis label.
+const READING_SUPPORT_LEVELS = [
+  { v: 'standard', label: 'Standard' },
+  { v: 'extra-support', label: 'Extra support' },
+  { v: 'significant-support', label: 'Significant support' },
+];
 const APPS = [
   { id: 'spelling', label: 'Spelling Star' },
   { id: 'math', label: 'Math Star' },
@@ -1089,6 +1096,7 @@ function renderReadingAssign(child, snapshot) {
   }).join('');
 
   return `
+    ${renderReadingSupportCard(child, snapshot)}
     <div class="card">
       <h2>Book catalog on the tablet</h2>
       <p class="muted">${esc(child.name || 'They')} can start any of these and take its quiz. Editing a bundled book saves your change as an override on the tablet — a later app update won't undo it.</p>
@@ -1098,6 +1106,28 @@ function renderReadingAssign(child, snapshot) {
       </table>
       <button style="margin-top:12px" onclick="startNewReadingBook()">+ Add a book</button>
     </div>`;
+}
+
+// §7: a generic tier, not a diagnosis label — the hook for future point
+// weighting (computePoints(), not built yet). Reported back in the tablet's
+// own state snapshot (§15.4) the same way an assigned list/focus area is, so
+// this card shows what's actually applied rather than guessing.
+function renderReadingSupportCard(child, snapshot) {
+  const current = snapshot.state && snapshot.state.readingSupportLevel;
+  const currentLabel = (READING_SUPPORT_LEVELS.find((l) => l.v === current) || {}).label || 'Standard (not set)';
+  const options = READING_SUPPORT_LEVELS.map((l) => `<option value="${l.v}" ${l.v === current ? 'selected' : ''}>${esc(l.label)}</option>`).join('');
+  return `
+    <div class="card">
+      <h2>Reading support level</h2>
+      <p class="muted">A general tier, not a diagnosis — it's a hook for future point weighting and doesn't change anything yet. Currently on the tablet: <strong>${esc(currentLabel)}</strong>.</p>
+      <select id="readingSupportSel">${options}</select>
+      <button onclick="sendReadingSupportLevel()">Set</button>
+    </div>`;
+}
+function sendReadingSupportLevel() {
+  const level = document.getElementById('readingSupportSel').value;
+  const label = (READING_SUPPORT_LEVELS.find((l) => l.v === level) || {}).label || level;
+  sendCommand('set-reading-support-level', { level }, `Set reading support level to “${label}”.`);
 }
 
 function startNewReadingBook() {
@@ -1251,6 +1281,7 @@ function describeCommand(cmd) {
   if (cmd.kind === 'delete-session') return `Delete ${(p.sessionIds || []).length} session${(p.sessionIds || []).length === 1 ? '' : 's'}`;
   if (cmd.kind === 'assign-book') return `Book “${p.book?.title || '?'}”${(p.book?.questions || []).length ? ` (${p.book.questions.length} question${p.book.questions.length === 1 ? '' : 's'})` : ''}`;
   if (cmd.kind === 'delete-book') return 'Remove a book from the catalog';
+  if (cmd.kind === 'set-reading-support-level') return `Reading support level → “${(READING_SUPPORT_LEVELS.find((l) => l.v === p.level) || {}).label || p.level}”`;
   return cmd.kind;
 }
 

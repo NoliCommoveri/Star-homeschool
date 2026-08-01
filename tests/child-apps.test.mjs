@@ -446,10 +446,18 @@ function readingSyncProfile() {
     createdAt: Date.now(),
   };
   const deleteCmd = { id: 'rb-2', kind: 'delete-book', payload: { key: 'p-custom1' }, createdAt: Date.now() };
+  // reading-star-spec.md §7: a parent-set generic tier, the hook for future
+  // point weighting. Same COMMAND_KINDS whitelist, no formula behind it yet.
+  const setLevelCmd = { id: 'sr-1', kind: 'set-reading-support-level', payload: { level: 'extra-support' }, createdAt: Date.now() };
+  const badLevelCmd = { id: 'sr-2', kind: 'set-reading-support-level', payload: { level: 'diagnosis-label' }, createdAt: Date.now() };
 
   const t = await run({
     file: 'reading-star-v1.html', key: 'readingstar-ada', profile: readingSyncProfile(), label: 'Reading Star: parent catalog editing (Phase 1b)',
-    responses: [{ accepted: [], commands: [assignCmd] }, { accepted: [], commands: [deleteCmd] }, { accepted: [], commands: [] }],
+    responses: [
+      { accepted: [], commands: [assignCmd] }, { accepted: [], commands: [deleteCmd] },
+      { accepted: [], commands: [setLevelCmd] }, { accepted: [], commands: [badLevelCmd] },
+      { accepted: [], commands: [] },
+    ],
   });
 
   const first = t.syncBodies[0];
@@ -477,6 +485,25 @@ function readingSyncProfile() {
   check('delete-book command acked', d.sync.appliedCommandIds.includes('rb-2'), d.sync.appliedCommandIds);
   const goneFromSearch = await t.page.evaluate(() => catalogSearch('Custom Book').map((b) => b.key));
   check('no longer searchable after delete', !goneFromSearch.includes('p-custom1'), goneFromSearch);
+
+  check('starts unset', d.readingSupportLevel === null, d.readingSupportLevel);
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  d = await t.read();
+  check('set-reading-support-level applied', d.readingSupportLevel === 'extra-support', d.readingSupportLevel);
+  check('command acked', d.sync.appliedCommandIds.includes('sr-1'), d.sync.appliedCommandIds);
+
+  // This push's own outgoing state was built and sent before its response
+  // (carrying setLevelCmd) came back, so the level only shows up on the *next*
+  // push's request body — same "once applied, rides the next snapshot" shape
+  // as the assign-book check above, one push later.
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  const third = t.syncBodies[t.syncBodies.length - 1];
+  check('the applied level rides the next state snapshot', third.state.readingSupportLevel === 'extra-support', third.state.readingSupportLevel);
+  d = await t.read();
+  check('a value outside the controlled vocabulary is rejected, previous level kept', d.readingSupportLevel === 'extra-support', d.readingSupportLevel);
+  check('the rejected command is still acked so it is never resent', d.sync.appliedCommandIds.includes('sr-2'), d.sync.appliedCommandIds);
 
   check('no page errors', t.errors.length === 0, t.errors);
   await t.close();
