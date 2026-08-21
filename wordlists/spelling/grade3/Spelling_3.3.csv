@@ -1,16 +1,16 @@
-word,hint,sentence,bonus
-pitch,"to throw a ball, or a level of sound",He can pitch the ball really fast.,
-drink,to swallow a liquid,Please drink your water before we leave.,
-swim,to move through water,We like to swim in the lake every summer.,
-life,the state of being alive,She lives a happy life on the farm.,
-while,during the same time as something else,I read a book while I waited for the bus.,
-I,"the pronoun for yourself, sounds like ""eye""",I am going to the store.,
-my,shows something belongs to you,This is my favorite book.,
-light,"not heavy, or something that helps you see",Please turn on the light in the hallway.,
-buy,"to purchase something with money, not ""by"" or ""bye""",We need to buy milk at the store.,
-eye,"the body part you see with, sounds like ""I""",She has one blue eye and one green eye.,
-which,"used to ask about a choice, not ""witch""",Which shirt do you want to wear today?,
-find,to discover or locate something,Can you help me find my shoes?,
-why,used to ask the reason for something,Why is the sky blue?,
-kind,"caring and gentle, or a type of thing",It was kind of her to share her lunch.,
-try,to attempt to do something,Please try your best on the test.,
+word,hint,sentence,bonus,misspellings
+pitch,"to throw a ball, or a level of sound",He can pitch the ball really fast.,,pich|pitche
+drink,to swallow a liquid,Please drink your water before we leave.,,dringk|drinck
+swim,to move through water,We like to swim in the lake every summer.,,swym|swimm
+life,the state of being alive,She lives a happy life on the farm.,,lyfe|lief
+while,during the same time as something else,I read a book while I waited for the bus.,,wile|whyle
+I,"the pronoun for yourself, sounds like ""eye""",I am going to the store.,,y|ie
+my,shows something belongs to you,This is my favorite book.,,mi|mie
+light,"not heavy, or something that helps you see",Please turn on the light in the hallway.,,lite|lyte
+buy,"to purchase something with money, not ""by"" or ""bye""",We need to buy milk at the store.,,bi|by
+eye,"the body part you see with, sounds like ""I""",She has one blue eye and one green eye.,,ie|iy
+which,"used to ask about a choice, not ""witch""",Which shirt do you want to wear today?,,wich|whitch
+find,to discover or locate something,Can you help me find my shoes?,,fynd|finde
+why,used to ask the reason for something,Why is the sky blue?,,wy|whie
+kind,"caring and gentle, or a type of thing",It was kind of her to share her lunch.,,kinde|kynd
+try,to attempt to do something,Please try your best on the test.,,tri|trie

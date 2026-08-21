@@ -948,7 +948,7 @@ function startSession(mode, listId) {
   let queue = shuffle([...main, ...review]);
   if (isTest) queue = [...queue, ...list.bonus.map(w => ({...w, type:"bonus", listId: list.id}))];
   if (!queue.length) { app.innerHTML = `<div class="card">This list is empty! Ask a parent to add words in the parent dashboard.</div>`; return; }
-  S = { mode, isTest, queue, idx: 0, attempts: 0, results: [], ...listStamp(list), coverIds: lists.map(l => l.id) };
+  S = { mode, isTest, queue, idx: 0, attempts: 0, misses: [], results: [], ...listStamp(list), coverIds: lists.map(l => l.id) };
   const C = cheers();
   const cheer = mode === "pretest" ? "Just show what you know — every answer helps!" : C[Math.floor(Math.random() * C.length)];
   const label = mode === "pretest" ? "&#128221; Pretest" : isTest ? "&#128221; Test time" : "&#127919; Practice time";
@@ -1039,9 +1039,25 @@ function kbBack() {
 // Every result row remembers the list its word came from, so a shared practice
 // sitting can still be read per-list afterwards (v6.4). Absent on review words,
 // which belong to the child rather than to any list.
-function resultRow(w, correct, attempts) {
+//
+// `missedAs` is what the child actually wrote when they got it wrong. It used
+// to be computed, compared, and thrown away — but a child's own misspelling is
+// the best distractor Spot the Spelling can offer, better than anything
+// generated or hand-written, because it is the error they really make.
+//
+// It is an array because Practice lets them try again: a word can be missed
+// twice and still end the sitting correct, and both misses are worth keeping.
+// Test mode contributes at most one. Recorded even on a row marked correct,
+// since "got there after two wrong tries" is exactly the word worth drilling.
+function resultRow(w, correct, attempts, misses) {
   const row = { word: w.word, correct, attempts, type: w.type };
   if (w.listId) row.listId = w.listId;
+  const seen = [];
+  for (const m of (Array.isArray(misses) ? misses : [misses])) {
+    const t = String(m || "").trim().toLowerCase();
+    if (t && t !== w.word.toLowerCase() && !seen.includes(t)) seen.push(t);
+  }
+  if (seen.length) row.missedAs = seen;
   return row;
 }
 function submitWord() {
@@ -1051,16 +1067,18 @@ function submitWord() {
   const correct = val.toLowerCase() === w.word.toLowerCase();
   S.attempts++;
   if (S.isTest) {
-    S.results.push(resultRow(w, correct, 1));
+    S.results.push(resultRow(w, correct, 1, [val]));
     S.typed = "";
     renderWord(correct ? "correct" : "wrong");
     setTimeout(nextWord, 1000);
   } else {
     if (correct) {
-      S.results.push(resultRow(w, true, S.attempts));
+      S.results.push(resultRow(w, true, S.attempts, S.misses));
       S.typed = "";
+      S.misses = [];
       renderWord("correct");
     } else {
+      (S.misses = S.misses || []).push(val);
       S.typed = "";
       renderWord("wrong");
       setTimeout(() => renderWord(), 1400);
@@ -1070,13 +1088,14 @@ function submitWord() {
 
 function revealWord() {
   const w = S.queue[S.idx];
-  S.results.push(resultRow(w, false, S.attempts));
+  S.results.push(resultRow(w, false, S.attempts, S.misses));
+  S.misses = [];
   renderWord("reveal");
 }
 
 function nextWord() {
   if (!S) return; // navigated away before a pending timer fired
-  S.idx++; S.attempts = 0; S.typed = "";
+  S.idx++; S.attempts = 0; S.typed = ""; S.misses = [];
   if (S.idx >= S.queue.length) return finishSession();
   renderWord();
   speak(S.queue[S.idx].word);
@@ -1374,7 +1393,47 @@ function finishRepeat() {
     </div>`;
 }
 // ---------- Spot the Spelling (recognition mini-game) ----------
-// Shared misspelling generator: reusable by future recognition games.
+//
+// Every distractor has to pass one test: READ IT ALOUD AND IT SAYS THE WORD.
+//
+// The generator this replaces transposed adjacent letters and doubled them at
+// random, which produced "levae", "ehlp", "ztay", "naother" — slips of the
+// fingers, not errors of the ear. A child rejects those on shape without ever
+// reading them, so the round is won at a glance and teaches nothing.
+//
+// Nothing below rearranges letters. Each rule respells a sound the way English
+// legitimately spells that same sound in some other word: ea->ee (leave /
+// leeve), ay->ai (stay / stai), ch->tch (much / mutch), x->ks (next / nekst),
+// ould->ood (should / shood). The candidate is wrong but pronounceable, so
+// rejecting it takes knowing what the word looks like — which is the thing
+// being practiced.
+//
+// Distractors come from three places, best first:
+//   1. the child's own recorded misspelling of this word (resultRow.missedAs)
+//   2. a curated alternative on the word (the CSV's `misspellings` column)
+//   3. this generator
+//
+// A regular word like `swim` has no interesting error to make, and still gets
+// a fair round ("swym"): easy rounds are worth keeping for the confidence, they
+// just must not be junk rounds. Difficulty comes from the word, not from how
+// mangled the distractor is.
+
+// Words the child is separately studying. A generated or curated distractor is
+// never allowed to be one of them — offering a word off their own list invites
+// them to file it away as a misspelling. Their *own* recorded errors are
+// exempt: if they really wrote it, it is the most honest round available.
+// The `misspellings` column: wrong spellings a parent wants Spot the Spelling
+// to offer for this word, pipe-separated ("beleeve|beleive"). Curation exists
+// for words the generator cannot reach — "said" is irregular enough that no
+// rule derives "sed" from it — and to let a parent pin the error their own
+// child actually makes.
+function parseMisspellings(raw) {
+  if (Array.isArray(raw)) raw = raw.join("|");
+  return String(raw || "")
+    .split(/[|;]/).map(s => s.trim().toLowerCase()).filter(Boolean)
+    .filter((s, i, a) => a.indexOf(s) === i);
+}
+
 function realWordSet() {
   const set = new Set();
   data.lists.forEach(l => { l.words.forEach(w => set.add(w.word)); l.bonus.forEach(w => set.add(w.word)); });
@@ -1382,57 +1441,174 @@ function realWordSet() {
   data.graduated.forEach(w => set.add(w.word));
   return set;
 }
-function generateMisspelling(word) {
-  const w = (word || "").toLowerCase();
-  const realWords = realWordSet();
-  const mutators = [];
-  // adjacent-letter transpose — universal fallback, works for any word length >= 2
-  if (w.length >= 2) mutators.push(() => {
-    const i = Math.floor(Math.random() * (w.length - 1));
-    const arr = w.split("");
-    [arr[i], arr[i+1]] = [arr[i+1], arr[i]];
-    return arr.join("");
-  });
-  // double a letter
-  mutators.push(() => {
-    const i = Math.floor(Math.random() * w.length);
-    return w.slice(0, i+1) + w[i] + w.slice(i+1);
-  });
-  // undouble a letter (only if the word actually has a double)
-  const doubles = [];
-  for (let i = 0; i < w.length - 1; i++) if (w[i] === w[i+1]) doubles.push(i);
-  if (doubles.length) mutators.push(() => {
-    const i = doubles[Math.floor(Math.random() * doubles.length)];
-    return w.slice(0, i) + w.slice(i+1);
-  });
-  // phonetic substitution table
-  [[/ie/, "ei"], [/ei/, "ie"], [/ph/, "f"], [/f/, "ph"], [/ck/, "k"], [/c/, "k"], [/k/, "c"], [/s/, "z"], [/z/, "s"]]
-    .forEach(([pat, repl]) => { if (pat.test(w)) mutators.push(() => w.replace(pat, repl)); });
-  // silent-letter drop (common patterns: trailing e, gh, leading kn/wr/gn, trailing mb)
-  [/e$/, /gh/, /^kn/, /^wr/, /mb$/, /^gn/]
-    .forEach(p => { if (p.test(w)) mutators.push(() => w.replace(p, "")); });
 
-  for (const fn of shuffle(mutators)) {
-    let result; try { result = fn(); } catch(e) { result = null; }
-    if (result && result !== w && !realWords.has(result)) return result;
+const VOWELS = "aeiou";
+const isVowel = ch => !!ch && VOWELS.includes(ch);
+
+// [pattern, replacement, rank]. Lower rank = more plausible as a real child's
+// spelling, and the lowest rank that produces anything wins — so a word with a
+// genuine vowel-team trap never falls through to a merely legal consonant swap.
+//
+// The anchors carry the weight. Unanchored `c`->`k` gives "kity" for city and
+// `s`->`z` gives "ztay" for stay: both change how the letters read, which is
+// exactly the junk this is replacing. `c`->`k` fires only before a, o, u; `s`
+// becomes `z` only where s already says /z/.
+const RESPELLINGS = [
+  // 1 — opaque spellings. Nothing in the sound tells you these, so a child
+  //     spelling by ear lands somewhere else and stays there. Best rounds.
+  [/ould$/, "ood", 1], [/ould$/, "ud", 1],
+  [/ough$/, "uff", 1], [/augh/, "aff", 1],
+  [/ove$/, "oov", 1], [/ove$/, "uve", 1],
+  [/ight$/, "ite", 1], [/ight$/, "yte", 1],
+  [/eigh/, "ay", 1],
+  [/ave$/, "av", 1], [/ive$/, "iv", 1], [/ove$/, "uv", 1],
+  [/^al(?=[a-z])/, "all", 1], [/uel$/, "ule", 1], [/uel$/, "ewl", 1],
+  [/ft(?=en$)/, "ff", 1], [/st(?=en$|le$)/, "s", 1],
+  // `kn` only loses its k before a, e, i, u: dropping it from "know" leaves
+  // "now", which reads as a different word entirely.
+  [/^wh/, "w", 1], [/^kn(?=[aeiu])/, "n", 1], [/^wr/, "r", 1], [/mb$/, "m", 1],
+
+  // 2 — vowel teams. English spells one long vowel several ways; picking the
+  //     wrong one is the commonest spelling error there is.
+  [/ea/, "ee", 2], [/ea/, "e", 2], [/ee/, "ea", 2], [/ee/, "ie", 2], [/ee/, "e", 2],
+  [/ie/, "ee", 2], [/ie/, "ei", 2], [/ei/, "ie", 2],
+  [/ay$/, "ai", 2], [/ay$/, "ey", 2], [/ai/, "ay", 2],
+  [/oa/, "o", 2], [/old$/, "oald", 2], [/ost$/, "oast", 2], [/ow$/, "oe", 2],
+  [/ou/, "oo", 2], [/ou/, "u", 2], [/oo/, "u", 2], [/oo/, "ou", 2],
+  [/ew$/, "ue", 2], [/ue$/, "ew", 2],
+  [/a([bcdfglmnprstvz])e$/, "ai$1e", 2], [/o([bcdfglmnprstvz])e$/, "oa$1e", 2],
+
+  // 3 — schwa. An unstressed vowel sounds like nothing in particular, so which
+  //     letter spells it is a coin toss for any speller.
+  [/it$/, "et", 3], [/et$/, "it", 3], [/en$/, "in", 3], [/in$/, "en", 3],
+  [/on$/, "en", 3], [/er$/, "ur", 3], [/er$/, "or", 3], [/or$/, "er", 3],
+  [/ar$/, "er", 3], [/le$/, "el", 3],
+
+  // 5 — consonants: the same sound, spelled another of the ways English spells
+  //     it. Legal and readable, but usually easy to reject. (Rank 4 is the
+  //     short-vowel swaps below, which matter more than these.)
+  [/y$/, "ee", 5], [/u([bcdfglmnprstvz])e$/, "oo$1e", 5],
+  [/tch/, "ch", 5], [/ch$/, "tch", 5],
+  [/ck/, "k", 5], [/ck/, "cc", 5], [/k$/, "ck", 5],
+  [/c(?=[aou])/, "k", 5], [/k(?=[aou])/, "c", 5],
+  [/nk$/, "ngk", 5], [/x/, "ks", 5],
+  [/ph/, "f", 5], [/f/, "ph", 5],
+  [/([aeiou])s([aeiou])/, "$1z$2", 5], [/se$/, "ze", 5], [/ce$/, "se", 5],
+];
+
+// Rank 4, and the one tier that does not respell the same sound: it swaps a
+// short vowel for its neighbour. catch/cetch, help/halp, many/meny,
+// habit/hebit. These are what a child who spells by ear actually writes,
+// because /ae/ and /e/ are genuinely hard to tell apart by sound alone — and
+// most of English's opaque vowels resolve to exactly this confusion. Skips any
+// vowel belonging to a team or doing silent-e duty, since those are not short.
+function shortVowelSwaps(w) {
+  const NEIGHBOURS = { a: ["e", "o"], e: ["a", "i"], i: ["e", "u"], o: ["u", "a"], u: ["o", "i"] };
+  const out = [];
+  for (let i = 0; i < w.length; i++) {
+    if (!NEIGHBOURS[w[i]]) continue;
+    if (isVowel(w[i - 1]) || isVowel(w[i + 1])) continue; // part of a vowel team
+    if (i === w.length - 1) continue;                     // a final vowel is not short
+    if (w[i + 2] === "e" && i + 3 === w.length) continue;  // silent e: the vowel is long
+    for (const alt of NEIGHBOURS[w[i]]) out.push(w.slice(0, i) + alt + w.slice(i + 1));
   }
-  // guaranteed fallback: try every transpose offset
-  for (let i = 0; i < w.length - 1; i++) {
-    const arr = w.split(""); [arr[i], arr[i+1]] = [arr[i+1], arr[i]];
-    const r = arr.join("");
-    if (r !== w && !realWords.has(r)) return r;
+  return out;
+}
+
+// Rank 6, and the reason no word ever has to be skipped for want of a
+// distractor. Doubling a consonant and adding a silent e are both ordinary
+// English spellings that leave the word readable — "stande" is wrong the way a
+// child is wrong, "stnad" is wrong the way a keyboard is wrong.
+function structuralVariants(w) {
+  const out = [];
+  const last = w[w.length - 1];
+  if (last && !isVowel(last)) out.push(w + last);
+  if (last !== "e") out.push(w + "e");
+  return out;
+}
+
+function plausibleDistractor(cand, word, banned) {
+  if (!cand || cand === word) return false;
+  if (cand.length < 2) return false;
+  if (/(.)\1\1/.test(cand)) return false;   // no triple letters — nothing reads that way
+  if (!/[aeiouy]/.test(cand)) return false; // a rule ate the only vowel
+  return !banned.has(cand);
+}
+
+// Shared generator: reusable by future recognition games.
+function generateMisspelling(word, banned) {
+  const w = (word || "").toLowerCase();
+  const ban = banned || realWordSet();
+  const byRank = new Map();
+  const offer = (cand, rank) => {
+    if (!plausibleDistractor(cand, w, ban)) return;
+    if (!byRank.has(rank)) byRank.set(rank, []);
+    if (!byRank.get(rank).includes(cand)) byRank.get(rank).push(cand);
+  };
+  for (const [pat, repl, rank] of RESPELLINGS) {
+    if (pat.test(w)) { try { offer(w.replace(pat, repl), rank); } catch (e) { /* skip */ } }
   }
-  // last resort: duplicate the final letter (always a different, non-empty string)
-  return w + (w[w.length-1] || "x");
+  shortVowelSwaps(w).forEach(c => offer(c, 4));
+  structuralVariants(w).forEach(c => offer(c, 6));
+
+  // The best rank that produced anything, then a free choice inside it, so the
+  // same word is not always shown against the same misspelling.
+  const ranks = [...byRank.keys()].sort((a, b) => a - b);
+  for (const r of ranks) {
+    const pool = byRank.get(r);
+    if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
+  }
+  return w + (w[w.length - 1] || "e"); // guaranteed non-empty, and still readable
+}
+
+// Every misspelling this child has actually written for this word, commonest
+// first — a spelling they have produced three times is more truly theirs than
+// a one-off slip. Read straight out of session history; nothing extra stored.
+function observedErrorsFor(word) {
+  const w = String(word || "").toLowerCase();
+  const counts = new Map();
+  for (const s of (data.sessions || [])) {
+    for (const r of (s.results || [])) {
+      if (String(r.word || "").toLowerCase() !== w) continue;
+      for (const m of (r.missedAs || [])) {
+        const t = String(m || "").toLowerCase();
+        if (t && t !== w) counts.set(t, (counts.get(t) || 0) + 1);
+      }
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+}
+
+// The three sources, best first. Returns at least one.
+function distractorsFor(wordObj) {
+  const word = String(wordObj.word || "").toLowerCase();
+  const banned = realWordSet();
+  const out = [];
+  const push = v => {
+    const t = String(v || "").trim().toLowerCase();
+    if (t && t !== word && !out.includes(t)) out.push(t);
+  };
+  observedErrorsFor(word).forEach(push);                       // exempt from `banned` (see realWordSet)
+  (wordObj.misspellings || []).forEach(c => {
+    if (plausibleDistractor(String(c || "").trim().toLowerCase(), word, banned)) push(c);
+  });
+  if (!out.length) push(generateMisspelling(word, banned));
+  if (!out.length) push(word + (word[word.length - 1] || "e"));
+  return out;
 }
 
 let SP = null;
 function startSpotIt() {
   const lists = practiceLists();
   const list = lists[0];
-  const mainWords = [...new Set(lists.flatMap(l => l.words.map(w => w.word)))];
-  const reviewWords = data.reviewWords.map(w => w.word).filter(w => !mainWords.includes(w));
-  const pool = shuffle([...mainWords, ...reviewWords]);
+  // Whole word objects, not just the spellings: the round needs the hint (so a
+  // homophone is answerable) and any curated misspellings the parent supplied.
+  const seen = new Set();
+  const candidates = [];
+  const add = w => { if (w && w.word && !seen.has(w.word)) { seen.add(w.word); candidates.push(w); } };
+  lists.forEach(l => l.words.forEach(add));
+  data.reviewWords.forEach(add);
+  const pool = shuffle(candidates);
   if (!pool.length) {
     SP = null; // no round started — don't leave a stale round from a previous game in memory
     app.innerHTML = `<div class="card">No words to play with yet! Ask a parent to add some words in the parent dashboard.</div>
@@ -1440,9 +1616,15 @@ function startSpotIt() {
     return;
   }
   const targetCount = Math.min(pool.length, 8 + Math.floor(Math.random() * 3)); // burst of 8-10, capped by pool size
-  const rounds = pool.slice(0, targetCount).map(word => ({
-    word, misspelled: generateMisspelling(word), correctSide: Math.random() < 0.5 ? "left" : "right",
-  }));
+  const rounds = pool.slice(0, targetCount).map(w => {
+    const options = distractorsFor(w);
+    return {
+      word: w.word,
+      hint: w.hint || "",
+      misspelled: options[Math.floor(Math.random() * options.length)],
+      correctSide: Math.random() < 0.5 ? "left" : "right",
+    };
+  });
   SP = { rounds, idx: 0, results: [], ...listStamp(list), coverIds: lists.map(l => l.id), locked: false, pickedSide: null };
   app.innerHTML = `
     <div class="card center" style="padding:40px">
@@ -1469,12 +1651,13 @@ function renderSpotItRound(fb) {
     <div class="card" style="padding:32px">
       <div style="font-size:14px;color:var(--muted);margin-bottom:20px">&#128269; Spot the Spelling &middot; round ${SP.idx+1} of ${SP.rounds.length}</div>
       <div class="muted center" style="margin-bottom:18px">Which one is spelled correctly?</div>
+      ${r.hint ? `<div class="hint">&#128161; ${esc(r.hint)}</div>` : ""}
       <div class="row" style="gap:14px;justify-content:center">
         <button ${locked?"disabled":""} class="spot-choice ${cls("left")}" style="font-size:24px;letter-spacing:.06em;padding:22px 20px;flex:1;max-width:220px" onclick="submitSpot('left')">${esc(leftWord)}</button>
         <button ${locked?"disabled":""} class="spot-choice ${cls("right")}" style="font-size:24px;letter-spacing:.06em;padding:22px 20px;flex:1;max-width:220px" onclick="submitSpot('right')">${esc(rightWord)}</button>
       </div>
       <div class="feedback center" id="fb" style="margin-top:18px">${
-        fb === "correct" ? '<span style="color:var(--green)">&#9989; Yes! That\'s the one!</span>' :
+        fb === "correct" ? `<span style="color:var(--green)">&#9989; Yes! <strong>${esc(r.word)}</strong> is the one!</span>` :
         fb === "wrong" ? `<span style="color:var(--danger)">Not quite &mdash; <strong>${esc(r.word)}</strong> is the real spelling.</span>` : ""
       }</div>
     </div>`;
@@ -1771,7 +1954,7 @@ function renderParent(view) {
     </div>`;
     html += `<div class="card">
       <div style="font-weight:700;margin-bottom:6px">Import words from CSV into &ldquo;${esc(sel.name)}&rdquo;</div>
-      <div class="muted" style="margin-bottom:10px">Columns: <strong>word, hint, sentence, bonus</strong> (bonus = yes/no; hint, sentence, and bonus are optional). A header row is fine.</div>
+      <div class="muted" style="margin-bottom:10px">Columns: <strong>word, hint, sentence, bonus, misspellings</strong> (bonus = yes/no; everything after <em>word</em> is optional). <em>misspellings</em> holds wrong spellings for Spot the Spelling, separated by <strong>|</strong> &mdash; e.g. <code>sed|sead</code>. A header row is fine.</div>
       <input type="file" id="csvFile" accept=".csv,.txt,text/csv,text/plain,text/comma-separated-values,application/vnd.ms-excel,application/csv" style="margin-bottom:10px">
       <button onclick="importCSV()">Import CSV</button>
       <div id="csvMsg" class="muted" style="margin-top:8px"></div>
@@ -1780,6 +1963,7 @@ function renderParent(view) {
       <input type="text" id="nw" placeholder="Word">
       <input type="text" id="nh" placeholder="Hint (kid-friendly definition)">
       <input type="text" id="ns" placeholder="Example sentence (read aloud)">
+      <input type="text" id="nm" placeholder="Common misspellings for Spot the Spelling, separated by | (optional)">
       <label><input type="checkbox" id="nb"> Bonus word (extra credit, no penalty if missed)</label>
       <button onclick="addWord()">Add word</button></div>
       <div class="card">
@@ -1905,12 +2089,14 @@ function importCSV() {
     const lines = reader.result.split(/\r?\n/).filter(l => l.trim());
     let added = 0, skipped = 0;
     lines.forEach((line, i) => {
-      const [word, hint, sentence, bonus] = parseCSVLine(line);
+      const [word, hint, sentence, bonus, misspellings] = parseCSVLine(line);
       if (!word) return;
       const w = word.toLowerCase();
       if (i === 0 && w === "word") return; // header row
       if ([...sel.words, ...sel.bonus].some(x => x.word === w)) { skipped++; return; }
       const entry = { word: w, hint: (hint || "A word you're learning."), sentence: (sentence || w) };
+      const alts = parseMisspellings(misspellings);
+      if (alts.length) entry.misspellings = alts;
       if ((bonus || "").toLowerCase().startsWith("y") || (bonus || "").toLowerCase() === "true") sel.bonus.push(entry);
       else sel.words.push(entry);
       added++;
@@ -1940,6 +2126,8 @@ function addWord() {
     hint: document.getElementById("nh").value.trim() || "A word you're learning.",
     sentence: document.getElementById("ns").value.trim() || word,
   };
+  const alts = parseMisspellings(document.getElementById("nm").value);
+  if (alts.length) entry.misspellings = alts;
   if (document.getElementById("nb").checked) sel.bonus.push(entry); else sel.words.push(entry);
   persist(); renderParent("words");
 }
@@ -2298,11 +2486,14 @@ function normalizeAssignedWords(items) {
     const word = String(raw.word || "").trim().toLowerCase();
     if (!word || seen.has(word)) continue;
     seen.add(word);
-    out.push({
+    const entry = {
       word,
       hint: String(raw.hint || "").trim() || "A word you're learning.",
       sentence: String(raw.sentence || "").trim() || word,
-    });
+    };
+    const alts = parseMisspellings(raw.misspellings);
+    if (alts.length) entry.misspellings = alts;
+    out.push(entry);
   }
   return out;
 }

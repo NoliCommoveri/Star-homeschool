@@ -1,16 +1,16 @@
-word,hint,sentence,bonus
-rocket,a vehicle that flies into space,The rocket launched high into the sky.,
-pocket,a small pouch sewn into clothing,He put his keys in his pocket.,
-hold,to carry or grip something,Can you hold my hand while we cross the street?,
-told,"past tense of ""tell""",She told me a funny story.,
-often,happening many times,We often go to the park after school.,
-grow,to get bigger over time,The sunflowers grow taller every week.,
-throne,the special chair a king or queen sits on,The king sat on his golden throne.,
-so,"used to show a result, sounds like ""sew""","It was raining, so we stayed inside.",
-sew,"to stitch fabric with a needle and thread, sounds like ""so""",Grandma will sew a button on my shirt.,
-most,the greatest amount,She ate the most cookies of everyone.,
-almost,"nearly, but not quite",We are almost home.,
-both,the two of them together,Both of my sisters like to draw.,
-coach,a person who trains a sports team,Our soccer coach taught us a new play.,
-open,not closed,Please open the door for me.,
-also,in addition; as well,"I like pizza, and I also like tacos.",
+word,hint,sentence,bonus,misspellings
+rocket,a vehicle that flies into space,The rocket launched high into the sky.,,rockit|roket
+pocket,a small pouch sewn into clothing,He put his keys in his pocket.,,pockit|poket
+hold,to carry or grip something,Can you hold my hand while we cross the street?,,hoald|holde
+told,"past tense of ""tell""",She told me a funny story.,,toald|tolde
+often,happening many times,We often go to the park after school.,,offen|offten
+grow,to get bigger over time,The sunflowers grow taller every week.,,gro|groe
+throne,the special chair a king or queen sits on,The king sat on his golden throne.,,thrown|throan
+so,"used to show a result, sounds like ""sew""","It was raining, so we stayed inside.",,soe|sowe
+sew,"to stitch fabric with a needle and thread, sounds like ""so""",Grandma will sew a button on my shirt.,,sow|sowe
+most,the greatest amount,She ate the most cookies of everyone.,,moast|mowst
+almost,"nearly, but not quite",We are almost home.,,allmost|almoast
+both,the two of them together,Both of my sisters like to draw.,,bothe|boath
+coach,a person who trains a sports team,Our soccer coach taught us a new play.,,coche|coatch
+open,not closed,Please open the door for me.,,opin|opun
+also,in addition; as well,"I like pizza, and I also like tacos.",,allso|alsoe

@@ -1,15 +1,15 @@
-word,hint,sentence,bonus
-said,"past tense of ""say""",She said she would be here soon.,
-ask,to request information,Can I ask you a question?,
-stand,to be on your feet,Please stand up and stretch.,
-catch,to grab something in the air,Try to catch the ball with both hands.,
-eight,"the number 8, not ""ate""",She counted eight stars in the sky.,
-afraid,feeling scared,The puppy was afraid of the thunder.,
-away,not here; at a distance,The bird flew away from the nest.,
-always,"every time, without exception",He always brushes his teeth before bed.,
-playing,having fun with a game or toy,The kids are playing in the yard.,
-waved,moved your hand to say hello or goodbye,She waved to her friend across the street.,
-takes,picks up or carries something,He takes his backpack to school every day.,
-than,"used to compare two things, not ""then""",My sister is taller than me.,
-great,"very good or large, not ""grate""",We had a great time at the party.,
-they,refers to more than one person,They are going to the park later.,
+word,hint,sentence,bonus,misspellings
+said,"past tense of ""say""",She said she would be here soon.,,sed|sead
+ask,to request information,Can I ask you a question?,,assk|asck
+stand,to be on your feet,Please stand up and stretch.,,stend|stande
+catch,to grab something in the air,Try to catch the ball with both hands.,,cetch|cach
+eight,"the number 8, not ""ate""",She counted eight stars in the sky.,,ayt|aight
+afraid,feeling scared,The puppy was afraid of the thunder.,,afrade|afraide
+away,not here; at a distance,The bird flew away from the nest.,,awey|awai
+always,"every time, without exception",He always brushes his teeth before bed.,,allways|alwais
+playing,having fun with a game or toy,The kids are playing in the yard.,,plaing|playin
+waved,moved your hand to say hello or goodbye,She waved to her friend across the street.,,wavd|wayved
+takes,picks up or carries something,He takes his backpack to school every day.,,taiks|takez
+than,"used to compare two things, not ""then""",My sister is taller than me.,,then|thann
+great,"very good or large, not ""grate""",We had a great time at the party.,,grate|grait
+they,refers to more than one person,They are going to the park later.,,thay|thae
