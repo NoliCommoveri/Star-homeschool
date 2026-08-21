@@ -1,15 +1,15 @@
-word,hint,sentence,bonus
-next,coming right after this one,It's your turn next.,
-left,the opposite direction of right,Turn left at the corner.,
-help,to give assistance,Can you help me carry these books?,
-please,a polite word used when asking,Please pass the salt.,
-believe,to think something is true,I believe you did your best.,
-many,a large number of something,There are many apples in the basket.,
-very,to a great degree,The soup is very hot.,
-been,"past participle of ""be""",I have been to that museum before.,
-seen,"past participle of ""see,"" sounds like ""scene""",Have you seen my keys anywhere?,
-she,refers to a girl or woman,She is my best friend.,
-between,in the middle of two things,The cat sat between the chair and the table.,
-three,the number 3,I have three brothers.,
-easy,not difficult,That math problem was easy for her.,
-leave,to go away from a place,We need to leave for school in five minutes.,
+word,hint,sentence,bonus,misspellings
+next,coming right after this one,It's your turn next.,,nekst|necst
+left,the opposite direction of right,Turn left at the corner.,,lefft|lefte
+help,to give assistance,Can you help me carry these books?,,halp|hilp
+please,a polite word used when asking,Please pass the salt.,,pleese|pleaze
+believe,to think something is true,I believe you did your best.,,beleeve|beleive
+many,a large number of something,There are many apples in the basket.,,meny|menny
+very,to a great degree,The soup is very hot.,,verry|varry
+been,"past participle of ""be""",I have been to that museum before.,,bin|bene
+seen,"past participle of ""see,"" sounds like ""scene""",Have you seen my keys anywhere?,,sene|seene
+she,refers to a girl or woman,She is my best friend.,,shee|shi
+between,in the middle of two things,The cat sat between the chair and the table.,,betwene|betwean
+three,the number 3,I have three brothers.,,thre|thrie
+easy,not difficult,That math problem was easy for her.,,easey|eezy
+leave,to go away from a place,We need to leave for school in five minutes.,,leeve|leve

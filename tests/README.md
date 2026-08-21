@@ -19,6 +19,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 | `api.test.mjs` | Node only | Every `functions/api/*` handler against a real SQLite database |
 | `child-apps.test.mjs` | Chromium | Spelling Star and Math Star in a browser |
 | `practice-sets.test.mjs` | Chromium | Spelling Star practice sets, per-list tests, list order |
+| `spot-the-spelling.test.mjs` | Chromium | Spelling Star's distractors: plausibility, the child's own errors, curation |
 | `parent-dashboard.test.mjs` | Chromium | `parent.html` against a mocked API |
 | `setup-wizard.test.mjs` | Chromium | First launch, and opening a profile saved by an older version |
 
@@ -65,6 +66,13 @@ the app keeps working and quietly does the wrong thing:
 - **Old profiles keep opening.** Every app's `load()` migrates tolerantly;
   there are checks that a pre-grade profile opens, is not silently graded, and
   is not rewritten just by being read.
+- **Spot the Spelling's wrong answer stays plausible.** A bad distractor is the
+  quietest failure in the repo: nothing crashes, no score moves, and the game
+  keeps running while it stops teaching — a child rejects "levae" on shape
+  without reading it and wins every round blind. The checks assert what cannot
+  be seen from a score: that no distractor is the word with a consonant moved,
+  that a vowel-team swap like "beleive" is still allowed through, and that a
+  misspelling the child actually wrote outranks anything generated.
 
 ## Adding to them
 
