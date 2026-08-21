@@ -15,6 +15,7 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 const SUITES = [
   { file: 'api.test.mjs', browser: false },
   { file: 'child-apps.test.mjs', browser: true },
+  { file: 'practice-sets.test.mjs', browser: true },
   { file: 'parent-dashboard.test.mjs', browser: true },
   { file: 'setup-wizard.test.mjs', browser: true },
 ];

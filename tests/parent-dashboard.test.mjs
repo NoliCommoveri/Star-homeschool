@@ -169,6 +169,17 @@ let cmd = posted.filter((p) => p.path === '/commands').pop();
 check('set-active-list posted', cmd.body.kind === 'set-active-list' && cmd.body.payload.listId === 'l99', cmd.body);
 check('confirmation shown', (await page.textContent('#app')).includes('Assigned'));
 
+// Order is what "the next list" means to the tablet, and the phone sends the
+// whole order rather than a move (spec §15.3).
+await page.click('#navAssign');
+await page.waitForTimeout(400);
+await page.click('tr:has-text("Week 11") button:has-text("▲")');
+await page.waitForTimeout(500);
+cmd = posted.filter((p) => p.path === '/commands').pop();
+check('reorder-lists posted', cmd.body.kind === 'reorder-lists', cmd.body.kind);
+check('it carries the whole order, moved by one', JSON.stringify(cmd.body.payload.order) === '["l99","starter"]', cmd.body.payload);
+check('the top list cannot be moved up', await page.isDisabled('tr:has-text("Starter Words") button:has-text("▲")'));
+
 console.log('\n[Assign — send a new list]');
 await page.fill('#newListName', 'Week 12');
 await page.fill('#newListWords', 'because\nfriend, tricky one, My friend is here.\n\nthrough');

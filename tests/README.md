@@ -6,8 +6,8 @@ npx playwright install chromium     # only for the browser suites
 npm test
 ```
 
-`npm test` runs all four suites and exits non-zero if any fail. If Chromium
-isn't available the three browser suites are **skipped, not failed**, so the
+`npm test` runs all five suites and exits non-zero if any fail. If Chromium
+isn't available the four browser suites are **skipped, not failed**, so the
 API suite still runs anywhere Node does.
 
 Individual suites are plain scripts — `node tests/api.test.mjs`.
@@ -18,6 +18,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 |---|---|---|
 | `api.test.mjs` | Node only | Every `functions/api/*` handler against a real SQLite database |
 | `child-apps.test.mjs` | Chromium | Spelling Star and Math Star in a browser |
+| `practice-sets.test.mjs` | Chromium | Spelling Star practice sets, per-list tests, list order |
 | `parent-dashboard.test.mjs` | Chromium | `parent.html` against a mocked API |
 | `setup-wizard.test.mjs` | Chromium | First launch, and opening a profile saved by an older version |
 
@@ -50,6 +51,17 @@ the app keeps working and quietly does the wrong thing:
   different years. If matching falls back to the name, last year's "Unit 1"
   satisfies this year's pretest gate — and an assigned list can overwrite the
   previous year's words outright. That last one is data loss.
+- **A test belongs to exactly one list** (spelling v6.4). Practicing several
+  lists together is allowed; recording a score against a list the child wasn't
+  tested on is not, because each list's title is an assignment in the parent's
+  gradebook. There are checks that a multi-list practice never writes a graded
+  row, that the child is asked which list a test is on, and that the sitting
+  carries that list's own name and grade.
+- **Nothing in the practice set destroys a list.** The feature this replaced
+  merged one list into another and deleted the source, so a mis-tap cost a
+  week of structure. There are checks that adding is uncommitted until it is
+  confirmed, that words never move between lists, and that removing a list
+  from the set leaves it whole.
 - **Old profiles keep opening.** Every app's `load()` migrates tolerantly;
   there are checks that a pre-grade profile opens, is not silently graded, and
   is not rewritten just by being read.

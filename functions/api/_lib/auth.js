@@ -55,6 +55,7 @@ export async function sha256Hex(input) {
 export const COMMAND_KINDS = [
   'assign-list',       // spelling: add/replace a word list, optionally make it active
   'set-active-list',   // spelling: switch which existing list is assigned
+  'reorder-lists',     // spelling: set the order of existing lists (drives "the next list")
   'assign-focus',      // math: add/replace a focus area, optionally make it active
   'set-active-focus',  // math: switch which existing focus area is assigned
   'delete-session',    // both: drop sessions from the tablet's own history
