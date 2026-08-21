@@ -943,12 +943,30 @@ function renderSpellingAssign(child, snapshot) {
     || [...new Set(lists.map((l) => l.grade).filter(Boolean))];
   const defaultGrade = snapshot.state.gradeLevel;
 
-  const rows = lists.map((l) => {
+  // Also practiced alongside the assigned one (spelling v6.4). Older tablets
+  // report no such field; an empty set then reads as "just the assigned list",
+  // which is exactly what those builds do.
+  const practiceIds = snapshot.state.practiceListIds || [];
+
+  const rows = lists.map((l, i) => {
     const isActive = l.id === activeId;
     const counts = `${l.wordCount} word${l.wordCount === 1 ? '' : 's'}${l.bonusCount ? ` + ${l.bonusCount} bonus` : ''}`;
+    // The full order with this one list moved by a step — the payload the
+    // tablet expects (§15.3), composed against the order it last reported.
+    const moved = (dir) => {
+      const ids = lists.map((x) => x.id);
+      const [id] = ids.splice(i, 1);
+      ids.splice(i + dir, 0, id);
+      return ids;
+    };
+    const orderBtn = (dir, glyph, label) => (
+      (dir < 0 ? i === 0 : i === lists.length - 1)
+        ? `<button disabled>${glyph}</button>`
+        : `<button onclick="${esc(`sendCommand('reorder-lists', ${JSON.stringify({ order: moved(dir) })}, ${JSON.stringify('Moved “' + l.name + '” ' + label)})`)}">${glyph}</button>`);
     return `<tr>
-      <td><strong>${esc(l.name)}</strong><br><span class="muted">${l.grade ? 'Grade ' + esc(l.grade) : 'Ungraded'}${l.desc ? ' · ' + esc(l.desc) : ''}</span></td>
+      <td><strong>${esc(l.name)}</strong>${isActive ? '' : practiceIds.includes(l.id) ? ' <span class="badge tone-graded">also practiced</span>' : ''}<br><span class="muted">${l.grade ? 'Grade ' + esc(l.grade) : 'Ungraded'}${l.desc ? ' · ' + esc(l.desc) : ''}</span></td>
       <td class="muted">${counts}</td>
+      <td style="white-space:nowrap">${orderBtn(-1, '&#9650;', 'up')} ${orderBtn(1, '&#9660;', 'down')}</td>
       <td>${isActive
         ? '<span class="badge ok">Assigned</span>'
         : `<button onclick="${esc(`sendCommand('set-active-list', ${JSON.stringify({ listId: l.id })}, ${JSON.stringify('Assigned “' + l.name + '”')})`)}">Assign</button>`}</td>
@@ -958,10 +976,10 @@ function renderSpellingAssign(child, snapshot) {
   return `
     <div class="card">
       <h2>Lists on the tablet</h2>
-      <p class="muted">Whichever one is assigned is what ${esc(child.name || 'they')} practises and gets tested on.</p>
+      <p class="muted">The assigned list is the one ${esc(child.name || 'they')} is working this week. Others can be practised alongside it from the tablet, but a test is always on a single list and is recorded under that list's own title. Order decides which list counts as “the next one”: use ▲▼ to change it.</p>
       <table>
-        <thead><tr><th>List</th><th>Size</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="3" class="muted">No lists reported.</td></tr>'}</tbody>
+        <thead><tr><th>List</th><th>Size</th><th>Order</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted">No lists reported.</td></tr>'}</tbody>
       </table>
     </div>
     <div class="card">
@@ -1276,6 +1294,7 @@ function describeCommand(cmd) {
   const p = cmd.payload || {};
   if (cmd.kind === 'assign-list') return `New list “${p.list?.name || '?'}” (${(p.list?.words || []).length} words)`;
   if (cmd.kind === 'set-active-list') return 'Switch the assigned list';
+  if (cmd.kind === 'reorder-lists') return `Reorder lists (${(p.order || []).length})`;
   if (cmd.kind === 'assign-focus') return `New focus area “${p.focus?.name || '?'}”`;
   if (cmd.kind === 'set-active-focus') return 'Switch the assigned focus area';
   if (cmd.kind === 'delete-session') return `Delete ${(p.sessionIds || []).length} session${(p.sessionIds || []).length === 1 ? '' : 's'}`;

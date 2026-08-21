@@ -1173,6 +1173,7 @@ no-scheduled-job trick §7 uses for expired pairing codes.
 |---|---|---|---|
 | `set-active-list` | spelling | `{ listId }` | assigns an existing list |
 | `assign-list` | spelling | `{ list: { name, desc?, words[], bonus?[], pretest? }, makeActive? }` | adds or replaces by name |
+| `reorder-lists` | spelling | `{ order: [listId] }` | reorders existing lists |
 | `set-active-focus` | math | `{ focusId }` | assigns an existing focus area |
 | `assign-focus` | math | `{ focus: { name, categories[] }, makeActive? }` | adds or replaces by name |
 | `delete-session` | both | `{ sessionIds[] }` | removes them from local history |
@@ -1185,6 +1186,15 @@ change rather than a backend deploy.
 **Replace-by-name, not append.** Re-sending a corrected list should fix the one
 the child already has, not leave two with the same name. Names are the identity
 here because ids are minted on whichever side created the thing.
+
+**`reorder-lists` sends the whole order, not a move.** A `{from, to}` move is
+only meaningful against the list order the sender was looking at, and the phone
+is looking at a snapshot (§15.4) that can be minutes old — a list added on the
+tablet in between would silently turn a move into the wrong move. The full order
+is idempotent instead, and the tablet reconciles: ids it does not recognise are
+skipped, and lists the phone never saw keep their relative position at the end
+rather than being dropped. Order matters because it is what "the next list"
+means to the child-led advance prompt; before v6.4 nothing could change it.
 
 **`/api/sessions/delete` does both halves in one call**, tombstoning the rows
 and queueing the command together. Two client calls would leave a window where

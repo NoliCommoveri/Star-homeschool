@@ -99,6 +99,37 @@
 
 <script>
 // ============================================================================
+// v6.4 build — "give me more words" is gone; practice sets replace it.
+// The old Merge folded the next list's words into the assigned one and then
+// retired the source list, which cost two things at once: a child could undo a
+// week of list structure with one mis-tap on the home screen, and a merged list
+// could only ever carry ONE test title, so a gradebook that tracks each list as
+// its own assignment had nothing to file the swallowed list under.
+// Practice sets keep the lists apart permanently:
+//   - data.practiceListIds names extra lists practiced alongside the assigned
+//     one. See My Words, Practice, Repeat and Spot the Spelling draw from the
+//     union of the set; nothing is copied, moved, or deleted, so every tap in
+//     this feature is reversible and an accidental one costs nothing.
+//   - Test and Pretest are always exactly ONE list. With extras in the set the
+//     child first picks the list they are testing on, and the sitting is
+//     stamped with that list's own id/name/grade exactly as a single-list test
+//     always was — that is what keeps one graded row per list title (§16), which
+//     is the whole point of the redesign.
+//   - Practice/Repeat/Spot sittings that span the set carry `coverIds` (every
+//     list they drew from) and a per-result `listId`. Repeat difficulty and the
+//     parent's reading of history use those through sessionCoversList();
+//     sessionMatchesList() is deliberately left alone, because it decides
+//     pretest gates, test-on-record and history grouping, and a shared practice
+//     sitting must never satisfy those for a list it only borrowed words from.
+// Also in this pass: list reordering, which never existed despite Settings
+// claiming it did — parent-area up/down and a `reorder-lists` command from the
+// phone dashboard — plus a gradebook CSV (one row per graded sitting) and a
+// Test scores card in the parent area, both keyed on the list's own title.
+// Removed: mergeEligible/startMergeIntro/confirmMergeStart/finishMergeDirect/
+// startMergePretest/finishMergePretest/renderMergeDone/renderNothingToMerge and
+// S.mergeContext. Lists already merged by v6.2/v6.3 are left as they are: the
+// merge was applied to the data, and inventing an un-merge would be a second
+// act of damage on top of the first.
 // v6.3 build — reliability/parent-control backport from Math Star v6, per
 // design review: corrupted-profile detection & recovery on the picker screen,
 // load()'s lastLoadError (distinguishes "no profile" from "unreadable
@@ -189,6 +220,9 @@ function freshData(childName, pin, scoring, gradeLevel) {
     repeatHard: 8,
     lists: [{ id: "starter", name: "Starter Words", desc: "", words: [], bonus: [], pretest: "global", grade: gradeLevel || "2" }],
     activeListId: "starter",
+    // Extra lists practiced alongside the assigned one (v6.4). Never includes
+    // activeListId — the assigned list is in the set by definition.
+    practiceListIds: [],
     reviewWords: [],
     sessions: [],
     schedule: defaultSchedule(),
@@ -226,6 +260,13 @@ function load(key) {
     if (d.advanceEnabled === undefined) d.advanceEnabled = false;
     if (d.advanceThreshold === undefined) d.advanceThreshold = 90;
     d.lists.forEach(l => { if (!l.pretest) l.pretest = "global"; });
+    // Practice sets (v6.4). Pruned on every load rather than trusted: a list
+    // named here can be deleted or assigned from the parent area or by a phone
+    // command, and everything downstream assumes these ids still resolve to a
+    // list that is not the assigned one.
+    if (!Array.isArray(d.practiceListIds)) d.practiceListIds = [];
+    d.practiceListIds = [...new Set(d.practiceListIds)]
+      .filter(id => id !== d.activeListId && (d.lists || []).some(l => l.id === id));
     // Grade arrives with no sensible default for lists that predate it, and
     // guessing one would silently mislabel a year of history. Left undefined
     // on purpose: the UI reads that as "Ungraded" and history records it as
@@ -261,8 +302,8 @@ function persist() {
   }
 }
 function saveFailedBannerHtml(kind) {
-  const detail = kind === "merge"
-    ? "This merge and its results may not be saved — if the app reloads before you free up space, the lists may look unmerged again."
+  const detail = kind === "practice-set"
+    ? "The change to which lists are being practiced may not be saved — if the app reloads before you free up space, it may go back to how it was. No words or scores were lost either way."
     : kind === "history-only"
     ? "The activity above is real, but the device may be low on storage, so it wasn't saved to history."
     : "The score below is real, but the device may be low on storage, so it wasn't saved to history or results.";
@@ -272,6 +313,54 @@ function saveFailedBannerHtml(kind) {
   </div>`;
 }
 function activeList() { return data.lists.find(l => l.id === data.activeListId) || data.lists[0]; }
+
+// ---------- Practice sets (v6.4, replacing Merge) ----------
+// The set is derived from ids on every read and never cached: the assigned list
+// is always in it and always first, extras follow in data.lists order so the
+// child meets them in the order the parent arranged. Nothing here copies a word
+// from one list into another — that is the property that makes an accidental
+// tap free to undo, which is what the old Merge could never offer.
+function practiceLists() {
+  const active = activeList();
+  const extras = data.lists.filter(l =>
+    (!active || l.id !== active.id) && (data.practiceListIds || []).includes(l.id));
+  return active ? [active, ...extras] : extras;
+}
+function practiceExtras() { return practiceLists().slice(1); }
+function practiceIsMulti() { return practiceExtras().length > 0; }
+// A list whose parent asked for a pretest, that has never been sat, would be
+// gated if it were assigned. It cannot be practiced as an extra either: letting
+// it in would be the back door around the gate, since Practice on the set would
+// expose exactly the words the pretest is supposed to measure cold.
+function practiceGateBlocks(list) {
+  return pretestRequired(list) && !data.sessions.some(s => sessionMatchesList(s, list));
+}
+function addablePracticeLists() {
+  const inSet = new Set(practiceLists().map(l => l.id));
+  return data.lists.filter(l => !inSet.has(l.id) && !practiceGateBlocks(l));
+}
+// Called after anything that can change which lists exist or which is assigned.
+// Cheap, idempotent, and the single place the two invariants live: ids resolve,
+// and the assigned list is never also listed as an extra.
+function prunePracticeSet() {
+  const ids = new Set(data.lists.map(l => l.id));
+  data.practiceListIds = [...new Set(data.practiceListIds || [])]
+    .filter(id => id !== data.activeListId && ids.has(id));
+}
+function addPracticeList(id) {
+  const list = data.lists.find(l => l.id === id);
+  if (!list || id === data.activeListId) return false;
+  if ((data.practiceListIds || []).includes(id)) return false;
+  if (practiceGateBlocks(list)) return false;
+  data.practiceListIds = [...(data.practiceListIds || []), id];
+  prunePracticeSet();
+  return true;
+}
+function removePracticeList(id) {
+  const before = (data.practiceListIds || []).length;
+  data.practiceListIds = (data.practiceListIds || []).filter(x => x !== id);
+  return data.practiceListIds.length !== before;
+}
 
 // ---------- Which sessions belong to a list (parent-sync-spec §16) ----------
 // Sessions used to record only `listName`, so every lookup below joined on a
@@ -298,12 +387,30 @@ function listStamp(list) {
 function carryListStamp(state) {
   return { listName: state.listName, listId: state.listId, listGrade: state.listGrade };
 }
+// Written only when a sitting really did span more than one list, so a
+// single-list session record is byte-for-byte what it always was and nothing
+// downstream has to learn a new shape to read old history (v6.4).
+function coverStamp(state) {
+  const ids = Array.isArray(state.coverIds) ? state.coverIds : [];
+  return ids.length > 1 ? { coverIds: ids } : {};
+}
 function sessionMatchesList(s, list) {
   if (!list) return false;
   if (s.listId) return s.listId === list.id;
   return s.listName === list.name;
 }
 function sessionsForList(list) { return data.sessions.filter(s => sessionMatchesList(s, list)); }
+// "Did this sitting touch this list at all" — a different question from the one
+// sessionMatchesList answers, and only ever asked by ungraded lookups (Repeat
+// difficulty). A multi-list practice sitting is stamped with the assigned list
+// but carries coverIds for every list it drew words from (v6.4). Keeping this
+// separate is deliberate: pretest gates, "has a test on record", advancement and
+// history grouping all run through sessionMatchesList, and none of them may be
+// satisfied by a list that merely lent its words to a shared practice run.
+function sessionCoversList(s, list) {
+  if (sessionMatchesList(s, list)) return true;
+  return !!list && Array.isArray(s.coverIds) && s.coverIds.includes(list.id);
+}
 // The key a session groups under in the results views. Prefers the id so two
 // same-named lists stay apart; older sessions group by name as they always did.
 function sessionListKey(s) { return s.listId || ("name:" + (s.listName || "Untitled list")); }
@@ -348,22 +455,25 @@ function tryAdvance() {
   if (!next) return; // shouldn't happen if the button was correctly gated
   if (!confirm(`Move on from "${list.name}" to "${next.name}"? You can always come back and practice old lists later.`)) return;
   data.activeListId = next.id;
+  // The new assigned list may have been an extra a moment ago; it is the primary
+  // now, and the invariant is that it is never both.
+  prunePracticeSet();
   persist();
   renderHome();
 }
 
-// ---------- Merge: "give me more words" (design v6 §2.3, gating revised v6.1 §2) ----------
-// Shares data.advanceEnabled with Advance — no separate mergeEnabled field (v6.1 §2).
-function mergeEligible() {
+// ---------- Practice sets: the child-facing door (v6.4, replacing Merge) ----------
+// Shares data.advanceEnabled with Advance, as Merge did (v6.1 §2). Unlike Merge
+// there is no "tested lists advance, not merge" rule: adding a list to practice
+// takes nothing away and changes no score, so a child who has already tested may
+// still want another list's words in the mix. The gate check stays — a child who
+// owes a pretest on the assigned list should be taking it, not shopping for more
+// words — and so does the requirement that there be something to show: either a
+// list that could be added, or an extra already in the set that could be dropped.
+function practiceSetOfferable() {
   if (!data.advanceEnabled) return false;
-  // Fix beyond spec: a freshly-assigned, pretest-gated list has zero sessions,
-  // which also satisfies "!hasTestSession" below — without this check a gated
-  // list would show both the pretest banner and "give me more words" at once.
   if (pretestGateActive()) return false;
-  const list = activeList();
-  if (hasTestSession(list)) return false; // tested lists advance, not merge
-  const next = nextListFor(list);
-  return !!next && (next.words.length + next.bonus.length) > 0;
+  return addablePracticeLists().length > 0 || practiceExtras().length > 0;
 }
 function applyTheme() {
   document.body.dataset.theme = data && data.theme !== "classic" ? data.theme : "";
@@ -395,7 +505,7 @@ function lockAndHome() { parentUnlocked = false; go("home"); }
 let currentView = "home";
 function go(view) {
   SP = null; // cancel any pending Spot the Spelling auto-advance — a stale timer must not fire post-navigation
-  S = null;  // same discipline: a pending Practice/Test/Pretest/merge-pretest timer must not fire post-navigation
+  S = null;  // same discipline: a pending Practice/Test/Pretest timer must not fire post-navigation
   RP = null; // same discipline for Repeat
   currentView = view;
   // Navigating just cleared every in-progress session, so anything a parent
@@ -408,9 +518,13 @@ function go(view) {
   if (view === "study") { if (!today.studyEnabled || pretestGateActive()) return renderHome(); return renderStudy(); }
   if (view === "repeat") { if (!today.repeatEnabled || pretestGateActive()) return renderHome(); return startRepeat(); }
   if (view === "practice") { if (!today.practiceEnabled || pretestGateActive()) return renderHome(); return startSession("practice"); }
-  if (view === "test") { if (!today.testEnabled || pretestGateActive()) return renderHome(); return startSession("test"); }
+  // A Test is always one list (v6.4). With extras in the practice set the child
+  // chooses which one first, because that choice is what the score is filed
+  // under — picking it for them is exactly the guesswork the redesign removes.
+  if (view === "test") { if (!today.testEnabled || pretestGateActive()) return renderHome(); return practiceIsMulti() ? renderTestPicker() : startSession("test"); }
   if (view === "pretest") { if (!pretestGateActive()) return renderHome(); return startSession("pretest"); }
   if (view === "games") { if (!data.gamesEnabled || !today.gamesEnabled || pretestGateActive()) return renderHome(); return renderGames(); }
+  if (view === "practiceset") { if (!practiceSetOfferable()) return renderHome(); return renderPracticeSet(); }
   if (view === "kidsettings") return renderKidSettings();
   if (view === "parent") return parentGate();
 }
@@ -583,7 +697,7 @@ function renderHome() {
   const b = banners[today.activity];
   const gated = pretestGateActive();
   const advanceReady = advanceEligible();
-  const mergeReady = mergeEligible();
+  const extras = practiceExtras();
   const actions = gated ? `
       <div style="background:var(--accent-soft);border-radius:14px;padding:16px 20px;font-size:17px;font-weight:600;color:var(--accent);margin-bottom:18px">New list! Take a quick pretest first so we can see which words you already know. No pressure — it's just a starting point!</div>
       <div style="display:flex;flex-direction:column;gap:14px;align-items:center">
@@ -605,18 +719,18 @@ function renderHome() {
     ${b && !gated ? `<div class="card center" style="background:${b.bg};padding:16px;font-size:19px;font-weight:700;color:${b.color}">${b.text}</div>` : ""}
     <div class="card center" style="padding:36px">
       <div style="font-size:20px;margin-bottom:6px">What would you like to do today?</div>
-      <div class="muted" style="margin-bottom:22px">This week's list: <strong>${esc(list.name)}</strong></div>
+      <div class="muted" style="margin-bottom:${extras.length?"8px":"22px"}">This week's list: <strong>${esc(list.name)}</strong></div>
+      ${extras.length ? `<div class="muted" style="margin-bottom:22px">Also practicing: ${extras.map(l => `<strong>${esc(l.name)}</strong>`).join(", ")} &middot; a test is always on one list</div>` : ""}
       ${actions}
     </div>
     ${advanceReady ? `<div class="card center" style="background:var(--green-soft);padding:20px">
       <div style="font-size:18px;font-weight:700;color:var(--green-dark);margin-bottom:12px">You aced "${esc(list.name)}"! Ready for the next list?</div>
       <button class="big green" onclick="tryAdvance()">Yes, let's go! &rarr;</button>
     </div>` : ""}
-    ${mergeReady ? `<div class="card center" style="background:var(--accent-soft);padding:20px">
-      <div style="font-size:18px;font-weight:700;color:var(--accent);margin-bottom:12px">Want more words on "${esc(list.name)}"?</div>
-      <button class="big" onclick="startMergeIntro()">Give me more words! &rarr;</button>
-    </div>` : ""}
     ${last ? `<div class="card" style="cursor:pointer" onclick="renderLastResults()"><div class="muted">Last session</div><div style="font-size:17px;font-weight:600">${last.mode==="test"?`Test — ${fmtTest(last)}`:last.mode==="pretest"?`Pretest — ${fmtTest(last)}`:last.mode==="repeat"?"Repeat session":last.mode==="spotit"?"Spot the Spelling game":"Practice session"}${last.listName?` · ${esc(last.listName)}`:""} · ${new Date(last.date).toLocaleDateString()}</div><div class="muted" style="margin-top:4px">Tap to see how you did &rarr;</div></div>` : ""}
+    ${practiceSetOfferable() ? `<div class="center" style="margin-bottom:10px">
+      <button class="outline" style="font-size:14px;padding:8px 16px" onclick="go('practiceset')">&#128218; Choose lists to practice</button>
+    </div>` : ""}
     <div class="center">
       <button class="link" onclick="go('kidsettings')">&#9881;&#65039; My settings</button>
       ${listProfiles().length > 1 ? `<button class="link" onclick="parentUnlocked=false;renderPicker()">Switch child</button>` : ""}
@@ -668,25 +782,31 @@ function renderKidSettings() {
 function setKid(field, value) { data[field] = value; persist(); applyTheme(); renderKidSettings(); }
 
 // ---------- Study view ----------
+// One card per list in the practice set (v6.4). Lists stay visually separate
+// here for the same reason they stay separate in the data: the child should
+// always be able to see which words belong to which list, because that is what
+// a test will be on.
 function renderStudy() {
-  const list = activeList();
+  const lists = practiceLists();
   const wordRow = w => `
     <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
       <span style="font-size:24px;font-weight:800;letter-spacing:.1em;min-width:140px">${esc(w.word)}</span>
       <button class="outline" onclick="speak('${esc(w.word)}')">&#128266;</button>
       <span style="font-size:15px;color:var(--body-text);flex:1;min-width:180px;line-height:1.5">&#128161; ${esc(w.hint)}</span>
     </div>`;
-  app.innerHTML = `
+  const listCard = (list, i) => `
     <div class="card">
-      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px">&#128218; My words</div>
+      ${i === 0 ? `<div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px">&#128218; My words</div>` : ""}
       <h2 style="margin:0 0 4px;font-weight:800">${esc(list.name)}</h2>
       ${list.desc ? `<div style="font-size:16px;color:var(--body-text);margin-bottom:8px;line-height:1.5">${esc(list.desc)}</div>` : ""}
-      <div class="muted" style="margin-bottom:6px">Tap &#128266; to hear any word. Look closely at how each one is spelled!</div>
+      ${i === 0 ? `<div class="muted" style="margin-bottom:6px">Tap &#128266; to hear any word. Look closely at how each one is spelled!</div>` : ""}
       ${list.words.map(wordRow).join("") || '<div class="muted" style="padding:12px 0">No words yet — ask a parent to add some!</div>'}
       ${list.bonus.length ? `
         <div style="margin-top:18px;font-weight:700" class="bonus-tag">&#10024; Bonus words — extra credit if you spell these!</div>
         ${list.bonus.map(wordRow).join("")}` : ""}
-    </div>
+    </div>`;
+  app.innerHTML = `
+    ${lists.map(listCard).join("")}
     <div class="center" style="margin-top:6px">
       <button class="big" onclick="go('practice')">&#127919; Start practicing</button>
     </div>`;
@@ -807,25 +927,37 @@ function cheers() {
     "Mistakes are how we learn. Let's go!",
   ];
 }
-function startSession(mode) {
+// `listId` is only ever passed for a Test the child chose from the picker. A
+// graded sitting is one list, always — Practice is the only mode that spans the
+// practice set, and it is the only mode whose score nobody records (v6.4).
+function startSession(mode, listId) {
   const isTest = mode !== "practice";
-  const list = activeList();
-  const main = list.words.map(w => ({...w, type:"main"}));
-  const mainWords = new Set(main.map(w => w.word));
-  const review = data.reviewWords.filter(w => !mainWords.has(w.word)).map(w => ({...w, type:"review"}));
+  const list = (listId && data.lists.find(l => l.id === listId)) || activeList();
+  const lists = isTest ? [list] : practiceLists();
+  // Two lists can legitimately share a word; the child should spell it once.
+  // First list in the set wins the attribution, which is the assigned list
+  // wherever there is any doubt.
+  const seen = new Set();
+  const main = [];
+  lists.forEach(l => l.words.forEach(w => {
+    if (seen.has(w.word)) return;
+    seen.add(w.word);
+    main.push({ ...w, type: "main", listId: l.id });
+  }));
+  const review = data.reviewWords.filter(w => !seen.has(w.word)).map(w => ({...w, type:"review"}));
   let queue = shuffle([...main, ...review]);
-  if (isTest) queue = [...queue, ...list.bonus.map(w => ({...w, type:"bonus"}))];
+  if (isTest) queue = [...queue, ...list.bonus.map(w => ({...w, type:"bonus", listId: list.id}))];
   if (!queue.length) { app.innerHTML = `<div class="card">This list is empty! Ask a parent to add words in the parent dashboard.</div>`; return; }
-  S = { mode, isTest, queue, idx: 0, attempts: 0, results: [], ...listStamp(list) };
+  S = { mode, isTest, queue, idx: 0, attempts: 0, results: [], ...listStamp(list), coverIds: lists.map(l => l.id) };
   const C = cheers();
   const cheer = mode === "pretest" ? "Just show what you know — every answer helps!" : C[Math.floor(Math.random() * C.length)];
   const label = mode === "pretest" ? "&#128221; Pretest" : isTest ? "&#128221; Test time" : "&#127919; Practice time";
   app.innerHTML = `
     <div class="card center" style="padding:40px">
       <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">${label}</div>
-      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${esc(list.name)}</h2>
-      ${list.desc ? `<div style="font-size:17px;color:var(--body-text);margin-bottom:14px;line-height:1.5">${esc(list.desc)}</div>` : ""}
-      <div class="muted" style="margin-bottom:20px">${queue.length} words today</div>
+      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${lists.length > 1 ? lists.map(l => esc(l.name)).join(" + ") : esc(list.name)}</h2>
+      ${lists.length === 1 && list.desc ? `<div style="font-size:17px;color:var(--body-text);margin-bottom:14px;line-height:1.5">${esc(list.desc)}</div>` : ""}
+      <div class="muted" style="margin-bottom:20px">${queue.length} words today${lists.length > 1 ? ` from ${lists.length} lists` : ""}</div>
       <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">${cheer}</div>
       <button class="big green" onclick="beginSession()">Let's start! &rarr;</button>
     </div>`;
@@ -904,6 +1036,14 @@ function kbBack() {
   document.getElementById("spellInput").value = S.typed;
 }
 
+// Every result row remembers the list its word came from, so a shared practice
+// sitting can still be read per-list afterwards (v6.4). Absent on review words,
+// which belong to the child rather than to any list.
+function resultRow(w, correct, attempts) {
+  const row = { word: w.word, correct, attempts, type: w.type };
+  if (w.listId) row.listId = w.listId;
+  return row;
+}
 function submitWord() {
   const val = (S.typed || "").trim();
   if (!val) return;
@@ -911,13 +1051,13 @@ function submitWord() {
   const correct = val.toLowerCase() === w.word.toLowerCase();
   S.attempts++;
   if (S.isTest) {
-    S.results.push({ word: w.word, correct, attempts: 1, type: w.type });
+    S.results.push(resultRow(w, correct, 1));
     S.typed = "";
     renderWord(correct ? "correct" : "wrong");
     setTimeout(nextWord, 1000);
   } else {
     if (correct) {
-      S.results.push({ word: w.word, correct: true, attempts: S.attempts, type: w.type });
+      S.results.push(resultRow(w, true, S.attempts));
       S.typed = "";
       renderWord("correct");
     } else {
@@ -930,14 +1070,14 @@ function submitWord() {
 
 function revealWord() {
   const w = S.queue[S.idx];
-  S.results.push({ word: w.word, correct: false, attempts: S.attempts, type: w.type });
+  S.results.push(resultRow(w, false, S.attempts));
   renderWord("reveal");
 }
 
 function nextWord() {
   if (!S) return; // navigated away before a pending timer fired
   S.idx++; S.attempts = 0; S.typed = "";
-  if (S.idx >= S.queue.length) return S.mergeContext ? finishMergePretest() : finishSession();
+  if (S.idx >= S.queue.length) return finishSession();
   renderWord();
   speak(S.queue[S.idx].word);
 }
@@ -947,6 +1087,7 @@ function finishSession() {
   const bonusEarned = S.results.filter(r => r.type === "bonus" && r.correct).length;
   const session = {
     id: Date.now(), date: new Date().toISOString(), mode: S.mode, ...carryListStamp(S),
+    ...coverStamp(S),
     results: S.results,
     score: Math.min(mainR.filter(r => r.correct).length + bonusEarned, mainR.length),
     total: mainR.length, bonusEarned,
@@ -992,146 +1133,137 @@ function finishSession() {
     </div>`;
 }
 
-// ---------- Merge: "give me more words" (design v6 §2.3) ----------
-function startMergeIntro() {
-  const list = activeList();
-  const next = nextListFor(list);
-  if (!next) return renderHome(); // shouldn't happen if the button was correctly gated
-  const existing = new Set([...list.words, ...list.bonus].map(w => w.word));
-  const newMain = next.words.filter(w => !existing.has(w.word));
-  const newBonus = next.bonus.filter(w => !existing.has(w.word));
-  const addCount = newMain.length + newBonus.length;
-  if (!addCount) return renderNothingToMerge(next);
+// ---------- Practice sets: child-facing screens (v6.4, replacing Merge) ----------
+// Two taps to change anything, and the second one names the list out loud. That
+// is the whole misfire fix on the child's side; the deeper one is that neither
+// tap can destroy a list, so the worst an accident does here is add or remove
+// practice words, undoable from this same screen.
+function renderPracticeSet() {
+  const active = activeList();
+  const extras = practiceExtras();
+  const addable = addablePracticeLists();
+  const row = (l, inSet) => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <div style="flex:1;min-width:180px">
+        <div style="font-weight:700;font-size:17px">${esc(l.name)}</div>
+        <div class="muted">${l.words.length} word${l.words.length===1?"":"s"}${l.bonus.length?` + ${l.bonus.length} bonus`:""}</div>
+      </div>
+      ${inSet
+        ? `<button class="outline" onclick="askRemovePracticeList('${esc(l.id)}')">Take out</button>`
+        : `<button onclick="askAddPracticeList('${esc(l.id)}')">Add</button>`}
+    </div>`;
+  app.innerHTML = `
+    <div class="card">
+      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px">&#128218; Lists I'm practicing</div>
+      <div class="muted" style="margin-bottom:14px">Practicing more than one list mixes their words into See My Words, Practice, Repeat and Games. Your tests never mix: a test is always on one list, and your score is saved under that list's name.</div>
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:700;font-size:17px">${esc(active.name)}</div>
+          <div class="muted">${active.words.length} word${active.words.length===1?"":"s"}${active.bonus.length?` + ${active.bonus.length} bonus`:""}</div>
+        </div>
+        <span class="assigned-badge">THIS WEEK</span>
+      </div>
+      ${extras.map(l => row(l, true)).join("")}
+      ${addable.length ? `
+        <div style="font-weight:700;margin:18px 0 2px">Add another list</div>
+        ${addable.map(l => row(l, false)).join("")}`
+        : `<div class="muted" style="margin-top:16px">There are no other lists to add right now.</div>`}
+    </div>
+    <div class="center"><button class="big outline" onclick="go('home')">Back</button></div>`;
+}
+// Step two: the list is named, and so is the consequence. Nothing has changed yet.
+function askAddPracticeList(id) {
+  const list = data.lists.find(l => l.id === id);
+  if (!list || !addablePracticeLists().some(l => l.id === id)) return renderPracticeSet();
   app.innerHTML = `
     <div class="card center" style="padding:40px">
-      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#127881; Give me more words!</div>
-      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${esc(list.name)}</h2>
-      <div class="muted" style="margin-bottom:20px">Adding ${addCount} new word${addCount===1?"":"s"} from "${esc(next.name)}".</div>
-      <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">${pretestRequired(list) ? "We'll check what you already know first — no pressure!" : "These words will be added to your list right away."}</div>
+      <div style="font-size:34px;margin-bottom:8px">&#128218;</div>
+      <h2 style="margin:0 0 8px;font-weight:800;font-size:24px">Practice "${esc(list.name)}" too?</h2>
+      <div class="muted" style="margin-bottom:22px">Its ${list.words.length} word${list.words.length===1?"":"s"} will join your practice. "${esc(activeList().name)}" stays your list for this week, and each list keeps its own test.</div>
       <div class="row" style="justify-content:center">
-        <button class="big green" onclick="confirmMergeStart()">Let's do it! &rarr;</button>
-        <button class="outline" onclick="go('home')">Not now</button>
+        <button class="big green" onclick="doAddPracticeList('${esc(list.id)}')">Yes, add it</button>
+        <button class="outline" onclick="go('practiceset')">No thanks</button>
       </div>
     </div>`;
 }
-function renderNothingToMerge(next) {
+function askRemovePracticeList(id) {
+  const list = data.lists.find(l => l.id === id);
+  if (!list) return renderPracticeSet();
   app.innerHTML = `
     <div class="card center" style="padding:40px">
-      <div style="font-size:34px;margin-bottom:10px">&#129300;</div>
-      <div style="font-weight:700;font-size:18px;margin-bottom:8px">Looks like "${esc(next.name)}" doesn't have any new words for you!</div>
-      <div class="muted">Nothing to add right now.</div>
-      <div style="margin-top:20px"><button class="big" onclick="go('home')">Back</button></div>
+      <div style="font-size:34px;margin-bottom:8px">&#128218;</div>
+      <h2 style="margin:0 0 8px;font-weight:800;font-size:24px">Stop practicing "${esc(list.name)}"?</h2>
+      <div class="muted" style="margin-bottom:22px">Its words come out of your practice. The list itself stays exactly where it is, with all its words and every score you've earned on it.</div>
+      <div class="row" style="justify-content:center">
+        <button class="big" onclick="doRemovePracticeList('${esc(list.id)}')">Yes, take it out</button>
+        <button class="outline" onclick="go('practiceset')">Keep it</button>
+      </div>
     </div>`;
 }
-function confirmMergeStart() {
-  const list = activeList();
-  const next = nextListFor(list);
-  if (!next) return renderHome();
-  const existing = new Set([...list.words, ...list.bonus].map(w => w.word));
-  const newMain = next.words.filter(w => !existing.has(w.word));
-  const newBonus = next.bonus.filter(w => !existing.has(w.word));
-  if (!newMain.length && !newBonus.length) return renderNothingToMerge(next);
-  if (!pretestRequired(list)) return finishMergeDirect(next, newMain, newBonus);
-  // Always duplicate the latest pretest for this list, not the original — a
-  // second merge needs to build on the combined result of the first (v6 §2.3.3).
-  const latestPretest = [...data.sessions].reverse().find(s => s.mode === "pretest" && sessionMatchesList(s, list));
-  startMergePretest(next, newMain, newBonus, latestPretest);
-}
-function finishMergeDirect(next, newMain, newBonus) {
-  const list = activeList();
-  const addCount = newMain.length + newBonus.length;
-  list.words.push(...newMain);
-  list.bonus.push(...newBonus);
-  data.lists = data.lists.filter(l => l.id !== next.id); // retire the source list
-  const saved = persist();
-  renderMergeDone(null, false, addCount, next.name, saved);
-}
-function startMergePretest(next, newMain, newBonus, latestPretest) {
-  const list = activeList();
-  // If there's a baseline pretest, only test the delta — words we already have
-  // honest data on aren't re-tested. If there's no baseline (pretest requirement
-  // turned on after this list was already active), test the full combined set.
-  const mainQueue = latestPretest ? newMain : [...list.words, ...newMain];
-  const bonusQueue = latestPretest ? newBonus : [...list.bonus, ...newBonus];
-  // Review words are deliberately excluded — this measures the new/combined
-  // list content specifically, not a general refresher (v6 §2.3.3).
-  const queue = shuffle([
-    ...mainQueue.map(w => ({...w, type:"main"})),
-    ...bonusQueue.map(w => ({...w, type:"bonus"})),
-  ]);
-  if (!queue.length) return renderNothingToMerge(next);
-  S = {
-    mode: "pretest", isTest: true, queue, idx: 0, attempts: 0, results: [], ...listStamp(list),
-    mergeContext: { next, newMain, newBonus, latestPretest },
-  };
-  app.innerHTML = `
-    <div class="card center" style="padding:40px">
-      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#128221; Pretest &mdash; adding words from "${esc(next.name)}"</div>
-      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${esc(list.name)}</h2>
-      <div class="muted" style="margin-bottom:20px">${queue.length} word${queue.length===1?"":"s"} to check first.</div>
-      <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">Just show what you know — every answer helps!</div>
-      <button class="big green" onclick="beginSession()">Let's start! &rarr;</button>
-    </div>`;
-}
-function finishMergePretest() {
-  const { next, newMain, newBonus, latestPretest } = S.mergeContext;
-  const oldResults = latestPretest
-    ? latestPretest.results.filter(r => r.type === "main" || r.type === "bonus") // drop stale review-type rows
-    : [];
-  const combined = [...oldResults, ...S.results];
-  const mainR = combined.filter(r => r.type === "main");
-  const bonusEarned = combined.filter(r => r.type === "bonus" && r.correct).length;
-  const session = {
-    id: Date.now(), date: new Date().toISOString(), mode: "pretest",
-    ...listStamp(activeList()),
-    results: combined,
-    score: Math.min(mainR.filter(r => r.correct).length + bonusEarned, mainR.length),
-    total: mainR.length, bonusEarned,
-    mergedFrom: next.name, // audit trail only — which list contributed the new words
-  };
-  data.sessions.push(session);
-
-  let promoted = false;
-  if (mainR.length > 0 && mainR.every(r => r.correct)) {
-    data.sessions.push({ ...session, id: session.id + 1, mode: "test", promotedFrom: session.id });
-    promoted = true;
-  }
-
-  // Only now does the merge become real — if the child had backed out mid-pretest,
-  // go() already nulled S and nothing here would have run.
-  const list = activeList();
-  const addCount = newMain.length + newBonus.length;
-  list.words.push(...newMain);
-  list.bonus.push(...newBonus);
-  data.lists = data.lists.filter(l => l.id !== next.id); // retire the source list
-
+function doAddPracticeList(id) {
+  const list = data.lists.find(l => l.id === id);
+  if (!addPracticeList(id)) return renderPracticeSet();
   const saved = persist();
   syncPush();
-  S = null;
-  renderMergeDone(session, promoted, addCount, next.name, saved);
+  renderPracticeSetDone(`"${esc(list.name)}" is in your practice now.`, saved);
 }
-function renderMergeDone(session, promoted, addCount, sourceName, saved) {
+function doRemovePracticeList(id) {
+  const list = data.lists.find(l => l.id === id);
+  if (!removePracticeList(id)) return renderPracticeSet();
+  const saved = persist();
+  syncPush();
+  renderPracticeSetDone(`"${esc(list ? list.name : "That list")}" is out of your practice. Nothing was lost.`, saved);
+}
+function renderPracticeSetDone(message, saved) {
+  const lists = practiceLists();
   app.innerHTML = `
-    ${saved === false ? saveFailedBannerHtml("merge") : ""}
+    ${saved === false ? saveFailedBannerHtml("practice-set") : ""}
     <div class="card center" style="padding:40px">
-      <div style="font-size:46px;margin-bottom:8px">&#127881;</div>
-      <h2 style="margin:0 0 8px;font-weight:800">Nice, ${esc(data.childName)}!</h2>
-      <div class="muted">${addCount} new word${addCount===1?"":"s"} from "${esc(sourceName)}" ${addCount===1?"is":"are"} now part of your list.</div>
-      ${session ? `
-        <div style="font-size:34px;font-weight:800;margin-top:14px">${fmtTest(session)}</div>
-        <div class="muted" style="margin-top:4px">${promoted
-          ? "A perfect pretest! &#127775; That counts as your test for this list."
-          : "Now practice is unlocked on the new words too."}</div>` : ""}
-      <div style="margin-top:24px"><button class="big" onclick="go('home')">Done</button></div>
+      <div style="font-size:46px;margin-bottom:8px">&#127775;</div>
+      <h2 style="margin:0 0 8px;font-weight:800">All set, ${esc(data.childName)}!</h2>
+      <div class="muted">${message}</div>
+      <div class="muted" style="margin-top:10px">You're practicing: ${lists.map(l => `<strong>${esc(l.name)}</strong>`).join(", ")}.</div>
+      <div style="margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="big outline" onclick="go('practiceset')">Change again</button>
+        <button class="big" onclick="go('home')">Done</button>
+      </div>
     </div>`;
+}
+
+// ---------- Which list is this test on? (v6.4) ----------
+// Shown only when the practice set has extras. The score is filed under the list
+// chosen here — one graded row per list title is the point, so the choice is the
+// child's, made in words, rather than inferred from whatever is assigned.
+function renderTestPicker() {
+  const lists = practiceLists();
+  app.innerHTML = `
+    <div class="card">
+      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px">&#128221; Test time</div>
+      <h2 style="margin:0 0 6px;font-weight:800;font-size:24px">Which list are you testing on?</h2>
+      <div class="muted" style="margin-bottom:16px">You'll be tested on just this one list, and your score is saved under its name. The other lists stay in your practice for another day.</div>
+      ${lists.map((l, i) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <div style="font-weight:700;font-size:17px">${esc(l.name)}${i === 0 ? ` <span class="assigned-badge">THIS WEEK</span>` : ""}</div>
+            <div class="muted">${l.words.length} word${l.words.length===1?"":"s"}${l.bonus.length?` + ${l.bonus.length} bonus`:""}</div>
+          </div>
+          <button class="green" ${l.words.length ? `onclick="startSession('test','${esc(l.id)}')"` : "disabled"}>${l.words.length ? "Test me on this" : "No words yet"}</button>
+        </div>`).join("")}
+    </div>
+    <div class="center"><button class="big outline" onclick="go('home')">Not right now</button></div>`;
 }
 
 // ---------- Repeat (write-it-out drill) ----------
 let RP = null;
+// Difficulty follows the word, so the lookup follows the word's own list — and
+// a multi-list practice sitting counts for every list it covered (v6.4). The
+// session also has to actually contain the word: with several lists in play the
+// most recent sitting on a list may be a shared one the word wasn't drawn into.
 function repsNeededFor(word, list) {
   const modes = ["practice", "test", "pretest"];
   for (const mode of modes) {
-    const last = [...data.sessions].reverse().find(s => s.mode === mode && sessionMatchesList(s, list));
+    const last = [...data.sessions].reverse().find(s =>
+      s.mode === mode && sessionCoversList(s, list) && s.results.some(x => x.word === word));
     if (!last) continue;
     const r = last.results.find(x => x.word === word);
     if (!r) continue;
@@ -1141,17 +1273,22 @@ function repsNeededFor(word, list) {
   return data.repeatStandard || 5;
 }
 function startRepeat() {
-  const list = activeList();
-  const queue = shuffle(list.words).map(w => {
-    const needed = repsNeededFor(w.word, list);
-    return { ...w, needed, extra: needed === (data.repeatHard || 8) };
-  });
+  const lists = practiceLists();
+  const list = lists[0];
+  const seen = new Set();
+  const words = [];
+  lists.forEach(l => l.words.forEach(w => {
+    if (seen.has(w.word)) return;
+    seen.add(w.word);
+    words.push({ ...w, listId: l.id, needed: repsNeededFor(w.word, l) });
+  }));
+  const queue = shuffle(words).map(w => ({ ...w, extra: w.needed === (data.repeatHard || 8) }));
   if (!queue.length) { app.innerHTML = `<div class="card">This list is empty! Ask a parent to add words in the parent dashboard.</div>`; return; }
-  RP = { queue, idx: 0, rep: 0, typed: "", results: [], ...listStamp(list) };
+  RP = { queue, idx: 0, rep: 0, typed: "", results: [], ...listStamp(list), coverIds: lists.map(l => l.id) };
   app.innerHTML = `
     <div class="card center" style="padding:40px">
       <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#9997; Repeat</div>
-      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${esc(list.name)}</h2>
+      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${lists.length > 1 ? lists.map(l => esc(l.name)).join(" + ") : esc(list.name)}</h2>
       <div class="muted" style="margin-bottom:20px">See each word, hear it, then write it yourself — a few times in a row.</div>
       <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">Getting a word wrong never counts against you — just try that one again!</div>
       <button class="big green" onclick="beginRepeat()">Let's start! &rarr;</button>
@@ -1202,7 +1339,7 @@ function submitRepeat() {
   if (correct) {
     RP.rep++;
     if (RP.rep >= w.needed) {
-      RP.results.push({ word: w.word, reps: w.needed, extra: w.extra });
+      RP.results.push({ word: w.word, reps: w.needed, extra: w.extra, ...(w.listId ? { listId: w.listId } : {}) });
       renderRepeatWord("correct");
       setTimeout(nextRepeatWord, 1100);
     } else {
@@ -1221,7 +1358,7 @@ function nextRepeatWord() {
 }
 function finishRepeat() {
   const session = {
-    id: Date.now(), date: new Date().toISOString(), mode: "repeat", ...carryListStamp(RP),
+    id: Date.now(), date: new Date().toISOString(), mode: "repeat", ...carryListStamp(RP), ...coverStamp(RP),
     results: RP.results, score: 0, total: 0,
   };
   data.sessions.push(session);
@@ -1291,8 +1428,9 @@ function generateMisspelling(word) {
 
 let SP = null;
 function startSpotIt() {
-  const list = activeList();
-  const mainWords = list.words.map(w => w.word);
+  const lists = practiceLists();
+  const list = lists[0];
+  const mainWords = [...new Set(lists.flatMap(l => l.words.map(w => w.word)))];
   const reviewWords = data.reviewWords.map(w => w.word).filter(w => !mainWords.includes(w));
   const pool = shuffle([...mainWords, ...reviewWords]);
   if (!pool.length) {
@@ -1305,11 +1443,11 @@ function startSpotIt() {
   const rounds = pool.slice(0, targetCount).map(word => ({
     word, misspelled: generateMisspelling(word), correctSide: Math.random() < 0.5 ? "left" : "right",
   }));
-  SP = { rounds, idx: 0, results: [], ...listStamp(list), locked: false, pickedSide: null };
+  SP = { rounds, idx: 0, results: [], ...listStamp(list), coverIds: lists.map(l => l.id), locked: false, pickedSide: null };
   app.innerHTML = `
     <div class="card center" style="padding:40px">
       <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#128269; Spot the Spelling</div>
-      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${esc(SP.listName)}</h2>
+      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${lists.length > 1 ? lists.map(l => esc(l.name)).join(" + ") : esc(SP.listName)}</h2>
       <div class="muted" style="margin-bottom:20px">${SP.rounds.length} rounds &mdash; tap the word that's spelled correctly!</div>
       <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">Quick eyes, quick tap &mdash; just for fun!</div>
       <button class="big green" onclick="renderSpotItRound()">Let's play! &rarr;</button>
@@ -1359,7 +1497,7 @@ function nextSpot() {
 function finishSpotIt() {
   if (!SP) return;
   const session = {
-    id: Date.now(), date: new Date().toISOString(), mode: "spotit", ...carryListStamp(SP),
+    id: Date.now(), date: new Date().toISOString(), mode: "spotit", ...carryListStamp(SP), ...coverStamp(SP),
     results: SP.results, score: 0, total: 0,
   };
   data.sessions.push(session);
@@ -1406,7 +1544,8 @@ function renderParent(view) {
     <button class="${view==="words"?"":"outline"}" onclick="renderParent('words')">Word lists</button>
     <button class="${view==="schedule"?"":"outline"}" onclick="renderParent('schedule')">Schedule</button>
     <button class="${view==="settings"?"":"outline"}" onclick="renderParent('settings')">Settings</button>
-    <button class="outline" onclick="exportCSV()">Export CSV</button>
+    <button class="outline" onclick="exportCSV()">Export words CSV</button>
+    <button class="outline" onclick="exportGradebookCSV()">Export test scores CSV</button>
   </div>`;
 
   if (view === "schedule") {
@@ -1441,7 +1580,7 @@ function renderParent(view) {
       <div class="muted" style="margin-left:24px;margin-bottom:4px">When on, a newly assigned list with no sessions locks Practice, Test, and See My Words until ${esc(data.childName)} completes a pretest. A perfect pretest (bonus words not required) counts as the test. You can override this per list in Word lists.</div>
       <label style="padding:6px 0"><input type="checkbox" ${data.gamesEnabled?"checked":""} onchange="setSetting('gamesEnabled',this.checked)"> Show "Games" to ${esc(data.childName)}</label>
       <label style="padding:6px 0"><input type="checkbox" ${data.advanceEnabled?"checked":""} onchange="setSetting('advanceEnabled',this.checked)"> Allow self-pacing</label>
-      <div class="muted" style="margin-left:24px;margin-bottom:4px">${esc(data.childName)} can ask for more words on the current list, or move on to the next list after a great test score &mdash; never both at the same time. Nothing happens automatically; ${esc(data.childName)} has to tap a card on the home screen, and only when another list exists after the current one (list order is set in Word lists).</div>
+      <div class="muted" style="margin-left:24px;margin-bottom:4px">${esc(data.childName)} can choose to practice another list alongside this week's, or move on to the next list after a great test score. Practicing several lists never mixes their scores: a test is always on one list, and it is recorded under that list's own name and grade. Nothing happens automatically &mdash; ${esc(data.childName)} has to open "Choose lists to practice" on the home screen and confirm the list by name &mdash; and you can set the same thing yourself under Word lists. Advancing to the next list needs another list after this one (order is set in Word lists).</div>
       <div class="row" style="margin-bottom:4px">
         <label style="padding:0;display:flex;align-items:center;gap:6px;margin-left:24px">Score needed to advance
           <input type="text" inputmode="numeric" value="${data.advanceThreshold}" style="width:60px;margin:0" onchange="setAdvanceThreshold(this.value)">%
@@ -1500,6 +1639,25 @@ function renderParent(view) {
       }
       html += `</div>`;
     }
+    // One row per graded sitting, filed under the list's own title — the shape a
+    // gradebook wants, and the reason Test never spans more than one list (v6.4).
+    const graded = gradedSittings();
+    if (graded.length) {
+      const shown = graded.slice(0, 40);
+      html += `<div class="card">
+        <div style="font-weight:700;margin-bottom:2px">Test scores</div>
+        <div class="muted" style="margin-bottom:10px">One row per sitting, newest first, under the title it was recorded on. ${shown.length < graded.length ? `Showing ${shown.length} of ${graded.length} &mdash; the CSV has them all.` : ""} A perfect pretest is also written as that list's test, and both rows show here.</div>
+        ${shown.map(s => `
+          <div style="display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
+            <span class="muted" style="min-width:92px">${new Date(s.date).toLocaleDateString()}</span>
+            <span style="flex:1;min-width:150px;font-weight:600">${esc(s.listName || "Untitled list")}${s.listGrade ? ` <span class="muted" style="font-weight:400">&middot; Grade ${esc(s.listGrade)}</span>` : ""}</span>
+            <span class="muted" style="min-width:64px">${s.mode === "pretest" ? "Pretest" : "Test"}</span>
+            <span style="font-weight:700;min-width:56px">${fmtTest(s)}</span>
+            <span class="muted">${s.results.filter(r => r.type === "main" && r.correct).length}/${s.total}${s.bonusEarned ? ` +${s.bonusEarned} bonus` : ""}${s.promotedFrom ? " · from a perfect pretest" : ""}</span>
+          </div>`).join("")}
+        <div style="margin-top:12px"><button class="outline" onclick="exportGradebookCSV()">Download these for my gradebook</button></div>
+      </div>`;
+    }
     const groups = resultGroups();
     if (!groups.length) {
       html += `<div class="card"><div class="muted">No sessions yet. Results will appear here grouped by word list.</div></div>`;
@@ -1522,10 +1680,11 @@ function renderParent(view) {
           ${missed.map(m => `<label><input type="checkbox" class="missChk" value="${esc(m.word)}"> ${esc(m.word)}</label>`).join("")}
           <div style="margin-top:10px"><button onclick="addReview()">Add checked to review list</button></div></div>`;
       }
-      // Latest pretest, not first-chronological — merges can create a newer pretest
-      // after older Tests already exist, and the diff should reflect the current
-      // baseline. Cosmetic side effect: an old Test can end up diffed against a
-      // pretest dated after it (v6 §2.4). Ordering by id (a Date.now() timestamp).
+      // Latest pretest, not first-chronological. Nothing writes an out-of-order
+      // pretest any more — the merge that did was removed in v6.4 — but profiles
+      // carrying one from v6.2/v6.3 still exist, and the diff should reflect the
+      // current baseline. Cosmetic side effect on those: an old Test can end up
+      // diffed against a pretest dated after it. Ordering by id (a Date.now()).
       const pretest = group.sessions
         .filter(s => s.mode === "pretest")
         .reduce((latest, s) => (!latest || s.id > latest.id) ? s : latest, null);
@@ -1565,14 +1724,22 @@ function renderParent(view) {
     if (!selectedListId || !data.lists.some(l => l.id === selectedListId)) selectedListId = data.activeListId;
     const sel = data.lists.find(l => l.id === selectedListId);
     html += `<div class="card">
-      <div style="font-weight:700;margin-bottom:10px">Your lists</div>
-      ${data.lists.map(l => `
+      <div style="font-weight:700;margin-bottom:2px">Your lists</div>
+      <div class="muted" style="margin-bottom:10px">The order here is the order ${esc(data.childName)} moves through: it decides which list counts as "the next one" when self-pacing is on. Use &#9650;/&#9660; to change it. "Also practice" mixes a list's words into practice alongside the assigned one &mdash; tests stay one list at a time and are always recorded under that list's own name.</div>
+      ${data.lists.map((l, i) => `
         <div style="display:flex;align-items:center;gap:10px;padding:6px 0;flex-wrap:wrap">
+          <span style="display:flex;gap:4px">
+            <button class="outline" style="padding:4px 9px;font-size:13px" ${i===0?"disabled":""} onclick="moveList('${l.id}',-1)" title="Move up">&#9650;</button>
+            <button class="outline" style="padding:4px 9px;font-size:13px" ${i===data.lists.length-1?"disabled":""} onclick="moveList('${l.id}',1)" title="Move down">&#9660;</button>
+          </span>
           <button class="${l.id===selectedListId?"":"outline"}" onclick="selectList('${l.id}')">${esc(l.name)}</button>
           <span class="muted">${gradeLabel(l.grade)} &middot; ${l.words.length} words${l.bonus.length?`, ${l.bonus.length} bonus`:""}</span>
           ${l.id===data.activeListId
             ? '<span class="assigned-badge">ASSIGNED</span>'
             : `<button class="link" onclick="assignList('${l.id}')">assign this list</button>`}
+          ${l.id===data.activeListId ? "" : practiceGateBlocks(l)
+            ? `<span class="muted" title="A list that requires a pretest has to be sat before it can be practiced">needs its pretest first</span>`
+            : `<label class="muted" style="padding:0;display:flex;align-items:center;gap:5px"><input type="checkbox" ${(data.practiceListIds||[]).includes(l.id)?"checked":""} onchange="setPracticeList('${l.id}',this.checked)"> also practice</label>`}
           ${data.lists.length>1 && l.id!==data.activeListId ? `<button class="link" style="color:var(--danger)" onclick="deleteList('${l.id}')">delete</button>` : ""}
         </div>`).join("")}
       <div style="margin-top:12px">
@@ -1676,7 +1843,25 @@ function setSched(dayIdx, field, value) {
   persist();
 }
 function selectList(id) { selectedListId = id; renderParent("words"); }
-function assignList(id) { data.activeListId = id; persist(); renderParent("words"); }
+function assignList(id) { data.activeListId = id; prunePracticeSet(); persist(); renderParent("words"); }
+// List order is what nextListFor() reads, and until now nothing could change it
+// even though Settings said it could (v6.4).
+function moveList(id, dir) {
+  const i = data.lists.findIndex(l => l.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= data.lists.length) return;
+  const [l] = data.lists.splice(i, 1);
+  data.lists.splice(j, 0, l);
+  persist();
+  renderParent("words");
+}
+// The parent's half of the practice set — the same set the child can change from
+// the home screen, so whichever of them touches it last is what is in effect.
+function setPracticeList(id, on) {
+  if (on) addPracticeList(id); else removePracticeList(id);
+  persist();
+  renderParent("words");
+}
 function createList() {
   const name = document.getElementById("newListName").value.trim();
   const desc = document.getElementById("newListDesc").value.trim();
@@ -1742,6 +1927,7 @@ function deleteList(id) {
   if (!confirm(`Delete "${l.name}" and its ${l.words.length + l.bonus.length} words? Past results are kept.`)) return;
   data.lists = data.lists.filter(x => x.id !== id);
   if (selectedListId === id) selectedListId = data.activeListId;
+  prunePracticeSet();
   persist(); renderParent("words");
 }
 function addWord() {
@@ -1810,6 +1996,37 @@ function changePin() {
   const np = prompt("New PIN (at least 4 digits):");
   if (!np || np.trim().length < 4) { alert("PIN must be at least 4 digits."); return; }
   data.pin = np.trim(); persist(); alert("PIN updated.");
+}
+// Every graded sitting, newest first. Ungraded modes (practice, repeat, spotit)
+// are not in here at all: a gradebook wants assessments, and mixing practice
+// into the same export is how a practice run ends up entered as a grade.
+function gradedSittings() {
+  return data.sessions
+    .filter(s => (s.mode === "test" || s.mode === "pretest") && s.total > 0)
+    .slice()
+    .sort((a, b) => b.id - a.id);
+}
+// The companion to exportCSV(): one row per sitting rather than one per word,
+// which is the shape a grade-tracking platform imports. `list` is the assignment
+// title and `grade` the year it was worked in — the pair that identifies a
+// sitting once list names repeat across years (§16).
+function exportGradebookCSV() {
+  const rows = [["child","date","time","list","grade","mode","score","total","percent","bonus_earned","note"]];
+  gradedSittings().slice().reverse().forEach(s => {
+    const d = new Date(s.date);
+    rows.push([
+      data.childName, d.toLocaleDateString(), d.toLocaleTimeString(),
+      s.listName || "", s.listGrade || "", s.mode,
+      s.score, s.total, pct(s), s.bonusEarned || 0,
+      s.promotedFrom ? "recorded from a perfect pretest" : "",
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${nameToKey(data.childName).replace("spellingstar-","")}-spelling-test-scores.csv`;
+  a.click();
 }
 function exportCSV() {
   // `grade` sits next to `list` because the pair is the real identity of a
@@ -1954,6 +2171,9 @@ function syncState() {
       pretest: l.pretest || "global",
     })),
     activeListId: data.activeListId,
+    // So the phone can show which lists are being practiced together and offer a
+    // reorder against the order the tablet actually has (§15.4).
+    practiceListIds: data.practiceListIds || [],
     gradeLevel: data.gradeLevel,
     grades: GRADES,
   };
@@ -2001,6 +2221,7 @@ function applyCommand(cmd) {
       || (data.lists || []).find(l => (l.name || "").toLowerCase() === String(p.listName || "").toLowerCase());
     if (!list || data.activeListId === list.id) return false;
     data.activeListId = list.id;
+    prunePracticeSet();
     return true;
   }
   if (cmd.kind === "assign-list") {
@@ -2037,7 +2258,29 @@ function applyCommand(cmd) {
       };
       data.lists.push(list);
     }
-    if (p.makeActive !== false) data.activeListId = list.id;
+    if (p.makeActive !== false) { data.activeListId = list.id; prunePracticeSet(); }
+    return true;
+  }
+  // §15.3: the phone sends the full order it wants, not a move. It composed that
+  // order from the snapshot this tablet uploaded, so anything created since —
+  // a list the parent typed in on the tablet itself — is unknown to it and keeps
+  // its relative position at the end rather than being dropped on the floor.
+  if (cmd.kind === "reorder-lists") {
+    const order = Array.isArray(p.order) ? p.order : [];
+    if (!order.length) return false;
+    const byId = new Map(data.lists.map(l => [l.id, l]));
+    const next = [];
+    const taken = new Set();
+    for (const id of order) {
+      const l = byId.get(id);
+      if (!l || taken.has(id)) continue;
+      taken.add(id);
+      next.push(l);
+    }
+    for (const l of data.lists) if (!taken.has(l.id)) next.push(l);
+    if (next.length !== data.lists.length) return false;
+    if (next.every((l, i) => l.id === data.lists[i].id)) return false;
+    data.lists = next;
     return true;
   }
   if (cmd.kind === "delete-session") return applyRemoteSessionDelete(p.sessionIds);
