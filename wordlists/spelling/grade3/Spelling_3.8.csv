@@ -1,16 +1,16 @@
-word,hint,sentence,bonus
-swimming,moving through water using arms and legs,We went swimming in the lake all afternoon.,
-swam,past tense of swim,The dog swam across the pond to fetch the stick.,
-getting,becoming or receiving,It is getting colder outside as winter comes.,
-coming,moving toward here,My cousins are coming to visit this weekend.,
-came,past tense of come,He came home late after football practice.,
-having,possessing or experiencing,We are having pizza for dinner tonight.,
-doing,performing an action,What are you doing after school today?,
-ended,came to a finish,The movie ended with a happy surprise.,
-happened,took place; occurred,Tell me what happened at recess today.,
-happening,taking place right now,Something exciting is happening at the fair.,
-started,began an action,She started her homework right after dinner.,
-joked,said something funny; not serious,He joked about forgetting his own birthday.,
-received,got or was given something,I received a new bike for my birthday.,
-smiled,made a happy facial expression,She smiled when she saw the puppy.,
-smiling,currently showing a happy expression,The baby kept smiling at everyone in the room.,
+word,hint,sentence,bonus,misspellings
+swimming,moving through water using arms and legs,We went swimming in the lake all afternoon.,,swiming|swymming
+swam,past tense of swim,The dog swam across the pond to fetch the stick.,,swamm|swom
+getting,becoming or receiving,It is getting colder outside as winter comes.,,geting|gettin
+coming,moving toward here,My cousins are coming to visit this weekend.,,comming|comeing
+came,past tense of come,He came home late after football practice.,,caim|kame
+having,possessing or experiencing,We are having pizza for dinner tonight.,,haveing|havving
+doing,performing an action,What are you doing after school today?,,dooing|doeing
+ended,came to a finish,The movie ended with a happy surprise.,,endid|ennded
+happened,took place; occurred,Tell me what happened at recess today.,,happend|hapened
+happening,taking place right now,Something exciting is happening at the fair.,,hapening|happenning
+started,began an action,She started her homework right after dinner.,,startid|startted
+joked,said something funny; not serious,He joked about forgetting his own birthday.,,jokt|joaked
+received,got or was given something,I received a new bike for my birthday.,,recieved|receeved
+smiled,made a happy facial expression,She smiled when she saw the puppy.,,smild|smyled
+smiling,currently showing a happy expression,The baby kept smiling at everyone in the room.,,smileing|smyling

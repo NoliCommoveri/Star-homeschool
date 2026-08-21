@@ -19,7 +19,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 | `api.test.mjs` | Node only | Every `functions/api/*` handler against a real SQLite database |
 | `child-apps.test.mjs` | Chromium | Spelling Star and Math Star in a browser |
 | `practice-sets.test.mjs` | Chromium | Spelling Star practice sets, per-list tests, list order |
-| `spot-the-spelling.test.mjs` | Chromium | Spelling Star's distractors: plausibility, the child's own errors, curation |
+| `spot-the-spelling.test.mjs` | Chromium | Spelling Star's distractors: plausibility, the child's own errors, curation, and every curated column in `wordlists/` |
 | `parent-dashboard.test.mjs` | Chromium | `parent.html` against a mocked API |
 | `setup-wizard.test.mjs` | Chromium | First launch, and opening a profile saved by an older version |
 
@@ -73,6 +73,14 @@ the app keeps working and quietly does the wrong thing:
   be seen from a score: that no distractor is the word with a consonant moved,
   that a vowel-team swap like "beleive" is still allowed through, and that a
   misspelling the child actually wrote outranks anything generated.
+- **A curated misspelling that the app never uses.** The `misspellings` column
+  in `wordlists/` is the one distractor source with no code behind it, and the
+  app drops a bad cell rather than complaining about it: a one-letter "y" for
+  "I", or a spelling that is also next week's word, is simply replaced by a
+  generated one and the curation is never seen. The whole shipped grade is
+  swept through the app's own CSV parser and plausibility filter, and every
+  word is required to keep two usable spellings even with all thirty weeks in
+  the practice set.
 
 ## Adding to them
 

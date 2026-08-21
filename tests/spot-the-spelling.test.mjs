@@ -6,7 +6,9 @@
 //
 // So the checks below are mostly about plausibility, which is the property
 // with no other alarm on it.
-import { createChecker, launchBrowser, serveRepo, isRealPageError } from './harness.mjs';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { createChecker, launchBrowser, serveRepo, isRealPageError, REPO } from './harness.mjs';
 
 const server = await serveRepo();
 const BASE = server.url;
@@ -292,6 +294,101 @@ function isLetterSalad(word, cand) {
   check('...and an empty column means none', JSON.stringify(got.parsedEmpty) === '[]', got.parsedEmpty);
   check('a curated word off the child\'s own list is dropped', !got.banned.includes('swim'), got.banned);
   check('...but the rest of the curation survives', got.banned.includes('cetch'), got.banned);
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
+
+// -------------------------------------------------------- the shipped lists --
+{
+  const t = await open();
+  console.log('\n[the curated column, as shipped in wordlists/]');
+
+  // The curated column is the one distractor source with no code behind it. A
+  // typo in a CSV fails nothing — it just quietly ships a wrong answer, or a
+  // spelling the app drops on the floor and replaces with a generated one. So
+  // sweep the real files.
+  //
+  // Parsed in the page with the app's own parseCSVLine and parseMisspellings —
+  // the same path a parent's import takes — so a column this suite passes is a
+  // column the app actually accepts.
+  //
+  // Note what is *not* checked here: whether each spelling reads aloud as the
+  // word. isLetterSalad above is a generator-shaped rule, and on curated data
+  // it cannot tell "great -> grate" from a slip of the fingers — both are the
+  // same letters in a different order, and only one of them is a word. The
+  // read-aloud test is the thing a person does and a rule cannot; that is what
+  // "curated" means. What is checked below is everything a machine *can*
+  // decide, which is mostly whether the app will use the column at all.
+  const files = [];
+  const root = join(REPO, 'wordlists/spelling');
+  for (const grade of readdirSync(root, { withFileTypes: true })) {
+    if (!grade.isDirectory()) continue;
+    for (const f of readdirSync(join(root, grade.name))) {
+      if (f.endsWith('.csv')) files.push(`wordlists/spelling/${grade.name}/${f}`);
+    }
+  }
+  files.sort();
+  check('there are word lists to check', files.length > 0, files.length);
+
+  const rows = await t.page.evaluate(async (paths) => {
+    const out = [];
+    for (const path of paths) {
+      const text = await (await fetch('/' + path)).text();
+      text.split(/\r?\n/).filter((l) => l.trim()).forEach((line, i) => {
+        const [word, , , , misspellings] = parseCSVLine(line);
+        if (!word) return;
+        if (i === 0 && word.toLowerCase() === 'word') return;
+        const w = word.toLowerCase();
+        const curated = parseMisspellings(misspellings);
+        out.push({
+          path, word: w, curated,
+          // An empty ban set: whether a spelling collides with a word the child
+          // is studying is a property of that child's lists, not of the file.
+          // The collision is checked separately, below.
+          rejected: curated.filter((c) => !plausibleDistractor(c, w, new Set())),
+        });
+      });
+    }
+    return out;
+  }, files);
+
+  const grade3 = rows.filter((r) => r.path.includes('/grade3/'));
+  const where = (rs) => rs.map((r) => `${r.path.split('/').pop()}: ${r.word}`);
+  check('grade 3 is curated end to end — all 30 weeks',
+    new Set(grade3.map((r) => r.path)).size === 30, new Set(grade3.map((r) => r.path)).size);
+  check('...every word in it carries a curated misspelling',
+    !grade3.some((r) => !r.curated.length), where(grade3.filter((r) => !r.curated.length)).slice(0, 8));
+  // One curated spelling means the child meets the same wrong answer every
+  // time that word comes up, and learns the pair rather than the spelling.
+  check('...and carries two, so the word is not always shown against the same one',
+    !grade3.some((r) => r.curated.length < 2), where(grade3.filter((r) => r.curated.length < 2)).slice(0, 8));
+
+  // distractorsFor drops any curated spelling that is itself a word the child
+  // is studying — offering a word off their own list would invite them to file
+  // it away as a misspelling. Silently, though: the curation is just ignored
+  // and the generator answers instead. A homophone list is where this bites,
+  // because "were" really is how a child misspells "we're", and it really is
+  // next week's word. Curate a third there rather than curating two and
+  // shipping one.
+  const gradeWords = new Set(grade3.map((r) => r.word));
+  const starved = grade3.filter((r) => r.curated.filter((c) => !gradeWords.has(c)).length < 2);
+  check('...and keeps two even with every week of grade 3 in the practice set',
+    starved.length === 0, where(starved).slice(0, 8));
+
+  // These hold for every grade. A list that has not been curated yet has an
+  // empty column and contributes nothing.
+  const curated = rows.filter((r) => r.curated.length);
+  const rejected = curated.flatMap((r) => r.rejected.map((c) => `${r.path.split('/').pop()}: ${r.word} -> ${c}`));
+  // Rejection is not a loud failure either: a one-letter "y" for "I", a triple
+  // letter, a rule that ate the last vowel — distractorsFor drops it and falls
+  // through to the generator, and the curation was never used.
+  check('every curated spelling survives the app\'s own plausibility filter',
+    rejected.length === 0, rejected.slice(0, 8));
+  check('none of them is the word itself',
+    !curated.some((r) => r.curated.includes(r.word)),
+    where(curated.filter((r) => r.curated.includes(r.word))).slice(0, 8));
+
   check('no page errors', t.errors.length === 0, t.errors);
   await t.close();
 }

@@ -1,16 +1,16 @@
-word,hint,sentence,bonus
-pointing,showing direction with a finger,She was pointing at the rainbow in the sky.,
-oily,covered in or containing oil,The mechanic's hands were oily after fixing the car.,
-boy,a young male child,The boy kicked the ball across the yard.,
-voice,the sound made when speaking or singing,She sang the song in a beautiful voice.,
-oyster,a shellfish that can make pearls,The diver found a pearl inside the oyster.,
-voyage,"a long journey, especially by sea",The ship set sail on a long voyage across the ocean.,
-loyal,faithful and true to someone,My dog is very loyal and follows me everywhere.,
-joined,became part of a group,She joined the soccer team this fall.,
-coin,a round piece of metal money,He found a shiny coin on the sidewalk.,
-choice,the act of choosing between options,It was hard to make a choice between two toys.,
-poison,a substance that can harm or kill,Keep cleaning poison locked away from children.,
-destroy,to ruin or wreck something completely,A strong storm can destroy an old wooden fence.,
-enjoy,to get pleasure from something,I enjoy reading books before bed.,
-choose,to pick one thing over another,You can choose any flavor of ice cream you like.,
-chocolate,a sweet food made from cacao,She loves chocolate cake on her birthday.,
+word,hint,sentence,bonus,misspellings
+pointing,showing direction with a finger,She was pointing at the rainbow in the sky.,,poynting|pointting
+oily,covered in or containing oil,The mechanic's hands were oily after fixing the car.,,oyly|oilee
+boy,a young male child,The boy kicked the ball across the yard.,,boi|boye
+voice,the sound made when speaking or singing,She sang the song in a beautiful voice.,,voise|voyce
+oyster,a shellfish that can make pearls,The diver found a pearl inside the oyster.,,oister|oystur
+voyage,"a long journey, especially by sea",The ship set sail on a long voyage across the ocean.,,voiage|voyige
+loyal,faithful and true to someone,My dog is very loyal and follows me everywhere.,,loial|loyel
+joined,became part of a group,She joined the soccer team this fall.,,joyned|joind
+coin,a round piece of metal money,He found a shiny coin on the sidewalk.,,coyn|koin
+choice,the act of choosing between options,It was hard to make a choice between two toys.,,choise|choyce
+poison,a substance that can harm or kill,Keep cleaning poison locked away from children.,,poizon|poyson
+destroy,to ruin or wreck something completely,A strong storm can destroy an old wooden fence.,,distroy|destroi
+enjoy,to get pleasure from something,I enjoy reading books before bed.,,injoy|enjoi
+choose,to pick one thing over another,You can choose any flavor of ice cream you like.,,chooze|chuse
+chocolate,a sweet food made from cacao,She loves chocolate cake on her birthday.,,choclate|chocolat
