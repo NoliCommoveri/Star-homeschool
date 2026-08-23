@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-paragraph,a section of writing made of several sentences,Please write a paragraph describing your favorite summer vacation.,
-trophy,an award given for winning a contest,The soccer team proudly displayed their trophy in the school hallway.,
-nephew,the son of your brother or sister,My nephew is turning five years old next week.,
-enough,as much as is needed; sufficient,We did not have enough chairs for everyone at the party.,
-cough,to force air from your lungs with a sharp sound,She began to cough after breathing in the dusty air.,
-fourth,coming after third; the number 4 in a sequence,My birthday falls on the fourth of July this year.,
-Friday,the day of the week before Saturday,We always order pizza for dinner on Friday nights.,
-physical,relating to the body rather than the mind,Running and swimming are both great forms of physical exercise.,
-roughest,superlative of 'rough'; most uneven or harsh,That was the roughest boat ride we have ever taken on the lake.,
-pharmacy,a store where medicines are sold,We stopped at the pharmacy to pick up a prescription for my sister.,
-fragile,easily broken or damaged,The package was labeled fragile because it contained glass ornaments.,
-fluid,"a substance that flows, like water",The doctor told him to drink plenty of fluid while he was sick.,
-briefly,for a short amount of time,She briefly explained the rules before the game began.,
-festival,a day or event celebrating something special,Our whole town gathers for the harvest festival every October.,
-stuffed,filled tightly or packed full,The teddy bear was stuffed with soft cotton and felt very cozy.,
-triumph,a great success or victory,Winning the championship game was a huge triumph for the whole team.,
-telephone,a device used to talk to someone far away,I used the telephone to call my grandmother on her birthday.,
-few,a small number of something,Only a few students finished the extra credit assignment.,
+word,hint,sentence,bonus,misspellings
+paragraph,a section of writing made of several sentences,Please write a paragraph describing your favorite summer vacation.,,paragraf|parigraph
+trophy,an award given for winning a contest,The soccer team proudly displayed their trophy in the school hallway.,,trofy|trophey
+nephew,the son of your brother or sister,My nephew is turning five years old next week.,,nefew|nephue
+enough,as much as is needed; sufficient,We did not have enough chairs for everyone at the party.,,enuff|enouf
+cough,to force air from your lungs with a sharp sound,She began to cough after breathing in the dusty air.,,coff|cawf
+fourth,coming after third; the number 4 in a sequence,My birthday falls on the fourth of July this year.,,forth|foarth
+Friday,the day of the week before Saturday,We always order pizza for dinner on Friday nights.,,fryday|fridey
+physical,relating to the body rather than the mind,Running and swimming are both great forms of physical exercise.,,fysical|physicle
+roughest,superlative of 'rough'; most uneven or harsh,That was the roughest boat ride we have ever taken on the lake.,,ruffest|roughist
+pharmacy,a store where medicines are sold,We stopped at the pharmacy to pick up a prescription for my sister.,,farmacy|pharmasy
+fragile,easily broken or damaged,The package was labeled fragile because it contained glass ornaments.,,fradgile|fragil
+fluid,"a substance that flows, like water",The doctor told him to drink plenty of fluid while he was sick.,,flooid|fluide
+briefly,for a short amount of time,She briefly explained the rules before the game began.,,breifly|breefly
+festival,a day or event celebrating something special,Our whole town gathers for the harvest festival every October.,,festivel|festivle
+stuffed,filled tightly or packed full,The teddy bear was stuffed with soft cotton and felt very cozy.,,stuft|stufed
+triumph,a great success or victory,Winning the championship game was a huge triumph for the whole team.,,triumf|tryumph
+telephone,a device used to talk to someone far away,I used the telephone to call my grandmother on her birthday.,,telefone|telaphone
+few,a small number of something,Only a few students finished the extra credit assignment.,,fue|fyew

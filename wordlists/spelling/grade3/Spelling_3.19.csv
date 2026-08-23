@@ -1,16 +1,16 @@
-word,hint,sentence,bonus
-disagree,to have a different opinion,My brother and I disagree about which movie to watch.,
-again,one more time,"Can you say that again, please?",
-given,past participle of give,She was given a special award for her hard work.,
-other,not this one; different one,I have one shoe on; where is the other one?,
-money,coins and bills used to buy things,He saved his money to buy a new bike.,
-problem,something that needs to be solved,I solved the math problem all by myself.,
-does,"form of do used with he, she, or it",She does her homework right after school.,
-of,belonging to or connected with,The cover of the book was bright blue.,
-some,an amount of something,Can I have some more juice please?,
-laid,past tense of lay; placed down,She laid the blanket on the grass for our picnic.,
-change,to make different; or coins,I need to change my shirt before we go out.,
-tired,feeling sleepy or in need of rest,I was so tired after the long hike.,
-read,to look at and understand words,I read a new book every week.,
-nice,pleasant or kind,It was very nice of you to help me.,
-lower,move something down; or less high,Please lower your voice in the library.,
+word,hint,sentence,bonus,misspellings
+disagree,to have a different opinion,My brother and I disagree about which movie to watch.,,disagre|dissagree
+again,one more time,"Can you say that again, please?",,agin|agane
+given,past participle of give,She was given a special award for her hard work.,,givin|givven
+other,not this one; different one,I have one shoe on; where is the other one?,,uther|othur
+money,coins and bills used to buy things,He saved his money to buy a new bike.,,munny|monee
+problem,something that needs to be solved,I solved the math problem all by myself.,,problum|probblem
+does,"form of do used with he, she, or it",She does her homework right after school.,,dose|duz
+of,belonging to or connected with,The cover of the book was bright blue.,,uv|ov
+some,an amount of something,Can I have some more juice please?,,sum|somm
+laid,past tense of lay; placed down,She laid the blanket on the grass for our picnic.,,layed|lade
+change,to make different; or coins,I need to change my shirt before we go out.,,chainge|chanje
+tired,feeling sleepy or in need of rest,I was so tired after the long hike.,,tyred|tiered
+read,to look at and understand words,I read a new book every week.,,red|reed
+nice,pleasant or kind,It was very nice of you to help me.,,nise|nyce
+lower,move something down; or less high,Please lower your voice in the library.,,loer|lowur

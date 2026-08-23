@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-baby-sit,to take care of a child temporarily,My sister will baby-sit our neighbor's kids this weekend.,
-first aid,basic medical care given right after an injury,The lifeguard gave first aid to the boy who scraped his knee.,
-flashlight,a small portable light powered by batteries,We used a flashlight to find our way through the dark tent.,
-high school,a school for students in grades nine through twelve,My brother starts high school in the fall.,
-goalkeeper,the player who guards the goal in a sport,The goalkeeper made an amazing save in the final minute.,
-all right,okay; acceptable,She said it was all right if we stayed a little longer.,
-airmail,mail sent by airplane,The package arrived quickly because it was sent by airmail.,
-one-way,traveling in a single direction,The car turned the wrong way onto the one-way street.,
-bodyguard,a person hired to protect someone,The singer's bodyguard walked closely beside her at the event.,
-something,an unspecified thing,I smelled something delicious coming from the kitchen.,
-good-bye,a word used when leaving someone,We waved good-bye to our grandparents at the airport.,
-birthday,the day of the year someone was born,We are planning a party for her birthday next week.,
-outside,not inside; in the open air,The kids played outside until it got dark.,
-everybody,every person,Everybody cheered when the team scored the winning goal.,
-everyone,every person,Everyone brought a dish to share at the potluck dinner.,
-anything,any thing at all,Did you find anything interesting at the yard sale?,
-themselves,reflexive pronoun for they,The twins made themselves matching friendship bracelets.,
-himself,reflexive pronoun for he,He made himself a bowl of cereal before school.,
+word,hint,sentence,bonus,misspellings
+baby-sit,to take care of a child temporarily,My sister will baby-sit our neighbor's kids this weekend.,,babysit|babysitt
+first aid,basic medical care given right after an injury,The lifeguard gave first aid to the boy who scraped his knee.,,firstaid|first-aid
+flashlight,a small portable light powered by batteries,We used a flashlight to find our way through the dark tent.,,flashlite|flashlyght
+high school,a school for students in grades nine through twelve,My brother starts high school in the fall.,,highschool|high-school
+goalkeeper,the player who guards the goal in a sport,The goalkeeper made an amazing save in the final minute.,,golekeeper|goalkeepper
+all right,okay; acceptable,She said it was all right if we stayed a little longer.,,alright|allright
+airmail,mail sent by airplane,The package arrived quickly because it was sent by airmail.,,airmale|airmayl
+one-way,traveling in a single direction,The car turned the wrong way onto the one-way street.,,oneway|onewey
+bodyguard,a person hired to protect someone,The singer's bodyguard walked closely beside her at the event.,,bodygard|bodiguard
+something,an unspecified thing,I smelled something delicious coming from the kitchen.,,somthing|sumthing
+good-bye,a word used when leaving someone,We waved good-bye to our grandparents at the airport.,,goodbye|goodby
+birthday,the day of the year someone was born,We are planning a party for her birthday next week.,,birthdey|berthday
+outside,not inside; in the open air,The kids played outside until it got dark.,,owtside|outsyde
+everybody,every person,Everybody cheered when the team scored the winning goal.,,everybudy|evrybody
+everyone,every person,Everyone brought a dish to share at the potluck dinner.,,everyon|evryone
+anything,any thing at all,Did you find anything interesting at the yard sale?,,anithing|enything
+themselves,reflexive pronoun for they,The twins made themselves matching friendship bracelets.,,themselfs|thereselves
+himself,reflexive pronoun for he,He made himself a bowl of cereal before school.,,himselph|hisself

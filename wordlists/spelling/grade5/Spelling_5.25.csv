@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-rewrite,to write something again,I had to rewrite my essay after I found several mistakes.,
-reappear,to appear again after disappearing,The sun will reappear from behind the clouds in just a few minutes.,
-recall,to remember or bring back to mind,I can recall the exact moment I learned how to ride a bike.,
-recover,to get better after being sick or hurt,It took him a week to recover from his bad cold.,
-rebuild,to build something again after it is damaged,The town worked together to rebuild the playground after the storm.,
-dishonest,not honest; likely to lie or cheat,It was dishonest of him to say he finished his homework when he had not.,
-disagree,to have a different opinion than someone else,The two friends disagree about which movie to watch tonight.,
-disappear,to go out of sight; vanish,The magician made the rabbit disappear right before our eyes.,
-disappoint,to fail to meet someone's hopes or expectations,I did not want to disappoint my coach by missing practice.,
-disconnect,to break a connection between two things,Please disconnect the printer before you try to move it.,
-disapprove,to have a negative opinion of something,My parents disapprove of watching too much television on school nights.,
-misbehave,to behave badly or improperly,The puppy tends to misbehave whenever he is left alone.,
-misfortune,an instance of bad luck,It was a misfortune that we forgot the umbrella during the storm.,
-misunderstand,to understand something incorrectly,I did not mean to misunderstand your directions to the park.,
-misspell,to spell a word incorrectly,I always misspell the word 'necessary' on my spelling tests.,
-misuse,to use something in the wrong way,Please do not misuse the classroom scissors during art time.,
-illegal,not allowed by law,It is illegal to ride a bike without a helmet in some cities.,
-illegible,not clear enough to be read,His handwriting was so illegible that the teacher could not grade it.,
+word,hint,sentence,bonus,misspellings
+rewrite,to write something again,I had to rewrite my essay after I found several mistakes.,,rewright|rerite
+reappear,to appear again after disappearing,The sun will reappear from behind the clouds in just a few minutes.,,reapear|reappeer
+recall,to remember or bring back to mind,I can recall the exact moment I learned how to ride a bike.,,recal|reecall
+recover,to get better after being sick or hurt,It took him a week to recover from his bad cold.,,recovver|reccover
+rebuild,to build something again after it is damaged,The town worked together to rebuild the playground after the storm.,,reebuild|rebild
+dishonest,not honest; likely to lie or cheat,It was dishonest of him to say he finished his homework when he had not.,,disonest|dishonnest
+disagree,to have a different opinion than someone else,The two friends disagree about which movie to watch tonight.,,disagre|dissagree
+disappear,to go out of sight; vanish,The magician made the rabbit disappear right before our eyes.,,dissappear|disapear
+disappoint,to fail to meet someone's hopes or expectations,I did not want to disappoint my coach by missing practice.,,dissapoint|disapoint
+disconnect,to break a connection between two things,Please disconnect the printer before you try to move it.,,disconect|dissconnect
+disapprove,to have a negative opinion of something,My parents disapprove of watching too much television on school nights.,,disaprove|dissapprove
+misbehave,to behave badly or improperly,The puppy tends to misbehave whenever he is left alone.,,mesbehave|missbehave
+misfortune,an instance of bad luck,It was a misfortune that we forgot the umbrella during the storm.,,misforchune|missfortune
+misunderstand,to understand something incorrectly,I did not mean to misunderstand your directions to the park.,,missunderstand|misundarstand
+misspell,to spell a word incorrectly,I always misspell the word 'necessary' on my spelling tests.,,mispell|misspel
+misuse,to use something in the wrong way,Please do not misuse the classroom scissors during art time.,,misuze|missuse
+illegal,not allowed by law,It is illegal to ride a bike without a helmet in some cities.,,ilegal|illeagal
+illegible,not clear enough to be read,His handwriting was so illegible that the teacher could not grade it.,,ilegible|illegable

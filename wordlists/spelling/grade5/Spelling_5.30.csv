@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-multiply,to increase a number by adding it to itself repeatedly,We practiced how to multiply two-digit numbers in math class today.,
-temperature,a measurement of how hot or cold something is,The temperature dropped quickly once the sun went down.,
-vertical,positioned straight up and down,The gymnast climbed the vertical rope during practice.,
-equation,a math statement showing that two things are equal,Solve the equation to find the value of the missing number.,
-currency,the money used in a particular country,We exchanged our currency for euros before flying to France.,
-amphibian,an animal that lives both in water and on land,A frog is an amphibian that begins its life living in water.,
-intersection,a place where two or more roads cross,Look both ways before crossing at the busy intersection.,
-environment,the natural world and surroundings around us,Recycling paper and plastic helps protect our environment.,
-agriculture,"the practice of farming, including growing crops and raising animals",Agriculture is one of the most important industries in our state.,
-frequency,how often something occurs,The frequency of our fire drills increased after the new safety rules.,
-civilization,an organized and developed society or culture,We are studying the ancient Egyptian civilization in social studies.,
-manufacture,"to make products, usually in large amounts using machines",The factory workers manufacture bicycles for stores across the country.,
-characteristic,a typical feature or quality of someone or something,Curiosity is one characteristic that scientists often share.,
-atmosphere,the layer of air surrounding the earth,The rocket had to pass through the atmosphere before reaching space.,
-representative,a person chosen to speak or act for a group,Each class picked a representative to join the student council.,
-semicircle,a shape that is half of a circle,The students sat in a semicircle to listen to the story.,
-substitute,a person or thing used in place of another,We had a substitute teacher while our regular teacher was on vacation.,
-technology,"tools, machines, and systems created using science",New technology has made it much easier to communicate with people far away.,
+word,hint,sentence,bonus,misspellings
+multiply,to increase a number by adding it to itself repeatedly,We practiced how to multiply two-digit numbers in math class today.,,multaply|multiplie
+temperature,a measurement of how hot or cold something is,The temperature dropped quickly once the sun went down.,,temperture|tempurature
+vertical,positioned straight up and down,The gymnast climbed the vertical rope during practice.,,verticle|verticel
+equation,a math statement showing that two things are equal,Solve the equation to find the value of the missing number.,,equasion|ekwation
+currency,the money used in a particular country,We exchanged our currency for euros before flying to France.,,curency|currancy
+amphibian,an animal that lives both in water and on land,A frog is an amphibian that begins its life living in water.,,anphibian|amfibian
+intersection,a place where two or more roads cross,Look both ways before crossing at the busy intersection.,,intersecshun|intersektion
+environment,the natural world and surroundings around us,Recycling paper and plastic helps protect our environment.,,enviroment|envirament
+agriculture,"the practice of farming, including growing crops and raising animals",Agriculture is one of the most important industries in our state.,,agraculture|agrikulture
+frequency,how often something occurs,The frequency of our fire drills increased after the new safety rules.,,frequancy|freequency
+civilization,an organized and developed society or culture,We are studying the ancient Egyptian civilization in social studies.,,civalization|civilizashun
+manufacture,"to make products, usually in large amounts using machines",The factory workers manufacture bicycles for stores across the country.,,manufackture|manafacture
+characteristic,a typical feature or quality of someone or something,Curiosity is one characteristic that scientists often share.,,charactaristic|karacteristic
+atmosphere,the layer of air surrounding the earth,The rocket had to pass through the atmosphere before reaching space.,,atmosfere|atmusphere
+representative,a person chosen to speak or act for a group,Each class picked a representative to join the student council.,,representitive|represenative
+semicircle,a shape that is half of a circle,The students sat in a semicircle to listen to the story.,,semicircel|semisircle
+substitute,a person or thing used in place of another,We had a substitute teacher while our regular teacher was on vacation.,,substatute|substitoot
+technology,"tools, machines, and systems created using science",New technology has made it much easier to communicate with people far away.,,tecnology|teknology

@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-destruct,to destroy or ruin something,The engineers designed the rocket to destruct safely if it went off course.,
-destruction,the act of destroying something completely,The hurricane caused widespread destruction along the coastline.,
-describe,to give a detailed picture of something in words,Can you describe what the treasure map looked like in the story?,
-description,a spoken or written account describing something,The police asked for a description of the missing bicycle.,
-decorate,to make something look more attractive,We plan to decorate the gym with balloons for the school dance.,
-decoration,an object used to make something look nicer,Each classroom had a different decoration hanging on the door.,
-divide,to separate something into parts,Please divide the pizza into eight equal slices for the party.,
-division,"the act of splitting something into parts; a math operation",We are learning long division in math class this week.,
-administer,"to manage or give out something, like medicine",The nurse will administer the vaccine during the school health visit.,
-administration,"the group that manages an organization, or the act of managing",The school administration announced a new schedule for next year.,
-populate,to live in and fill an area with people,Scientists wonder if humans could one day populate another planet.,
-population,the total number of people living in a place,The population of our town has grown quickly over the past ten years.,
-infect,to spread germs and cause illness,Washing your hands can help stop germs from infecting others.,
-infection,an illness caused by harmful germs,The doctor prescribed medicine to treat the ear infection.,
-punctuate,to add punctuation marks to writing,Remember to punctuate your sentences with the correct end marks.,
-punctuation,"marks, like periods and commas, used in writing",Our teacher reminded us to check our punctuation before turning in the essay.,
-attend,to be present at an event,All students are expected to attend the assembly on Friday morning.,
-attention,careful focus or notice given to something,Please pay close attention while the teacher explains the directions.,
+word,hint,sentence,bonus,misspellings
+destruct,to destroy or ruin something,The engineers designed the rocket to destruct safely if it went off course.,,distruct|destrukt
+destruction,the act of destroying something completely,The hurricane caused widespread destruction along the coastline.,,distruction|destrucshun
+describe,to give a detailed picture of something in words,Can you describe what the treasure map looked like in the story?,,discribe|descrybe
+description,a spoken or written account describing something,The police asked for a description of the missing bicycle.,,discription|descripshun
+decorate,to make something look more attractive,We plan to decorate the gym with balloons for the school dance.,,decarate|dekorate
+decoration,an object used to make something look nicer,Each classroom had a different decoration hanging on the door.,,decaration|decorashun
+divide,to separate something into parts,Please divide the pizza into eight equal slices for the party.,,devide|divid
+division,"the act of splitting something into parts; a math operation",We are learning long division in math class this week.,,devision|divishun
+administer,"to manage or give out something, like medicine",The nurse will administer the vaccine during the school health visit.,,administor|adminester
+administration,"the group that manages an organization, or the act of managing",The school administration announced a new schedule for next year.,,adminastration|administrashun
+populate,to live in and fill an area with people,Scientists wonder if humans could one day populate another planet.,,populait|popyulate
+population,the total number of people living in a place,The population of our town has grown quickly over the past ten years.,,populashun|popyulation
+infect,to spread germs and cause illness,Washing your hands can help stop germs from infecting others.,,infekt|enfect
+infection,an illness caused by harmful germs,The doctor prescribed medicine to treat the ear infection.,,infecshun|infektion
+punctuate,to add punctuation marks to writing,Remember to punctuate your sentences with the correct end marks.,,punctuait|punktuate
+punctuation,"marks, like periods and commas, used in writing",Our teacher reminded us to check our punctuation before turning in the essay.,,punctuashun|punktuation
+attend,to be present at an event,All students are expected to attend the assembly on Friday morning.,,atend|attende
+attention,careful focus or notice given to something,Please pay close attention while the teacher explains the directions.,,atention|attenshun

@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-about,concerning or approximately,This book is about a young girl's adventure at sea.,
-algebra,a branch of math using letters and numbers,We started learning algebra in math class this week.,
-quiet,making little or no noise,Please be quiet while your sister is sleeping.,
-other,different from the one already mentioned,I have one shoe here; where is the other one?,
-compare,to look at how things are alike or different,We had to compare the two stories for class.,
-thousand,the number 1000,About a thousand people came to watch the parade.,
-happen,to occur or take place,What will happen if we mix these two colors together?,
-different,not the same,The twins wore different colors so we could tell them apart.,
-along,moving beside or through,We walked along the beach and collected seashells.,
-equator,the imaginary line around the middle of Earth,The equator divides the earth into north and south halves.,
-dozen,a group of twelve,She bought a dozen eggs at the grocery store.,
-animal,a living creature that is not a plant,The lion is a powerful animal that lives in Africa.,
-second,coming after first; or a unit of time,She finished the race in second place today.,
-region,a large area or part of a country,The desert region gets very little rain each year.,
-quarter,one of four equal parts,The clock showed a quarter past three o'clock.,
-lecture,a talk given to teach something,The professor gave a lecture about ancient history.,
-puncture,a small hole made by something sharp,A nail caused a puncture in the bicycle tire.,
-again,one more time,Can you please explain the instructions again?,
+word,hint,sentence,bonus,misspellings
+about,concerning or approximately,This book is about a young girl's adventure at sea.,,abowt|aboute
+algebra,a branch of math using letters and numbers,We started learning algebra in math class this week.,,algabra|algebre
+quiet,making little or no noise,Please be quiet while your sister is sleeping.,,quiat|kwiet
+other,different from the one already mentioned,I have one shoe here; where is the other one?,,uther|othur
+compare,to look at how things are alike or different,We had to compare the two stories for class.,,compair|kompare
+thousand,the number 1000,About a thousand people came to watch the parade.,,thousend|thowsand
+happen,to occur or take place,What will happen if we mix these two colors together?,,happan|hapen
+different,not the same,The twins wore different colors so we could tell them apart.,,diferent|differant
+along,moving beside or through,We walked along the beach and collected seashells.,,alonge|allong
+equator,the imaginary line around the middle of Earth,The equator divides the earth into north and south halves.,,equater|ekwator
+dozen,a group of twelve,She bought a dozen eggs at the grocery store.,,dozin|duzen
+animal,a living creature that is not a plant,The lion is a powerful animal that lives in Africa.,,animel|anamal
+second,coming after first; or a unit of time,She finished the race in second place today.,,secund|seccond
+region,a large area or part of a country,The desert region gets very little rain each year.,,reegion|regeon
+quarter,one of four equal parts,The clock showed a quarter past three o'clock.,,quartor|kwarter
+lecture,a talk given to teach something,The professor gave a lecture about ancient history.,,lecshure|lectur
+puncture,a small hole made by something sharp,A nail caused a puncture in the bicycle tire.,,punkture|punctur
+again,one more time,Can you please explain the instructions again?,,agin|agane

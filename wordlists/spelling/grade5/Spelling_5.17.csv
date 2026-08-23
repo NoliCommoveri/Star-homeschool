@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-signal,a sign that gives information,The crossing guard raised her hand as a signal to stop.,
-regular,usual; happening on a normal schedule,We have a regular meeting every Monday morning at nine.,
-generous,willing to give freely,Our generous neighbor shared vegetables from her garden with everyone.,
-energy,power needed to do work or activity,The children had so much energy after their afternoon nap.,
-bridge,a structure built to cross a river or road,We drove across the bridge to reach the other side of town.,
-genius,someone with extraordinary intelligence,Many people consider Einstein a genius for his scientific discoveries.,
-dangerous,not safe; risky,Swimming during a thunderstorm can be very dangerous.,
-segment,a part or section of something,The teacher divided the lesson into three separate segments.,
-figure,a number or shape; a person's outline,Can you calculate the total figure at the bottom of the page?,
-country,a nation with its own government,Our family traveled to a different country last summer.,
-circle,a round shape with no corners,Draw a circle around the correct answer on your worksheet.,
-concert,a live music performance,We bought tickets to see our favorite band's concert next month.,
-peaceful,calm and quiet,The lake was peaceful in the early morning light.,
-nice,pleasant; kind,It was nice of you to help clean up after dinner.,
-since,from a point in time until now,I have lived in this town since I was five years old.,
-electric,powered by electricity,We bought a new electric fan to cool down the bedroom.,
-dancing,moving rhythmically to music,The couple spent the evening dancing at the wedding reception.,
-decided,made a choice; past tense of decide,She decided to join the soccer team this season.,
+word,hint,sentence,bonus,misspellings
+signal,a sign that gives information,The crossing guard raised her hand as a signal to stop.,,signel|signle
+regular,usual; happening on a normal schedule,We have a regular meeting every Monday morning at nine.,,reguler|regyular
+generous,willing to give freely,Our generous neighbor shared vegetables from her garden with everyone.,,jenerous|generus
+energy,power needed to do work or activity,The children had so much energy after their afternoon nap.,,enerjy|energie
+bridge,a structure built to cross a river or road,We drove across the bridge to reach the other side of town.,,brige|bridje
+genius,someone with extraordinary intelligence,Many people consider Einstein a genius for his scientific discoveries.,,jenius|geneus
+dangerous,not safe; risky,Swimming during a thunderstorm can be very dangerous.,,dangerus|daingerous
+segment,a part or section of something,The teacher divided the lesson into three separate segments.,,segmant|segement
+figure,a number or shape; a person's outline,Can you calculate the total figure at the bottom of the page?,,figger|figyure
+country,a nation with its own government,Our family traveled to a different country last summer.,,cuntry|countree
+circle,a round shape with no corners,Draw a circle around the correct answer on your worksheet.,,circel|sircle
+concert,a live music performance,We bought tickets to see our favorite band's concert next month.,,consert|koncert
+peaceful,calm and quiet,The lake was peaceful in the early morning light.,,peacefull|peesful
+nice,pleasant; kind,It was nice of you to help clean up after dinner.,,nise|nyce
+since,from a point in time until now,I have lived in this town since I was five years old.,,sinse|synce
+electric,powered by electricity,We bought a new electric fan to cool down the bedroom.,,elektric|electrik
+dancing,moving rhythmically to music,The couple spent the evening dancing at the wedding reception.,,dansing|danceing
+decided,made a choice; past tense of decide,She decided to join the soccer team this season.,,desided|decidid
