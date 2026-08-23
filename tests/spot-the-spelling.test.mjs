@@ -353,28 +353,32 @@ function isLetterSalad(word, cand) {
     return out;
   }, files);
 
-  const grade3 = rows.filter((r) => r.path.includes('/grade3/'));
   const where = (rs) => rs.map((r) => `${r.path.split('/').pop()}: ${r.word}`);
-  check('grade 3 is curated end to end — all 30 weeks',
-    new Set(grade3.map((r) => r.path)).size === 30, new Set(grade3.map((r) => r.path)).size);
-  check('...every word in it carries a curated misspelling',
-    !grade3.some((r) => !r.curated.length), where(grade3.filter((r) => !r.curated.length)).slice(0, 8));
-  // One curated spelling means the child meets the same wrong answer every
-  // time that word comes up, and learns the pair rather than the spelling.
-  check('...and carries two, so the word is not always shown against the same one',
-    !grade3.some((r) => r.curated.length < 2), where(grade3.filter((r) => r.curated.length < 2)).slice(0, 8));
+  // Both shipped grades, each checked against its own words: a practice set
+  // spans weeks, not years.
+  for (const [grade, weeks] of [['grade3', 30], ['grade5', 30]]) {
+    const rs = rows.filter((r) => r.path.includes(`/${grade}/`));
+    check(`${grade} is curated end to end — all ${weeks} weeks`,
+      new Set(rs.map((r) => r.path)).size === weeks, new Set(rs.map((r) => r.path)).size);
+    check('...every word in it carries a curated misspelling',
+      !rs.some((r) => !r.curated.length), where(rs.filter((r) => !r.curated.length)).slice(0, 8));
+    // One curated spelling means the child meets the same wrong answer every
+    // time that word comes up, and learns the pair rather than the spelling.
+    check('...and carries two, so the word is not always shown against the same one',
+      !rs.some((r) => r.curated.length < 2), where(rs.filter((r) => r.curated.length < 2)).slice(0, 8));
 
-  // distractorsFor drops any curated spelling that is itself a word the child
-  // is studying — offering a word off their own list would invite them to file
-  // it away as a misspelling. Silently, though: the curation is just ignored
-  // and the generator answers instead. A homophone list is where this bites,
-  // because "were" really is how a child misspells "we're", and it really is
-  // next week's word. Curate a third there rather than curating two and
-  // shipping one.
-  const gradeWords = new Set(grade3.map((r) => r.word));
-  const starved = grade3.filter((r) => r.curated.filter((c) => !gradeWords.has(c)).length < 2);
-  check('...and keeps two even with every week of grade 3 in the practice set',
-    starved.length === 0, where(starved).slice(0, 8));
+    // distractorsFor drops any curated spelling that is itself a word the child
+    // is studying — offering a word off their own list would invite them to
+    // file it away as a misspelling. Silently, though: the curation is just
+    // ignored and the generator answers instead. A homophone week is where this
+    // bites, because "were" really is how a child misspells "we're", and it
+    // really is another week's word. Curate a third there rather than curating
+    // two and shipping one.
+    const gradeWords = new Set(rs.map((r) => r.word));
+    const starved = rs.filter((r) => r.curated.filter((c) => !gradeWords.has(c)).length < 2);
+    check(`...and keeps two with every week of ${grade} in the practice set`,
+      starved.length === 0, where(starved).slice(0, 8));
+  }
 
   // These hold for every grade. A list that has not been curated yet has an
   // empty column and contributes nothing.

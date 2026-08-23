@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-imperfect,having flaws; not perfect,The imperfect apple still tasted delicious even though it had a small bruise.,
-impolite,not having good manners; rude,It is impolite to interrupt someone while they are speaking.,
-impatient,not willing to wait calmly,The kids grew impatient while waiting in the long line for the ride.,
-improper,"not correct, suitable, or proper",Wearing pajamas to a wedding would be considered improper attire.,
-inactive,not moving or doing anything,The old volcano has been inactive for hundreds of years.,
-inconvenient,causing trouble or difficulty; not convenient,The road closure was inconvenient for everyone driving to school.,
-incorrect,not correct or accurate; wrong,She erased the incorrect answer and wrote the right one.,
-inconsiderate,not thinking about the feelings of others,It was inconsiderate of him to play loud music late at night.,
-preview,a look at something before it fully happens,We watched a preview of the movie before it came out in theaters.,
-prejudice,an unfair opinion formed without enough knowledge,The book taught students about the dangers of prejudice and unfair treatment.,
-prevent,to stop something from happening,Wearing a helmet can help prevent serious injuries while biking.,
-prefix,letters added to the start of a word to change its meaning,The prefix 'un' can change the word 'happy' into 'unhappy'.,
-prehistoric,belonging to a time before written history,The museum has a display of prehistoric dinosaur bones.,
-unable,not able to do something,He was unable to attend the party because he was sick.,
-uncertain,not sure or certain about something,She felt uncertain about which college she wanted to attend.,
-uncomfortable,not physically or mentally comfortable,The stiff wooden chair was uncomfortable to sit in for a long time.,
-unaware,not knowing or realizing something,He was unaware that the store had already closed for the night.,
-ungrateful,not thankful or appreciative,It seemed ungrateful of him not to say thank you for the gift.,
+word,hint,sentence,bonus,misspellings
+imperfect,having flaws; not perfect,The imperfect apple still tasted delicious even though it had a small bruise.,,inperfect|imperfeckt
+impolite,not having good manners; rude,It is impolite to interrupt someone while they are speaking.,,inpolite|impolight
+impatient,not willing to wait calmly,The kids grew impatient while waiting in the long line for the ride.,,inpatient|impatiant
+improper,"not correct, suitable, or proper",Wearing pajamas to a wedding would be considered improper attire.,,inproper|impropper
+inactive,not moving or doing anything,The old volcano has been inactive for hundreds of years.,,unactive|inaktive
+inconvenient,causing trouble or difficulty; not convenient,The road closure was inconvenient for everyone driving to school.,,unconvenient|inconveniant
+incorrect,not correct or accurate; wrong,She erased the incorrect answer and wrote the right one.,,uncorrect|incorect
+inconsiderate,not thinking about the feelings of others,It was inconsiderate of him to play loud music late at night.,,unconsiderate|inconsidderate
+preview,a look at something before it fully happens,We watched a preview of the movie before it came out in theaters.,,previue|preeview
+prejudice,an unfair opinion formed without enough knowledge,The book taught students about the dangers of prejudice and unfair treatment.,,predjudice|prejudise
+prevent,to stop something from happening,Wearing a helmet can help prevent serious injuries while biking.,,privent|prevente
+prefix,letters added to the start of a word to change its meaning,The prefix 'un' can change the word 'happy' into 'unhappy'.,,preefix|prefics
+prehistoric,belonging to a time before written history,The museum has a display of prehistoric dinosaur bones.,,preehistoric|prehistorik
+unable,not able to do something,He was unable to attend the party because he was sick.,,inable|unabel
+uncertain,not sure or certain about something,She felt uncertain about which college she wanted to attend.,,incertain|uncertin
+uncomfortable,not physically or mentally comfortable,The stiff wooden chair was uncomfortable to sit in for a long time.,,incomfortable|uncomfortabel
+unaware,not knowing or realizing something,He was unaware that the store had already closed for the night.,,unawear|inaware
+ungrateful,not thankful or appreciative,It seemed ungrateful of him not to say thank you for the gift.,,ingrateful|ungratefull

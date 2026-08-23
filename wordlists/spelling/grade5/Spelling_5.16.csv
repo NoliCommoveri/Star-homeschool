@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-awhile,"for a short time, not 'a while'",Please sit here and rest awhile before we continue our hike.,
-where,asking about a location or place,Where did you put your backpack after school today?,
-thought,past tense of think,I thought about the problem all night before finding the answer.,
-athletes,people who are trained in sports,The athletes practiced every morning before the big track meet.,
-truthful,honest; telling the truth,It is important to be truthful even when the truth is hard.,
-purchases,things that are bought,She kept the receipts for all her purchases in a folder.,
-exchange,to trade one thing for another,We can exchange seats so you can sit by the window.,
-though,however; despite that,"I like pizza, though I prefer pasta most of the time.",
-rhythm,a regular repeated pattern of sound,The drummer kept a steady rhythm throughout the entire song.,
-children,young people; kids,The children played happily in the park all afternoon.,
-chocolates,sweet candies made with cocoa,Grandma gave us a box of chocolates for the holiday.,
-friendship,a close relationship between friends,Their friendship grew stronger after years of sharing adventures together.,
-together,with each other; as a group,The whole family gathered together for a big dinner.,
-white,the color of snow,She painted the old fence a bright white last weekend.,
-watches,small clocks worn on the wrist,He collects old watches that no longer keep accurate time.,
-arithmetic,basic math like adding and subtracting,We practiced arithmetic problems every morning before recess.,
-months,periods of about thirty days,There are twelve months in a calendar year.,
-length,how long something is,Measure the length of the table before buying a new tablecloth.,
+word,hint,sentence,bonus,misspellings
+awhile,"for a short time, not 'a while'",Please sit here and rest awhile before we continue our hike.,,awile|awhyle
+where,asking about a location or place,Where did you put your backpack after school today?,,whair|ware
+thought,past tense of think,I thought about the problem all night before finding the answer.,,thot|thaught
+athletes,people who are trained in sports,The athletes practiced every morning before the big track meet.,,athlets|atheletes
+truthful,honest; telling the truth,It is important to be truthful even when the truth is hard.,,truthfull|truethful
+purchases,things that are bought,She kept the receipts for all her purchases in a folder.,,purchesses|perchases
+exchange,to trade one thing for another,We can exchange seats so you can sit by the window.,,exchainge|exchanje
+though,however; despite that,"I like pizza, though I prefer pasta most of the time.",,tho|thoe
+rhythm,a regular repeated pattern of sound,The drummer kept a steady rhythm throughout the entire song.,,rythm|rhythem
+children,young people; kids,The children played happily in the park all afternoon.,,childrin|childran
+chocolates,sweet candies made with cocoa,Grandma gave us a box of chocolates for the holiday.,,choclates|chocolats
+friendship,a close relationship between friends,Their friendship grew stronger after years of sharing adventures together.,,freindship|frendship
+together,with each other; as a group,The whole family gathered together for a big dinner.,,togather|togethur
+white,the color of snow,She painted the old fence a bright white last weekend.,,wite|whyte
+watches,small clocks worn on the wrist,He collects old watches that no longer keep accurate time.,,wotches|waches
+arithmetic,basic math like adding and subtracting,We practiced arithmetic problems every morning before recess.,,arithmatic|arythmetic
+months,periods of about thirty days,There are twelve months in a calendar year.,,munths|monthes
+length,how long something is,Measure the length of the table before buying a new tablecloth.,,lenth|lenkth

@@ -77,9 +77,9 @@ the app keeps working and quietly does the wrong thing:
   in `wordlists/` is the one distractor source with no code behind it, and the
   app drops a bad cell rather than complaining about it: a one-letter "y" for
   "I", or a spelling that is also next week's word, is simply replaced by a
-  generated one and the curation is never seen. The whole shipped grade is
-  swept through the app's own CSV parser and plausibility filter, and every
-  word is required to keep two usable spellings even with all thirty weeks in
+  generated one and the curation is never seen. Both shipped grades are swept
+  through the app's own CSV parser and plausibility filter, and every word is
+  required to keep two usable spellings even with all thirty of its weeks in
   the practice set.
 
 ## Adding to them

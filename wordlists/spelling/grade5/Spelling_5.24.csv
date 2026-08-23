@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-wrestle,to struggle with someone by gripping; silent 'w',The two brothers love to wrestle playfully on the living room carpet.,
-wrong,not correct or true; silent 'w',He raised his hand to say the answer on the board was wrong.,
-answer,a reply given to a question; silent 'w',She raised her hand because she knew the answer to the math problem.,
-dough,a soft mixture of flour and water used for baking,We rolled out the dough before cutting it into cookie shapes.,
-unknown,not known or familiar; unidentified,The scientist discovered an unknown species of frog deep in the rainforest.,
-knapsack,a bag carried on the back; silent 'k',He packed snacks and a water bottle in his knapsack before the hike.,
-honor,great respect shown to someone; silent 'h',The class stood to honor the veteran who visited their school.,
-listen,to pay attention in order to hear; silent 't',Please listen carefully to the directions before starting the assignment.,
-climb,to go upward using hands and feet; silent 'b',The children love to climb the tall oak tree in the backyard.,
-half,one of two equal parts of something; silent 'l',She gave her friend half of the sandwich during lunch today.,
-island,a piece of land surrounded by water; silent 's',Our family took a small boat to a tiny island off the coast.,
-talking,speaking with someone; silent 'l' like in 'talk',The students were talking quietly while they waited for the bell to ring.,
-design,a plan or drawing showing how something will look; silent 'g',She sketched a design for the poster before painting it with bright colors.,
-scratch,to mark or rub with something sharp or rough,The cat likes to scratch the post instead of the furniture.,
-tonight,on the present evening or night; silent 'gh',We are going to watch a movie together as a family tonight.,
-limb,an arm leg or tree branch; silent 'b',The squirrel jumped from one limb to another high in the tree.,
-knot,a fastening made by looping and tying; silent 'k',Dad taught me how to tie a strong knot for the camping trip.,
-whistle,a high clear sound made by blowing air; silent 'h',The coach blew the whistle to signal the end of practice.,
+word,hint,sentence,bonus,misspellings
+wrestle,to struggle with someone by gripping; silent 'w',The two brothers love to wrestle playfully on the living room carpet.,,restle|wressle
+wrong,not correct or true; silent 'w',He raised his hand to say the answer on the board was wrong.,,rong|wronge
+answer,a reply given to a question; silent 'w',She raised her hand because she knew the answer to the math problem.,,anser|answur
+dough,a soft mixture of flour and water used for baking,We rolled out the dough before cutting it into cookie shapes.,,doe|doh
+unknown,not known or familiar; unidentified,The scientist discovered an unknown species of frog deep in the rainforest.,,unnown|unknone
+knapsack,a bag carried on the back; silent 'k',He packed snacks and a water bottle in his knapsack before the hike.,,napsack|knapsak
+honor,great respect shown to someone; silent 'h',The class stood to honor the veteran who visited their school.,,onor|honnor
+listen,to pay attention in order to hear; silent 't',Please listen carefully to the directions before starting the assignment.,,lisen|listin
+climb,to go upward using hands and feet; silent 'b',The children love to climb the tall oak tree in the backyard.,,clime|clim
+half,one of two equal parts of something; silent 'l',She gave her friend half of the sandwich during lunch today.,,haf|halph
+island,a piece of land surrounded by water; silent 's',Our family took a small boat to a tiny island off the coast.,,iland|islend
+talking,speaking with someone; silent 'l' like in 'talk',The students were talking quietly while they waited for the bell to ring.,,tawking|talkking
+design,a plan or drawing showing how something will look; silent 'g',She sketched a design for the poster before painting it with bright colors.,,desine|dezign
+scratch,to mark or rub with something sharp or rough,The cat likes to scratch the post instead of the furniture.,,scrach|skratch
+tonight,on the present evening or night; silent 'gh',We are going to watch a movie together as a family tonight.,,tonite|tonyght
+limb,an arm leg or tree branch; silent 'b',The squirrel jumped from one limb to another high in the tree.,,lim|limm
+knot,a fastening made by looping and tying; silent 'k',Dad taught me how to tie a strong knot for the camping trip.,,not|knott
+whistle,a high clear sound made by blowing air; silent 'h',The coach blew the whistle to signal the end of practice.,,wissle|whissle

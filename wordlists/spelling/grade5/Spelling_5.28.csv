@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-geology,the study of rocks and the earth's structure,In geology class we learned how mountains are formed over time.,
-geometry,the branch of math that studies shapes and space,We used geometry to calculate the area of the triangle.,
-geography,"the study of the earth's land, features, and people",In geography we learned about the mountains and rivers of South America.,
-geologist,a scientist who studies rocks and the earth,The geologist examined the layers of rock along the canyon wall.,
-action,the process of doing something; movement,The coach praised the team for their quick action during the game.,
-enact,to make something happen; to put a law into effect,The city council voted to enact a new recycling program.,
-transport,to carry people or things from one place to another,The truck was used to transport furniture across the state.,
-import,to bring in goods from another country,Our country will import fruit from tropical countries during the winter.,
-portable,able to be carried or moved easily,She packed a portable speaker to play music at the picnic.,
-bicycle,a two-wheeled vehicle you pedal to ride,He rode his bicycle to school every morning last spring.,
-cyclone,"a powerful storm with strong, spinning winds",The weather report warned that a cyclone was approaching the coast.,
-encyclopedia,a large reference book full of information on many topics,She looked up facts about volcanoes in the encyclopedia.,
-autograph,"a person's signature, often of someone famous",The young fan asked the baseball player for his autograph.,
-automobile,another word for a car,My grandfather bought his first automobile back in the 1960s.,
-automatic,"happening by itself, without a person controlling it",The automatic doors opened as soon as we walked toward the store.,
-autobiography,a book someone writes about their own life,She read an autobiography written by her favorite astronaut.,
-telegraph,an old device used to send messages using electric signals,"Before telephones, people used the telegraph to send messages quickly.",
-photograph,a picture taken with a camera,We took a photograph of the whole family at the reunion.,
+word,hint,sentence,bonus,misspellings
+geology,the study of rocks and the earth's structure,In geology class we learned how mountains are formed over time.,,geollogy|jeology
+geometry,the branch of math that studies shapes and space,We used geometry to calculate the area of the triangle.,,geomatry|jeometry
+geography,"the study of the earth's land, features, and people",In geography we learned about the mountains and rivers of South America.,,geografy|jeography
+geologist,a scientist who studies rocks and the earth,The geologist examined the layers of rock along the canyon wall.,,geologest|jeologist
+action,the process of doing something; movement,The coach praised the team for their quick action during the game.,,acshun|acktion
+enact,to make something happen; to put a law into effect,The city council voted to enact a new recycling program.,,inact|enackt
+transport,to carry people or things from one place to another,The truck was used to transport furniture across the state.,,transporte|tranzport
+import,to bring in goods from another country,Our country will import fruit from tropical countries during the winter.,,importe|inport
+portable,able to be carried or moved easily,She packed a portable speaker to play music at the picnic.,,portabel|portible
+bicycle,a two-wheeled vehicle you pedal to ride,He rode his bicycle to school every morning last spring.,,bicicle|bycycle
+cyclone,"a powerful storm with strong, spinning winds",The weather report warned that a cyclone was approaching the coast.,,siclone|cycloan
+encyclopedia,a large reference book full of information on many topics,She looked up facts about volcanoes in the encyclopedia.,,encyclapedia|insyclopedia
+autograph,"a person's signature, often of someone famous",The young fan asked the baseball player for his autograph.,,autograf|otograph
+automobile,another word for a car,My grandfather bought his first automobile back in the 1960s.,,automobeel|autamobile
+automatic,"happening by itself, without a person controlling it",The automatic doors opened as soon as we walked toward the store.,,automattic|autamatic
+autobiography,a book someone writes about their own life,She read an autobiography written by her favorite astronaut.,,autobiografy|autabiography
+telegraph,an old device used to send messages using electric signals,"Before telephones, people used the telegraph to send messages quickly.",,telegraf|telagraph
+photograph,a picture taken with a camera,We took a photograph of the whole family at the reunion.,,photograf|fotograph

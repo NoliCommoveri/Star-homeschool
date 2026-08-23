@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-square,a shape with four equal sides,She drew a square on the paper with her ruler.,
-stare,to look at something for a long time,It is not polite to stare at strangers.,
-dairy,foods made from milk,We buy milk and cheese from the dairy section.,
-area,a particular part of a place,The playground area was filled with laughing children.,
-january,the first month of the year,School starts again in early January after winter break.,
-dictionary,a book that lists word meanings,She looked up the new word in the dictionary.,
-daring,brave and willing to take risks,The daring firefighter rushed into the burning building.,
-beware,to be cautious of danger,The sign told hikers to beware of the steep cliff.,
-argument,a disagreement between people,The two brothers had an argument over the last cookie.,
-large,big in size,The elephant is a very large animal at the zoo.,
-partner,a person who works with another,My partner and I finished the science project together.,
-guarding,protecting or watching over,The soldier stood guarding the entrance to the castle.,
-article,a piece of writing in a magazine or paper,She read an interesting article about ocean animals.,
-orchestra,a large group of musicians,The orchestra played a beautiful song at the concert.,
-ordinary,normal; not special,It was just an ordinary day at school for everyone.,
-important,having great value or meaning,It is important to wash your hands before eating.,
-force,strength or power,The strong wind had enough force to knock over the tent.,
-before,earlier than a certain time,Wash your hands before you sit down to eat.,
+word,hint,sentence,bonus,misspellings
+square,a shape with four equal sides,She drew a square on the paper with her ruler.,,squair|skware
+stare,to look at something for a long time,It is not polite to stare at strangers.,,stair|stayre
+dairy,foods made from milk,We buy milk and cheese from the dairy section.,,dayry|dairry
+area,a particular part of a place,The playground area was filled with laughing children.,,aria|areea
+january,the first month of the year,School starts again in early January after winter break.,,januery|janyuary
+dictionary,a book that lists word meanings,She looked up the new word in the dictionary.,,dictionery|dicshionary
+daring,brave and willing to take risks,The daring firefighter rushed into the burning building.,,dareing|darring
+beware,to be cautious of danger,The sign told hikers to beware of the steep cliff.,,bewair|bewear
+argument,a disagreement between people,The two brothers had an argument over the last cookie.,,arguement|argumant
+large,big in size,The elephant is a very large animal at the zoo.,,larje|lardge
+partner,a person who works with another,My partner and I finished the science project together.,,partnur|pardner
+guarding,protecting or watching over,The soldier stood guarding the entrance to the castle.,,garding|guardeing
+article,a piece of writing in a magazine or paper,She read an interesting article about ocean animals.,,artical|articel
+orchestra,a large group of musicians,The orchestra played a beautiful song at the concert.,,orkestra|orchestera
+ordinary,normal; not special,It was just an ordinary day at school for everyone.,,ordinery|ordinairy
+important,having great value or meaning,It is important to wash your hands before eating.,,importent|importint
+force,strength or power,The strong wind had enough force to knock over the tent.,,forse|foarce
+before,earlier than a certain time,Wash your hands before you sit down to eat.,,befor|beefore

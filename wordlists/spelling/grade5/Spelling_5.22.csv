@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-thoughtful,showing care and consideration for others,She wrote a thoughtful note to thank her grandmother for the birthday gift.,
-successful,having achieved a goal or desired result,The bake sale was successful and raised enough money for new library books.,
-wasteful,using more than is needed; not careful,Leaving the water running while you brush your teeth is wasteful.,
-wonderful,extremely good or pleasing,We had a wonderful time exploring the museum on Saturday afternoon.,
-skillful,showing great ability or skill,The skillful carpenter built a sturdy bookshelf in just one afternoon.,
-plentiful,existing in large quantities; abundant,Fresh vegetables are plentiful at the farmers market in the summer.,
-government,the group of people who run a country or state,The local government decided to build a new park downtown this year.,
-amusement,a feeling of fun or entertainment,The children squealed with amusement as the clown juggled colorful balls.,
-predicament,a difficult or embarrassing situation,Losing his house key put him in an awkward predicament after school.,
-excitement,a feeling of great enthusiasm or eagerness,The whole class buzzed with excitement before the field trip to the zoo.,
-punishment,a penalty given for doing something wrong,His punishment for missing curfew was losing video game time for a week.,
-arrangement,a plan or way that things are organized,They made an arrangement to meet at the library after school on Friday.,
-fearless,showing no fear; brave,The fearless firefighter climbed the tall ladder to rescue the stranded cat.,
-careless,not paying careful attention,A careless mistake on the test cost him several points he could have kept.,
-worthless,having no value or use,The old coupon was worthless because it had expired two months ago.,
-thoughtless,not thinking about how others feel,It was thoughtless of him to cut in line ahead of the younger kids.,
-useless,not serving any useful purpose,The broken umbrella was useless during the sudden rainstorm on our walk home.,
-reckless,acting without care about danger or consequences,Reckless driving near the school zone can put children in serious danger.,
+word,hint,sentence,bonus,misspellings
+thoughtful,showing care and consideration for others,She wrote a thoughtful note to thank her grandmother for the birthday gift.,,thoughtfull|thotful
+successful,having achieved a goal or desired result,The bake sale was successful and raised enough money for new library books.,,succesful|successfull
+wasteful,using more than is needed; not careful,Leaving the water running while you brush your teeth is wasteful.,,wastefull|wastful
+wonderful,extremely good or pleasing,We had a wonderful time exploring the museum on Saturday afternoon.,,wonderfull|wunderful
+skillful,showing great ability or skill,The skillful carpenter built a sturdy bookshelf in just one afternoon.,,skilful|skillfull
+plentiful,existing in large quantities; abundant,Fresh vegetables are plentiful at the farmers market in the summer.,,plentifull|plentyful
+government,the group of people who run a country or state,The local government decided to build a new park downtown this year.,,goverment|governmant
+amusement,a feeling of fun or entertainment,The children squealed with amusement as the clown juggled colorful balls.,,amusment|amusemant
+predicament,a difficult or embarrassing situation,Losing his house key put him in an awkward predicament after school.,,predicamant|predickament
+excitement,a feeling of great enthusiasm or eagerness,The whole class buzzed with excitement before the field trip to the zoo.,,excitment|exitement
+punishment,a penalty given for doing something wrong,His punishment for missing curfew was losing video game time for a week.,,punishmant|punnishment
+arrangement,a plan or way that things are organized,They made an arrangement to meet at the library after school on Friday.,,arrangment|arangement
+fearless,showing no fear; brave,The fearless firefighter climbed the tall ladder to rescue the stranded cat.,,fearles|feerless
+careless,not paying careful attention,A careless mistake on the test cost him several points he could have kept.,,careles|carless
+worthless,having no value or use,The old coupon was worthless because it had expired two months ago.,,worthles|wurthless
+thoughtless,not thinking about how others feel,It was thoughtless of him to cut in line ahead of the younger kids.,,thoughtles|thotless
+useless,not serving any useful purpose,The broken umbrella was useless during the sudden rainstorm on our walk home.,,useles|youseless
+reckless,acting without care about danger or consequences,Reckless driving near the school zone can put children in serious danger.,,reckles|reckliss

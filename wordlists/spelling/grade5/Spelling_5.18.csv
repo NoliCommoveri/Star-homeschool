@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-eagle,a large bird of prey,The eagle soared high above the mountain peaks.,
-example,something that shows a pattern to follow,The teacher gave an example to help us understand the lesson.,
-towel,cloth used for drying,Please hang your wet towel on the rack after your shower.,
-special,not ordinary; unique,Today is a special day because it is her birthday.,
-legal,allowed by law,It is not legal to drive a car without a license.,
-little,small in size or amount,The little puppy curled up and fell asleep in the basket.,
-whole,"entire; complete, not 'hole'",We ate the whole pizza during movie night.,
-several,more than two but not many,Several students raised their hands to answer the question.,
-terrible,very bad,The terrible storm knocked down several trees in our yard.,
-label,a tag that names or describes something,Read the label before you take any medicine.,
-question,something asked to get information,She raised her hand to ask the teacher a question.,
-frequent,happening often,He makes frequent trips to the library to borrow new books.,
-telescope,a tool used to see distant objects,We used a telescope to look at the stars last night.,
-instead,in place of something else,Let's walk to school instead of taking the bus today.,
-instrument,"a tool, especially for making music",She practices her musical instrument for thirty minutes every day.,
-celebrate,to honor a special event,Our whole family will celebrate Grandpa's birthday this weekend.,
-declare,to state something clearly and formally,The judge will declare the winner after all votes are counted.,
-address,where someone lives; to speak to someone,Please write your home address clearly on the envelope.,
+word,hint,sentence,bonus,misspellings
+eagle,a large bird of prey,The eagle soared high above the mountain peaks.,,eagel|eegle
+example,something that shows a pattern to follow,The teacher gave an example to help us understand the lesson.,,exampel|egsample
+towel,cloth used for drying,Please hang your wet towel on the rack after your shower.,,towle|towal
+special,not ordinary; unique,Today is a special day because it is her birthday.,,speshal|specal
+legal,allowed by law,It is not legal to drive a car without a license.,,legel|leagal
+little,small in size or amount,The little puppy curled up and fell asleep in the basket.,,littel|litle
+whole,"entire; complete, not 'hole'",We ate the whole pizza during movie night.,,hole|wole
+several,more than two but not many,Several students raised their hands to answer the question.,,severel|sevral
+terrible,very bad,The terrible storm knocked down several trees in our yard.,,terribel|terrable
+label,a tag that names or describes something,Read the label before you take any medicine.,,labul|labell
+question,something asked to get information,She raised her hand to ask the teacher a question.,,kwestion|questian
+frequent,happening often,He makes frequent trips to the library to borrow new books.,,frequant|freequent
+telescope,a tool used to see distant objects,We used a telescope to look at the stars last night.,,telascope|telescoap
+instead,in place of something else,Let's walk to school instead of taking the bus today.,,insted|instedd
+instrument,"a tool, especially for making music",She practices her musical instrument for thirty minutes every day.,,instrament|instrumant
+celebrate,to honor a special event,Our whole family will celebrate Grandpa's birthday this weekend.,,celabrate|selebrate
+declare,to state something clearly and formally,The judge will declare the winner after all votes are counted.,,declair|deklare
+address,where someone lives; to speak to someone,Please write your home address clearly on the envelope.,,adress|addres

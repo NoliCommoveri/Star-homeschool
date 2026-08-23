@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-idea,a thought or plan,She had a great idea for the school science fair project.,
-silent,completely quiet; making no sound,The library was silent except for the sound of turning pages.,
-myself,reflexive pronoun referring to me,I made myself a sandwich for lunch today.,
-lying,not telling the truth or resting flat,The dog was lying in the sun on the porch.,
-apply,to put to use or to request formally,You must apply sunscreen before swimming outside.,
-knight,a medieval soldier who served a king,The knight rode his horse across the castle bridge.,
-quite,to a considerable extent; really,The movie was quite exciting from start to finish.,
-I'm,contraction of I am,I'm going to the store after school today.,
-license,an official permit to do something,She studied hard to get her driver's license.,
-buy,to purchase something,We need to buy more milk at the grocery store.,
-inquire,to ask about something,He decided to inquire about the missing package at the desk.,
-higher,more elevated or greater in position,The kite flew higher than the tallest building in town.,
-variety,a number of different types of something,The store offers a wide variety of fresh fruit.,
-smiling,showing happiness with your mouth,The baby kept smiling at everyone who walked by.,
-diagram,a drawing that explains something,The teacher drew a diagram to explain the water cycle.,
-rhyme,words that end with the same sound,The poem had a rhyme at the end of every line.,
-widest,having the greatest width,The river is widest near the old stone bridge.,
-python,a large nonvenomous snake,The zoo added a new python to its reptile exhibit.,
+word,hint,sentence,bonus,misspellings
+idea,a thought or plan,She had a great idea for the school science fair project.,,ideea|idia
+silent,completely quiet; making no sound,The library was silent except for the sound of turning pages.,,silant|sylent
+myself,reflexive pronoun referring to me,I made myself a sandwich for lunch today.,,miself|myselph
+lying,not telling the truth or resting flat,The dog was lying in the sun on the porch.,,lieing|lyeing
+apply,to put to use or to request formally,You must apply sunscreen before swimming outside.,,aply|applie
+knight,a medieval soldier who served a king,The knight rode his horse across the castle bridge.,,nite|knite
+quite,to a considerable extent; really,The movie was quite exciting from start to finish.,,quight|kwite
+I'm,contraction of I am,I'm going to the store after school today.,,im|i'am
+license,an official permit to do something,She studied hard to get her driver's license.,,lisence|liscense
+buy,to purchase something,We need to buy more milk at the grocery store.,,bi|bye
+inquire,to ask about something,He decided to inquire about the missing package at the desk.,,enquire|inkwire
+higher,more elevated or greater in position,The kite flew higher than the tallest building in town.,,highor|hyer
+variety,a number of different types of something,The store offers a wide variety of fresh fruit.,,varity|vareity
+smiling,showing happiness with your mouth,The baby kept smiling at everyone who walked by.,,smileing|smyling
+diagram,a drawing that explains something,The teacher drew a diagram to explain the water cycle.,,diagramm|diegram
+rhyme,words that end with the same sound,The poem had a rhyme at the end of every line.,,rime|ryme
+widest,having the greatest width,The river is widest near the old stone bridge.,,widist|wydest
+python,a large nonvenomous snake,The zoo added a new python to its reptile exhibit.,,pithon|pythin

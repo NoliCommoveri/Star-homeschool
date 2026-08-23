@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-fifteen,the number 15,She will turn fifteen years old next Tuesday.,
-referee,the official who enforces rules in a sports game,The referee blew the whistle to stop the game.,
-eager,excited and ready to do something,The students were eager to start their field trip.,
-easily,without much effort,He easily solved the puzzle in under a minute.,
-ready,prepared for something,Are you ready to leave for school yet?,
-please,used to make a polite request,Please pass the salt when you get a chance.,
-ecology,the study of living things and their environment,In science class we studied the ecology of the local pond.,
-maybe,possibly; perhaps,Maybe we can go to the park after lunch today.,
-been,past participle of be,Have you ever been to the beach in the winter?,
-only,just; no more than,There is only one seat left on the bus.,
-universe,all of space and everything in it,Scientists study the stars to learn about the universe.,
-future,time that is yet to come,She dreams of becoming a doctor in the future.,
-communicate,to share information or ideas,We communicate with our teacher through a class app.,
-beautiful,very pretty or pleasing to look at,The sunset over the ocean was absolutely beautiful.,
-unusual,not common; strange,It was unusual to see snow in the middle of April.,
-cute,attractive in a charming or endearing way,The kitten was so cute that everyone wanted to pet it.,
-cube,a solid shape with six equal square sides,The ice cube melted quickly in the warm glass of water.,
-fuel,a material burned to produce energy,The car needs more fuel before we can drive to the city.,
+word,hint,sentence,bonus,misspellings
+fifteen,the number 15,She will turn fifteen years old next Tuesday.,,fiftean|fivteen
+referee,the official who enforces rules in a sports game,The referee blew the whistle to stop the game.,,referree|refery
+eager,excited and ready to do something,The students were eager to start their field trip.,,eeger|eagur
+easily,without much effort,He easily solved the puzzle in under a minute.,,easilly|eazily
+ready,prepared for something,Are you ready to leave for school yet?,,reddy|readdy
+please,used to make a polite request,Please pass the salt when you get a chance.,,pleese|pleaze
+ecology,the study of living things and their environment,In science class we studied the ecology of the local pond.,,ecollogy|eecology
+maybe,possibly; perhaps,Maybe we can go to the park after lunch today.,,maybee|maiby
+been,past participle of be,Have you ever been to the beach in the winter?,,bin|bene
+only,just; no more than,There is only one seat left on the bus.,,onley|onlie
+universe,all of space and everything in it,Scientists study the stars to learn about the universe.,,univerce|youniverse
+future,time that is yet to come,She dreams of becoming a doctor in the future.,,futcher|fewture
+communicate,to share information or ideas,We communicate with our teacher through a class app.,,comunicate|communacate
+beautiful,very pretty or pleasing to look at,The sunset over the ocean was absolutely beautiful.,,beutiful|beautifull
+unusual,not common; strange,It was unusual to see snow in the middle of April.,,unuzual|unusuel
+cute,attractive in a charming or endearing way,The kitten was so cute that everyone wanted to pet it.,,kute|cewt
+cube,a solid shape with six equal square sides,The ice cube melted quickly in the warm glass of water.,,kube|qube
+fuel,a material burned to produce energy,The car needs more fuel before we can drive to the city.,,fule|fewl

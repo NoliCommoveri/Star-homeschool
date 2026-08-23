@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-afraid,feeling scared,The puppy was afraid of the loud thunder outside.,
-explain,to make something clear by describing it,Can you explain how to solve this math problem?,
-payment,money given for something,She made her first car payment at the bank yesterday.,
-sleigh,a vehicle with runners pulled over snow,The horses pulled the sleigh across the snowy field.,
-laid,past tense of lay,He laid his backpack down beside the front door.,
-raise,to lift something up,Please raise your hand if you know the answer.,
-straight,not curved or bent,Draw a straight line from one corner to the other.,
-freight,goods carried by truck train or ship,The freight train carried lumber across three states.,
-height,how tall something is,The nurse measured his height at his checkup.,
-they,plural pronoun for people or things,They are planning a trip to the mountains next month.,
-favorite,liked the most,Pizza is my favorite food to eat on Fridays.,
-April,the fourth month of the year,Our family always plants a garden in April.,
-able,having the power or skill to do something,She was able to finish the race in record time.,
-radio,a device that receives sound broadcasts,We listened to music on the radio during the drive.,
-station,a stopping place for trains or buses,We waited at the train station for twenty minutes.,
-relation,the way people or things are connected,There is a close relation between exercise and good health.,
-daybreak,the time when the sun first rises,The fishermen left the dock at daybreak to catch fish.,
-trace,a small sign that something existed,There was no trace of the missing cookies on the counter.,
+word,hint,sentence,bonus,misspellings
+afraid,feeling scared,The puppy was afraid of the loud thunder outside.,,afrade|afraide
+explain,to make something clear by describing it,Can you explain how to solve this math problem?,,explane|explaine
+payment,money given for something,She made her first car payment at the bank yesterday.,,paiment|paymint
+sleigh,a vehicle with runners pulled over snow,The horses pulled the sleigh across the snowy field.,,slay|slaigh
+laid,past tense of lay,He laid his backpack down beside the front door.,,layed|lade
+raise,to lift something up,Please raise your hand if you know the answer.,,rayse|raze
+straight,not curved or bent,Draw a straight line from one corner to the other.,,strait|straite
+freight,goods carried by truck train or ship,The freight train carried lumber across three states.,,frate|fraight
+height,how tall something is,The nurse measured his height at his checkup.,,hight|hieght
+they,plural pronoun for people or things,They are planning a trip to the mountains next month.,,thay|thae
+favorite,liked the most,Pizza is my favorite food to eat on Fridays.,,favorate|faverite
+April,the fourth month of the year,Our family always plants a garden in April.,,aprill|aypril
+able,having the power or skill to do something,She was able to finish the race in record time.,,abel|aible
+radio,a device that receives sound broadcasts,We listened to music on the radio during the drive.,,raydio|radeo
+station,a stopping place for trains or buses,We waited at the train station for twenty minutes.,,stashun|staytion
+relation,the way people or things are connected,There is a close relation between exercise and good health.,,relashun|relaytion
+daybreak,the time when the sun first rises,The fishermen left the dock at daybreak to catch fish.,,daybrake|daibreak
+trace,a small sign that something existed,There was no trace of the missing cookies on the counter.,,trase|trayce

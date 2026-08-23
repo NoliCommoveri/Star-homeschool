@@ -1,19 +1,19 @@
-word,hint,sentence,bonus
-urgent,needing immediate attention,The urgent message needed an answer right away.,
-thursday,the day between wednesday and friday,We have a big test on Thursday morning.,
-purpose,the reason something is done,The purpose of the meeting was to plan the party.,
-thirsty,feeling a need to drink,After running she felt very thirsty and drank some water.,
-camera,a device used to take pictures,He used his camera to take photos of the sunset.,
-wonder,to feel curious about something,I wonder what the weather will be like tomorrow.,
-smuggler,a person who moves goods illegally,The smuggler tried to sneak past the border guards.,
-remember,to keep something in your memory,Please remember to bring your lunch to school tomorrow.,
-surprise,something unexpected,The birthday party was a wonderful surprise for her.,
-earth,the planet we live on,Earth is the third planet from the sun.,
-certain,sure about something,I am certain that the answer to this problem is correct.,
-person,a human being,Each person in line waited patiently for their turn.,
-dollar,a unit of money,The toy cost only one dollar at the store.,
-color,a hue such as red or blue,Her favorite color is a bright shade of green.,
-collar,the part of a shirt around the neck,The dog's collar had a small silver tag on it.,
-early,before the usual time,We arrived early so we could get good seats.,
-mayor,the leader of a city or town,The mayor gave a speech at the town celebration.,
-doctor,a person who treats sick people,The doctor checked my temperature during the visit.,
+word,hint,sentence,bonus,misspellings
+urgent,needing immediate attention,The urgent message needed an answer right away.,,ergent|urgant
+thursday,the day between wednesday and friday,We have a big test on Thursday morning.,,thersday|thirsday
+purpose,the reason something is done,The purpose of the meeting was to plan the party.,,perpose|purpus
+thirsty,feeling a need to drink,After running she felt very thirsty and drank some water.,,thersty|thursty
+camera,a device used to take pictures,He used his camera to take photos of the sunset.,,camra|camerra
+wonder,to feel curious about something,I wonder what the weather will be like tomorrow.,,wunder|wondur
+smuggler,a person who moves goods illegally,The smuggler tried to sneak past the border guards.,,smugler|smugglar
+remember,to keep something in your memory,Please remember to bring your lunch to school tomorrow.,,remembur|remmember
+surprise,something unexpected,The birthday party was a wonderful surprise for her.,,suprise|surprize
+earth,the planet we live on,Earth is the third planet from the sun.,,erth|urth
+certain,sure about something,I am certain that the answer to this problem is correct.,,certin|sertain
+person,a human being,Each person in line waited patiently for their turn.,,persen|purson
+dollar,a unit of money,The toy cost only one dollar at the store.,,doller|dolar
+color,a hue such as red or blue,Her favorite color is a bright shade of green.,,coler|culler
+collar,the part of a shirt around the neck,The dog's collar had a small silver tag on it.,,coller|collor
+early,before the usual time,We arrived early so we could get good seats.,,erly|earley
+mayor,the leader of a city or town,The mayor gave a speech at the town celebration.,,mayer|maior
+doctor,a person who treats sick people,The doctor checked my temperature during the visit.,,docter|doctur
