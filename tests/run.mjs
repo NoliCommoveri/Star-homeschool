@@ -17,6 +17,7 @@ const SUITES = [
   { file: 'child-apps.test.mjs', browser: true },
   { file: 'practice-sets.test.mjs', browser: true },
   { file: 'spot-the-spelling.test.mjs', browser: true },
+  { file: 'apostrophes.test.mjs', browser: true },
   { file: 'parent-dashboard.test.mjs', browser: true },
   { file: 'setup-wizard.test.mjs', browser: true },
 ];

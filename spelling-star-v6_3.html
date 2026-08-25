@@ -71,11 +71,34 @@
   label { font-size: 16px; display: block; padding: 4px 0; }
   .bonus-tag { color: var(--gold); font-weight: 700; }
   .kb { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
-  .kb-row { display: flex; gap: 6px; justify-content: center; }
+  /* Wraps because the rows no longer fit a phone. Ten keys at a tappable size
+     need about 430px of card, so on anything narrower the row used to run off
+     the side of the screen — already true of QWERTY's top row before the
+     apostrophe key joined the bottom one. Wrapping keeps every key on screen
+     and at thumb size; the keypad just gets one line taller on a small phone. */
+  .kb-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
   .kb button { min-width: 30px; padding: 12px 0; font-size: 19px; font-weight: 800; border-radius: 10px; background: var(--card); color: var(--text); border: 2px solid var(--border); flex: 1; max-width: 48px; text-transform: uppercase; }
   .kb button:active { background: var(--accent-soft); border-color: var(--accent); }
-  .kb button.kb-back { max-width: 110px; flex: 2; font-size: 16px; background: var(--soft); }
+  /* min-width is the width of the label itself, and it is what makes the wrap
+     happen at the right moment: below it the erase key was squeezed until
+     "erase" broke onto a second line inside the button, which is what made
+     every keypad row 65px tall instead of 48. */
+  .kb button.kb-back { min-width: 104px; max-width: 110px; flex: 2; font-size: 16px; background: var(--soft); }
+  /* The apostrophe is the one non-letter on the keypad. Tinted like the erase
+     key and printed larger, because a straight quote at letter size is a speck
+     a child has to hunt for. */
+  .kb button.kb-punct { background: var(--soft); font-size: 26px; line-height: 1; }
   .kb button:disabled { background: #EEE; color: #AAA; }
+  /* On a phone the card's padding leaves a ten-key row nowhere to go, so the
+     keypad alone reaches past it and the keys close up. That keeps every
+     letter row on one line down to about 360px; what still cannot fit is the
+     erase key, which drops to a line of its own — the one place the wrap is
+     an improvement, since it lands as a wide bar under the letters. */
+  @media (max-width: 480px) {
+    .kb { margin-left: -20px; margin-right: -20px; }
+    .kb-row { gap: 4px; }
+    .kb button { min-width: 26px; }
+  }
   .assigned-badge { background: var(--green-soft); color: var(--green-dark); border-radius: 8px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
   .swatch { width: 84px; height: 56px; border-radius: 14px; border: 3px solid var(--border); cursor: pointer; display: inline-flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; font-size: 12px; font-weight: 700; }
   .swatch.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
@@ -99,6 +122,22 @@
 
 <script>
 // ============================================================================
+// Apostrophes (this pass) — the on-screen keypad was letters and erase only,
+// which made a list of contractions literally unspellable: the child could
+// hear "don't", know it, and have no way to type it. There is now an
+// apostrophe key on the last row of both layouts (and of the Repeat keypad,
+// which shares kbRows), always present so it never signals which words need
+// one. Three things follow from letting a non-letter onto the keypad:
+//   - the key's onclick argument is quoted with &quot; rather than ', since a
+//     ' key writing onclick="kbType('|')" would end the JS string;
+//   - foldApos(): a word pasted from a document carries a curly apostrophe and
+//     the keypad types a straight one, so both fold to ' on entry (addWord,
+//     normalizeAssignedWords, importCSV) and again when an answer is checked,
+//     which also covers lists already saved with a curly one;
+//   - two rank-1 RESPELLINGS for Spot the Spelling. Every other rule is
+//     anchored to letters and skips contractions entirely, so "don't" used to
+//     fall through to rank 6 and get shown against "don'tt". It now gets the
+//     errors children actually make: "dont" and "do'nt".
 // v6.4 build — "give me more words" is gone; practice sets replace it.
 // The old Merge folded the next list's words into the assigned one and then
 // retired the source list, which cost two things at once: a child could undo a
@@ -492,6 +531,11 @@ function speak(text, slow) {
 
 // ---------- Helpers ----------
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// A parent who pastes a word list out of a document brings curly quotes with
+// it ("don’t"), and the keypad types a straight one. They are the same word,
+// and a child who spells it correctly must never be told otherwise, so every
+// apostrophe glyph folds to ' before a word is stored or compared.
+function foldApos(s){ return String(s == null ? "" : s).replace(/[‘’ʼ´`]/g, "'"); }
 function shuffle(a){ a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
 // ---------- Router / lock ----------
@@ -967,10 +1011,15 @@ function beginSession() {
   speak(S.queue[0].word);
 }
 
+// The apostrophe rides on the last row of both layouts. A list of contractions
+// is unspellable without it, and it is always present rather than shown only
+// for words that need one — a key that appears when the answer contains an
+// apostrophe would announce the answer, which Test mode's blind neutrality
+// cannot afford.
 function kbRows() {
   return data.keyboard === "qwerty"
-    ? ["QWERTYUIOP","ASDFGHJKL","ZXCVBNM"]
-    : ["ABCDEFGHI","JKLMNOPQR","STUVWXYZ"];
+    ? ["QWERTYUIOP","ASDFGHJKL","ZXCVBNM'"]
+    : ["ABCDEFGHI","JKLMNOPQR","STUVWXYZ'"];
 }
 
 function renderWord(state) {
@@ -1002,7 +1051,7 @@ function renderWord(state) {
         readonly inputmode="none" value="${esc(S.typed || "")}">
       <div class="kb" id="kb">
         ${kbRows().map((row,ri) => `<div class="kb-row">
-          ${row.split("").map(ch => `<button ${locked?"disabled":""} onclick="kbType('${ch.toLowerCase()}')">${ch}</button>`).join("")}
+          ${row.split("").map(ch => `<button class="${ch === "'" ? "kb-punct" : ""}" ${locked?"disabled":""} onclick="kbType(&quot;${ch.toLowerCase()}&quot;)">${ch}</button>`).join("")}
           ${ri===2 ? `<button class="kb-back" ${locked?"disabled":""} onclick="kbBack()">&#9003; erase</button>` : ""}
         </div>`).join("")}
       </div>
@@ -1054,8 +1103,8 @@ function resultRow(w, correct, attempts, misses) {
   if (w.listId) row.listId = w.listId;
   const seen = [];
   for (const m of (Array.isArray(misses) ? misses : [misses])) {
-    const t = String(m || "").trim().toLowerCase();
-    if (t && t !== w.word.toLowerCase() && !seen.includes(t)) seen.push(t);
+    const t = foldApos(m).trim().toLowerCase();
+    if (t && t !== foldApos(w.word).toLowerCase() && !seen.includes(t)) seen.push(t);
   }
   if (seen.length) row.missedAs = seen;
   return row;
@@ -1064,7 +1113,7 @@ function submitWord() {
   const val = (S.typed || "").trim();
   if (!val) return;
   const w = S.queue[S.idx];
-  const correct = val.toLowerCase() === w.word.toLowerCase();
+  const correct = foldApos(val).toLowerCase() === foldApos(w.word).toLowerCase();
   S.attempts++;
   if (S.isTest) {
     S.results.push(resultRow(w, correct, 1, [val]));
@@ -1334,7 +1383,7 @@ function renderRepeatWord(fb) {
         readonly inputmode="none" value="${esc(RP.typed || "")}">
       <div class="kb" id="kb">
         ${kbRows().map((row,ri) => `<div class="kb-row">
-          ${row.split("").map(ch => `<button onclick="rkbType('${ch.toLowerCase()}')">${ch}</button>`).join("")}
+          ${row.split("").map(ch => `<button class="${ch === "'" ? "kb-punct" : ""}" onclick="rkbType(&quot;${ch.toLowerCase()}&quot;)">${ch}</button>`).join("")}
           ${ri===2 ? `<button class="kb-back" onclick="rkbBack()">&#9003; erase</button>` : ""}
         </div>`).join("")}
       </div>
@@ -1353,7 +1402,7 @@ function submitRepeat() {
   const val = (RP.typed || "").trim();
   if (!val) return;
   const w = RP.queue[RP.idx];
-  const correct = val.toLowerCase() === w.word.toLowerCase();
+  const correct = foldApos(val).toLowerCase() === foldApos(w.word).toLowerCase();
   RP.typed = "";
   if (correct) {
     RP.rep++;
@@ -1467,6 +1516,13 @@ const RESPELLINGS = [
   // `kn` only loses its k before a, e, i, u: dropping it from "know" leaves
   // "now", which reads as a different word entirely.
   [/^wh/, "w", 1], [/^kn(?=[aeiu])/, "n", 1], [/^wr/, "r", 1], [/mb$/, "m", 1],
+  // Contractions. Nothing in the sound of "don't" says where the apostrophe
+  // goes, or that there is one at all, so these two are what children write:
+  // dropping it ("dont") and sliding it one letter left ("does'nt", "do'nt").
+  // Every other rule here is anchored to letters and leaves a contraction
+  // untouched, which is why an apostrophe word would otherwise fall all the
+  // way through to rank 6 and be shown against "don'tt".
+  [/'/, "", 1], [/([a-z])'/, "'$1", 1],
 
   // 2 — vowel teams. English spells one long vowel several ways; picking the
   //     wrong one is the commonest spelling error there is.
@@ -2091,7 +2147,7 @@ function importCSV() {
     lines.forEach((line, i) => {
       const [word, hint, sentence, bonus, misspellings] = parseCSVLine(line);
       if (!word) return;
-      const w = word.toLowerCase();
+      const w = foldApos(word).toLowerCase();   // a spreadsheet curls them too
       if (i === 0 && w === "word") return; // header row
       if ([...sel.words, ...sel.bonus].some(x => x.word === w)) { skipped++; return; }
       const entry = { word: w, hint: (hint || "A word you're learning."), sentence: (sentence || w) };
@@ -2118,7 +2174,7 @@ function deleteList(id) {
 }
 function addWord() {
   const sel = data.lists.find(l => l.id === selectedListId);
-  const word = document.getElementById("nw").value.trim().toLowerCase();
+  const word = foldApos(document.getElementById("nw").value).trim().toLowerCase();
   if (!word || !sel) return;
   if ([...sel.words, ...sel.bonus].some(w => w.word === word)) { alert("That word is already in this list."); return; }
   const entry = {
@@ -2483,7 +2539,7 @@ function normalizeAssignedWords(items) {
   const seen = new Set();
   for (const item of (Array.isArray(items) ? items : [])) {
     const raw = typeof item === "string" ? { word: item } : (item || {});
-    const word = String(raw.word || "").trim().toLowerCase();
+    const word = foldApos(raw.word).trim().toLowerCase();
     if (!word || seen.has(word)) continue;
     seen.add(word);
     const entry = {
