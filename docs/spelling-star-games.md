@@ -89,41 +89,63 @@ and never validates it against a list. Ungraded modes are invisible to
 
 ## 5. The ideas
 
-### 5.1 Unscramble — drag the letters into place
+### 5.1 Unscramble — tap a slot, tap a letter
 
-The child sees the word's letters as tiles in scrambled order and drags them
-into the right order. Hear-it and the hint are available; the word itself is
-not shown.
+The child sees an empty slot per letter and a bank holding the word's letters
+in scrambled order. Tap a slot to select it, then tap a letter from the bank to
+drop it in. Hear-it and the hint are available; the word itself is not shown.
 
-**Round shape.** 6–8 words, same burst length as Spot the Spelling. Correct on
-drop → tiles flash green and the next word slides in. Wrong → tiles stay put,
-nothing is lost, "have another go".
+This started as a drag-and-drop design and became a tapping one, which is the
+single most important decision in this file. The drag version needed pointer
+events the codebase has never used, and it fought the render model — every
+screen here is a full `app.innerHTML` rewrite, which destroys the element under
+the child's finger mid-gesture. **Tap-to-place needs none of that.** Two
+`onclick` handlers mutating a state object, rendered the way every other screen
+is rendered. It is the same idiom as the keypad: `kbType()` is one line that
+appends a character and updates the display, and the slot board is that with a
+destination.
+
+It is also better for the child, not merely cheaper. Two discrete taps beat a
+sustained precision gesture on a tablet, there is nothing to drop on the way,
+and a mis-tap costs one tap to fix.
+
+**Round shape.** 6–8 words. The board is complete when every slot is filled;
+"Check it" then grades it, following the app's existing button pattern. Wrong
+→ nothing is lost, letters stay put, have another go. (The alternative is
+auto-checking the moment the last slot fills, which saves a tap but takes away
+the child's chance to look it over and change their mind. The explicit button
+is the better default here, and it is what every other screen does.)
+
+**Selection model.** After placing a letter, selection auto-advances to the
+next empty slot. That matters: it means straightforward left-to-right filling
+is just tap-tap-tap-tap with no slot-selecting at all, while a child who wants
+to anchor the hard part first — putting the `ie` in the middle of "believe"
+before anything else — taps that slot and gets it. The out-of-order path is
+there for the child who thinks that way without taxing the child who doesn't.
+
+**Taking a letter back.** Tapping a filled slot lifts its letter back to the
+bank and leaves that slot selected. One rule covers correction, and it means
+the bank is always exactly the letters not yet used.
 
 **Reuses:** `practiceLists()`, `reviewWords`, `speak()`, the hint field, the
-whole session/stamp/history path.
+"Check it" button pattern, the session/stamp/history path — and the keypad's
+whole tap-a-tile-to-build-a-string idiom.
 
-**New:** a drag interaction, which the codebase has never had — no app in the
-repo contains a single `pointerdown`, `touchstart`, `draggable`, or
-`ondragstart`. This is the real cost of the idea, and it is not in the shuffle
-logic. Four things follow:
+**New:** a slot board and a consumable bank. State is roughly
+`{ slots: [], bank: [], sel: 0 }` with `unSelect(i)`, `unPlace(bankIdx)` and
+`unLift(i)`, plus the null-out in `go()` that §4 requires.
 
-- **Pointer events, not HTML5 drag-and-drop.** HTML5 DnD is unreliable-to-inert
-  on tablets, which is the primary device. Use `pointerdown`/`pointermove`/
-  `pointerup`, which covers mouse and touch in one path.
-- **The render model fights the drag.** Every screen in Spelling Star is a full
-  `app.innerHTML = ...` rewrite. A drag cannot survive that — rebuilding the DOM
-  mid-gesture destroys the element under the child's finger. The tile row has to
-  be rendered once per word and then mutated in place (transform only) for the
-  duration of the drag, with a re-render only on drop. This is a genuine
-  departure from how the app is written and should be contained to the game.
-- **`touch-action: none` on the tiles**, or the drag scrolls the page instead.
-- **Tap-to-swap as an equal path, not a fallback.** Tap a tile, tap where it
-  goes. Small fingers on a tablet is the stated constraint elsewhere in this
-  codebase — the geography spec adds minimum tap radii to small states for
-  exactly this reason — and a child who cannot complete a drag must not be
-  locked out of the game.
+**What tapping fixes for free.** The drag version had a tile-identity hazard:
+410 of 855 words repeat a letter, and swapping the two `t`s in "little" changes
+the DOM while looking identical, so comparing tile arrangement rather than the
+assembled string marks a correct board wrong. Tapping makes this vanish — the
+child places a *character* into a slot, so the assembled string is built
+directly and compared directly. Length gets easier too: slots and bank are
+static layout that can wrap, so the 120 words of 9+ letters and the 14-letter
+longest ("characteristic", "administration") are a wrapping problem rather than
+a drag-geometry one.
 
-**Content problems, with numbers from the curated lists:**
+**What remains true regardless of interaction:**
 
 - **Anagrams that are also real words.** Six pairs collide in the existing
   corpus: silent/listen, dear/read, grown/wrong, three/there, quiet/quite,
@@ -133,24 +155,44 @@ logic. Four things follow:
   real word, say so — "that's a word! but not this one" — rather than buzzing.
   Note the limit: `realWordSet()` is the child's own lists, review and graduated
   words, not a dictionary, so it catches these six and nothing else.
-- **Repeated letters — 410 of 855 words have one.** Tiles must be identified by
-  position, not by character, and correctness must compare the *assembled
-  string* against the word. Compare tile identity instead and "little" with its
-  two `t`s exchanged reads as wrong while looking exactly right on screen.
-- **Length.** 120 words are 9+ letters; the longest are 14
-  ("characteristic", "administration", "representative"). Fourteen tiles do not
-  fit one tablet row at a tappable size — either wrap to two rows or cap the
-  game's word length and say so.
 - **36 words are 3 letters or shorter**, which is not a puzzle. Filter them out
   or accept wasted rounds.
 - **Apostrophes.** `o'clock`, `don't`, `we're` and friends are in the lists.
-  Decide whether the apostrophe is a tile like any other or pre-placed as a
-  freebie. Pre-placing is the kinder reading and matches the v6.4 apostrophe
-  work, where the key is always present so it never signals which words need one.
-- **The scramble must not be the answer.** Reshuffle until it differs from the
-  word; for a 2-letter word that is one specific arrangement.
+  Pre-place the apostrophe in its slot and keep it out of the bank — the kinder
+  reading, and it matches the v6.4 apostrophe work, where the key is always
+  present so it never signals which words need one.
+- **The scramble must not be the answer.** Reshuffle until the bank order
+  differs from the word.
 
-**Cost:** the largest of the five. Everything except the drag is ordinary.
+**One thing the bank gives away.** Showing the exact letter inventory answers
+"is it one `l` or two" before the child starts. Doubling is a real spelling
+skill and this game cannot test it — seeing two `t`s and having to place both
+still teaches something, but it is recognition of the doubling rather than
+recall of it. Worth knowing rather than worth fixing; Missing Letters (5.2) is
+where doubling can actually be tested, by blanking one half of the pair.
+
+**Cost:** low, where the drag version was high. This is now a peer of 5.2 and
+5.3 rather than the expensive idea, and it is the only one of the three that
+is a game rather than a Practice variant.
+
+---
+
+### 5.1a The slot board is one primitive, not one game
+
+Worth noticing before anything gets built: with 5.1 as tapping rather than
+dragging, **5.1 and 5.2 are the same machine**. Both are a row of per-letter
+slots filled by tapping a source. They differ in exactly two parameters:
+
+| | Unscramble | Missing Letters |
+|---|---|---|
+| Slots pre-filled | none | all but 2–3 |
+| Tap source | a consumable bank of the word's letters | the existing keypad, unrestricted |
+| Answers "one `l` or two" | the bank does | the child must |
+
+Build the slot board once — slots, selection, auto-advance, lift-to-correct,
+assemble-and-compare — and the second game is its configuration rather than a
+second engine. That is a real argument for doing 5.1 and 5.2 together, and for
+doing them before 5.3 or 5.5, either of which could then reuse the same board.
 
 ---
 
@@ -159,8 +201,9 @@ logic. Four things follow:
 The word appears with two or three letters blanked — `b_lie_e` — and the child
 fills them from the existing on-screen keypad. Hear-it and hint available.
 
-**Reuses:** `kbRows()` and the whole keypad idiom, `foldApos()`, `speak()`,
-plus — the point of the idea — `observedErrorsFor(word)`. The blanks do not
+**Reuses:** the slot board from 5.1 if it exists (see 5.1a — this game is that
+board with most slots pre-filled and the keypad as the tap source), `kbRows()`
+and the whole keypad idiom, `foldApos()`, `speak()`, plus — the point of the idea — `observedErrorsFor(word)`. The blanks do not
 have to be random. The letters this child actually gets wrong are already
 recorded, per word, in `missedAs`: diff the misspelling against the word and
 blank *that* position. A child who writes "beleive" gets `b_l__ve` and drills
@@ -234,8 +277,14 @@ Words are dealt one at a time and the child drops each into one of two or three
 buckets — "drop the /j/ sound: **-ge** or **-dge**", "one **l** or two". Sorting
 by pattern is what the curated lists are actually organised around week to week.
 
-**Reuses:** the drag mechanics from 5.1, if that gets built first. Otherwise
-tap-to-choose works fine and this becomes cheap.
+**Reuses:** tap-to-choose, the same as everything else here — a word and two
+or three bucket buttons. No new interaction at all. If 5.1 and 5.2 have
+already established the slot board, this does not even need it: Rule Sort is
+one tap per word.
+
+It is also the game that can teach what 5.1 structurally cannot. The bank in
+Unscramble answers "one `l` or two" for free; a Rule Sort bucket asks it
+directly.
 
 **New — and this is the blocker:** a rule tag per word, which no list has and
 no CSV column carries. Adding one means a sixth column, a parent UI for it, an
@@ -254,15 +303,29 @@ the word, but it should not be picked without accepting the tagging work.
 | Idea | Interaction | New content needed | Cost |
 |---|---|---|---|
 | 5.4 Four-Up | none — existing | none | Trivial |
-| 5.2 Missing Letters | existing keypad | none | Low |
+| 5.2 Missing Letters | slot board + existing keypad | none | Low |
 | 5.3 Sentence Slot | existing keypad | none | Low |
-| 5.1 Unscramble | **drag, new to the codebase** | none | High |
-| 5.5 Rule Sort | drag or tap | **a rule tag on 855 words** | Highest |
+| 5.1 Unscramble | slot board + a letter bank | none | Low |
+| 5.5 Rule Sort | tap a bucket | **a rule tag on 855 words** | Highest |
 
-Both cheap ideas are production practice — the child writes the letters — where
-the shipped game is recognition. That is the gap in the hub, and it is worth
-noticing that Unscramble sits between the two: the letters are given, so it is
-neither quite recognition nor quite production.
+Four of the five are now cheap, and the ranking barely separates them. That is
+a change from this file's first draft, where Unscramble was the expensive idea
+because it was specified as a drag; respecifying it as tapping (5.1) moved it
+down a whole tier and made it share an engine with 5.2 (5.1a).
+
+The useful split is no longer cost but what each one asks of the child:
+
+| | What the child does | Teaches |
+|---|---|---|
+| 5.4 Four-Up | picks the right spelling from four | recognition |
+| 5.1 Unscramble | orders letters they are given | sequence; not doubling |
+| 5.2 Missing Letters | recalls the missing letters | the specific trap, from their own error history |
+| 5.3 Sentence Slot | spells the whole word in context | production, with meaning attached |
+| 5.5 Rule Sort | classifies by pattern | the rule behind the word |
+
+The shipped game is recognition only. Every idea here except 5.4 moves toward
+production, and they do it in that order — which is also a reasonable build
+order, since each step reuses the one before it.
 
 ---
 
