@@ -12,7 +12,7 @@
 // arrive, so the suite starts here and the evaluator joins it.
 //
 // Node only — no browser, no server, no database.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { createChecker, REPO } from './harness.mjs';
 
 const { check, section, report } = createChecker();
@@ -63,7 +63,87 @@ for (const file of SYNCED_APPS) {
 check('parent.html formats with en-CA too',
   /new Intl\.DateTimeFormat\('en-CA', \{ timeZone: tz \}\)/.test(readFileSync(REPO + 'parent.html', 'utf8')));
 
+// The migration runner cannot import the .sql files — `wrangler pages
+// functions build` does not resolve a Text import (see the note at the top of
+// functions/api/_lib/migrations.js) — so each one is embedded in that module
+// as a string. Which makes it a second copy of a file that is still the source
+// of truth, and a second copy is a thing that drifts.
+//
+// The failure is quiet in the worst way: someone edits schema-phase5.sql,
+// deploys, presses Apply, and the runner applies the *old* SQL while the file
+// in the repo says otherwise. Nothing errors. The database is simply not what
+// the repo claims it is.
+section('the embedded migrations match their .sql files');
+{
+  const { MIGRATIONS } = await import(REPO + 'functions/api/_lib/migrations.js');
+  for (const migration of MIGRATIONS) {
+    let onDisk = null;
+    try { onDisk = readFileSync(REPO + migration.name, 'utf8'); } catch { /* missing */ }
+    check(`${migration.name} exists on disk`, onDisk !== null);
+    if (onDisk === null) continue;
+    check(`${migration.name} is embedded byte for byte`, migration.sql === onDisk,
+      migration.sql === onDisk ? undefined : firstDifference(
+        { file: migration.name + ' (file)', text: onDisk },
+        { file: migration.name + ' (embedded)', text: migration.sql }
+      ));
+  }
+
+  // Every migration file in the repo has to be registered, or it silently
+  // never runs — the runner only knows what is in this list.
+  const registered = new Set(MIGRATIONS.map((m) => m.name));
+  const onDisk = readdirSync(REPO).filter((f) => /^schema-phase\d+\.sql$/.test(f));
+  for (const file of onDisk) {
+    check(`${file} is registered in MIGRATIONS`, registered.has(file));
+  }
+  check('migrations are registered in order',
+    JSON.stringify([...registered]) === JSON.stringify([...registered].sort()), [...registered]);
+}
+
+// dist/worker/index.js is a COMMITTED BUILD ARTIFACT. Cloudflare runs no build
+// step for this repo (parent-sync-spec.md §12 Step 7): wrangler.toml's `main`
+// points straight at that file, so whatever is committed is what runs. It has
+// to be regenerated with `npm run build:worker` after every change under
+// functions/ and committed alongside it.
+//
+// Forgetting is silent and total. The handler exists in the repo, its tests
+// pass, the deploy succeeds — and the endpoint 404s in production, because the
+// bundle Cloudflare actually runs predates it. This is not hypothetical: the
+// commit that added functions/api/family/settings.js shipped without a rebuild
+// and would have done exactly that.
+//
+// A name check, not a content check: a real staleness test would rebuild and
+// diff, which needs wrangler and a network. This catches the case that
+// actually happens — a new route that never made it in.
+section('the committed worker bundle covers every route');
+{
+  let bundle = null;
+  try { bundle = readFileSync(REPO + 'dist/worker/index.js', 'utf8'); } catch { /* missing */ }
+  check('dist/worker/index.js is committed', bundle !== null);
+
+  if (bundle !== null) {
+    for (const route of routeFiles(REPO + 'functions')) {
+      // The bundler labels each chunk with its source path, so the route's own
+      // path appearing in the bundle means that module was compiled in.
+      check(`${route} is in the bundle`, bundle.includes(route),
+        'run `npm run build:worker` and commit dist/worker/index.js');
+    }
+  }
+}
+
 process.exit(report('shared-code') ? 1 : 0);
+
+// Every routable handler under functions/, as paths relative to it. Files and
+// directories starting with an underscore are library code, never routed.
+function routeFiles(root, prefix = '') {
+  const out = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...routeFiles(`${root}/${entry.name}`, rel));
+    else if (entry.name.endsWith('.js')) out.push(rel);
+  }
+  return out;
+}
 
 // Pulls the region out of one file: from the marker to the closing brace of
 // the function `through` opens. Brace-counting rather than a regex, because

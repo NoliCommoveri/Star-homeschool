@@ -31,6 +31,9 @@ const DB = {
     return api;
   },
   async batch(stmts) { for (const s of stmts) await s.run(); },
+  // D1 has exec() for one-off DDL and the migration runner uses it. Like D1's,
+  // this takes a single statement.
+  async exec(sql) { db.exec(sql); return { count: 1 }; },
 };
 const env = { DB, SIGNUP_SECRET: 'test-secret' };
 
@@ -572,5 +575,137 @@ await sync.onRequestPost(post('http://x/api/sync', {
 }, tablet2Token));
 const silent = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-2').first();
 check('a client that reports nothing writes no row', silent === null, silent);
+
+
+// =============== The migration runner (functions/api/_lib/migrations.js) ====
+//
+// This is the surface that replaces "run wrangler from a terminal", so the
+// property that matters is convergence: whatever a database's history is, one
+// press of Apply has to leave it on the current schema. There are exactly two
+// histories in the wild — a live database built from an older schema.sql and
+// migrated by hand, and a fresh one built from today's schema.sql, which
+// already contains every migration's objects. Both start with an empty
+// d1_migrations table while the objects already exist, which is precisely the
+// case a naive runner gets wrong: it would try to CREATE TABLE over a live
+// table and stop.
+console.log('\n[migrations] a live database and a fresh one converge');
+{
+  const { applyPendingMigrations, migrationStatus } = await mod('_lib/migrations.js');
+
+  const current = readFileSync(REPO + 'schema.sql', 'utf8');
+
+  // The pre-Phase-5 database, built by undoing Phase 5 rather than by keeping
+  // a copy of the old schema.sql around. It is the exact inverse of the
+  // migration, in four statements, so it cannot rot as schema.sql moves on —
+  // and if someone adds to Phase 5 without adding the undo here, the
+  // convergence check below stops matching and says so.
+  const UNDO_PHASE_5 = [
+    'DROP TABLE plans',
+    'DROP TABLE plan_revisions',
+    'DROP TABLE plan_state',
+    'DROP INDEX idx_sessions_local_date',
+    'ALTER TABLE sessions DROP COLUMN local_date',
+    'ALTER TABLE families DROP COLUMN timezone',
+    'ALTER TABLE families DROP COLUMN week_start',
+  ];
+
+  // Comments are stripped from the fixture schema before it is created.
+  // SQLite re-parses a table's stored DDL after DROP COLUMN, and the prose
+  // inside these CREATE TABLE statements makes that reparse fail — a quirk of
+  // the undo above, not of anything the migrations themselves do. Reusing the
+  // runner's own splitter keeps the two in step.
+  const { splitStatements } = await mod('_lib/migrations.js');
+
+  function freshEnv(schemaSql, undo = []) {
+    const mem = new DatabaseSync(':memory:');
+    for (const statement of splitStatements(schemaSql)) mem.exec(statement);
+    for (const statement of undo) mem.exec(statement);
+    const shim = {
+      prepare(sql) {
+        const stmt = mem.prepare(sql);
+        let args = [];
+        const api = {
+          bind(...a) { args = normalize(a); return api; },
+          async first() { return stmt.get(...args) ?? null; },
+          async all() { return { results: stmt.all(...args) }; },
+          async run() { const r = stmt.run(...args); return { meta: { changes: Number(r.changes) } }; },
+        };
+        return api;
+      },
+      async batch(stmts) { for (const st of stmts) await st.run(); },
+      async exec(sql) { mem.exec(sql); return { count: 1 }; },
+    };
+    return { env: { DB: shim }, mem };
+  }
+
+  const shapeOf = (mem) => JSON.stringify({
+    tables: mem.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name != 'd1_migrations' ORDER BY name").all().map((r) => r.name),
+    families: mem.prepare('PRAGMA table_info(families)').all().map((r) => r.name).sort(),
+    sessions: mem.prepare('PRAGMA table_info(sessions)').all().map((r) => r.name).sort(),
+    indexes: mem.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name),
+  });
+
+  // 1. The live case: an older database that never had a migrations table.
+  const live = freshEnv(current, UNDO_PHASE_5);
+  check('the older fixture really is missing local_date',
+    !live.mem.prepare('PRAGMA table_info(sessions)').all().some((r) => r.name === 'local_date'));
+
+  let before = await migrationStatus(live.env);
+  check('all three read as pending on a database with no tracking table', before.pending === 3, before);
+
+  let result = await applyPendingMigrations(live.env);
+  check('the run completes without stopping', !result.failed, result.failed);
+  check('phase 5 did real work', result.ran.find((r) => r.name === 'schema-phase5.sql').changed > 0, result.ran);
+  // Phases 3 and 4 are already in this database, applied by hand long ago.
+  // They must be recognised as present rather than attempted and failed.
+  check('phase 3 is recognised as already present',
+    result.ran.find((r) => r.name === 'schema-phase3.sql').skipped > 0, result.ran);
+  check('phase 4 too', result.ran.find((r) => r.name === 'schema-phase4.sql').skipped > 0, result.ran);
+
+  // 2. The fresh case: today's schema.sql already contains everything.
+  const brandNew = freshEnv(current);
+  const freshResult = await applyPendingMigrations(brandNew.env);
+  check('a fresh database also runs clean', !freshResult.failed, freshResult.failed);
+  check('and finds every statement already present',
+    freshResult.ran.every((r) => r.changed === 0), freshResult.ran);
+
+  check('the two databases end on the same schema',
+    shapeOf(live.mem) === shapeOf(brandNew.mem), { live: shapeOf(live.mem), fresh: shapeOf(brandNew.mem) });
+
+  // 3. Pressing Apply twice is the thing a worried person will actually do.
+  const again = await applyPendingMigrations(live.env);
+  check('a second run does nothing at all', again.ran.length === 0, again.ran);
+  const after = await migrationStatus(live.env);
+  check('and everything reads as applied', after.pending === 0, after);
+  check('the schema is unchanged by the second run', shapeOf(live.mem) === shapeOf(brandNew.mem));
+
+  // 4. A genuinely broken migration must stop and say where — the whole point
+  //    of matching "already exists" narrowly rather than swallowing errors.
+  const broken = freshEnv(current);
+  const { MIGRATIONS } = await mod('_lib/migrations.js');
+  const saved = MIGRATIONS[MIGRATIONS.length - 1].sql;
+  MIGRATIONS[MIGRATIONS.length - 1].sql = 'SELECT this_is_not_valid_sql FROM nowhere;';
+  const failure = await applyPendingMigrations(broken.env);
+  check('a broken statement stops the run', !!failure.failed, failure);
+  check('and names the statement it stopped on',
+    failure.failed.statement.includes('this_is_not_valid_sql'), failure.failed);
+  const stuck = await migrationStatus(broken.env);
+  check('a migration that failed is not recorded as applied',
+    stuck.migrations.find((m) => m.name === failure.failed.name).applied === false, stuck);
+  MIGRATIONS[MIGRATIONS.length - 1].sql = saved;
+}
+
+console.log('\n[migrations] only a parent may look or apply');
+{
+  const migrationsApi = await mod('migrations.js');
+  let [mst, mbody] = await body(await migrationsApi.onRequestGet(get('http://x/api/migrations', parentToken)));
+  check('a parent reads the status', mst === 200 && Array.isArray(mbody.migrations), mbody);
+  let [mchild] = await body(await migrationsApi.onRequestGet(get('http://x/api/migrations', tabletToken)));
+  check('a child token cannot read it (403)', mchild === 403, mchild);
+  let [mchildPost] = await body(await migrationsApi.onRequestPost(post('http://x/api/migrations', {}, tabletToken)));
+  check('nor apply (403)', mchildPost === 403, mchildPost);
+  let [mAnon] = await body(await migrationsApi.onRequestGet(get('http://x/api/migrations')));
+  check('and an unauthenticated caller gets 401', mAnon === 401, mAnon);
+}
 
 process.exit(report('api') ? 1 : 0);

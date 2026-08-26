@@ -800,6 +800,15 @@ Each step is useful on its own and shippable without the next.
    the client's reported `planRevision` (§12 assigns it to `sync.js`), and
    `/api/sessions` returns `local_date` so the phone can tell which rows still
    need backfilling.
+
+   **Applying the migration is a button, not a terminal.** `schema-phase5.sql`
+   is registered in `functions/api/_lib/migrations.js` and applied from the
+   parent app (Devices → Database), or from `/admin/migrations` when the parent
+   app will not start — the pattern the Scheduling App already uses. It is safe
+   on this database despite phases 3 and 4 having been applied by hand: each
+   statement runs on its own and an object that already exists counts as
+   success, so a hand-migrated database and a fresh one converge. See
+   `docs/parent-sync-spec.md` §12 Step 4b.
 2. **Plan model and the Plan tab** (§4, §6, §11), parent-side only. Progress
    computed from sessions already downloaded. No tablet changes at all — which
    is the point: you find out whether these are the right targets before a

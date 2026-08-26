@@ -17,6 +17,16 @@ const server = {
   // sessions below carries a localDate either, for the same reason: they are
   // exactly the rows the phone has to backfill (§9.6).
   family: { timezone: null, weekStart: 0 },
+  // Two pending, so the banner and the card both have something to show. A
+  // real deployment is in exactly this state the moment new code lands.
+  migrations: {
+    migrations: [
+      { name: 'schema-phase3.sql', applied: true },
+      { name: 'schema-phase4.sql', applied: true },
+      { name: 'schema-phase5.sql', applied: false },
+    ],
+    pending: 1,
+  },
   sessions: {
     'child-ada:spelling': [
       { id: '1001', date: iso(7200000), deviceId: 'tablet-1', mode: 'pretest', score: 10, total: 10, listName: 'Week 11', results: [{ word: 'because', correct: true, attempts: 1 }] },
@@ -104,6 +114,7 @@ await page.route('**/api/**', async (route) => {
     if (path === '/commands') return send({ commands: server.commands[url.searchParams.get('app')] || [] });
     if (path === '/devices') return send({ devices: [] });
     if (path === '/family/settings') return send(server.family);
+    if (path === '/migrations') return send(server.migrations);
     if (path === '/summary') {
       lastSummaryQuery = url.search;
       return send({ lists: server.summary[url.searchParams.get('app')] || [] });
@@ -125,6 +136,13 @@ await page.route('**/api/**', async (route) => {
   if (req.method() === 'POST') {
     const b = JSON.parse(req.postData() || '{}');
     posted.push({ path, body: b });
+    if (path === '/migrations') {
+      server.migrations = {
+        migrations: server.migrations.migrations.map((m) => ({ ...m, applied: true })),
+        pending: 0,
+      };
+      return send({ ran: [{ name: 'schema-phase5.sql', changed: 7, skipped: 0 }], ...server.migrations });
+    }
     if (path === '/commands') {
       const id = 'new-' + posted.length;
       server.commands[b.app].unshift({ id, childId: 'child-ada', kind: b.kind, payload: b.payload, createdAt: Date.now(), canceled: false, ackCount: 0, firstAppliedAt: null });
@@ -362,6 +380,36 @@ await page.click('tr:has-text("A Parent Book") button:has-text("Delete")');
 await page.waitForTimeout(500);
 cmd = posted.filter((p) => p.path === '/commands').pop();
 check('delete-book posted with the overlay key', cmd.body.kind === 'delete-book' && cmd.body.payload.key === 'p-existing1', cmd.body);
+
+// A pending migration is invisible until a tablet fails to sync, and §3 rule 1
+// makes that failure silent for the child. So the app has to be the thing that
+// notices — a parent should never have to think to go and look.
+console.log('\n[migrations] the parent app raises a banner and applies');
+await page.click('#navDashboard');
+await page.waitForTimeout(600);
+let dashText = await page.textContent('#app');
+check('a pending migration raises a banner on the dashboard', dashText.includes('pending'), dashText.slice(0, 300));
+
+await page.click('#navDevices');
+await page.waitForTimeout(500);
+let devText = await page.textContent('#app');
+check('the Database card lists every migration', devText.includes('schema-phase5.sql'));
+check('and says how many are pending', devText.includes('1 pending of 3'), devText.slice(0, 400));
+check('it points at the no-JS fallback for when this page will not load',
+  devText.includes('/admin/migrations'));
+
+await page.click('button:has-text("Apply pending migrations")');
+await page.waitForTimeout(600);
+const applyPost = posted.filter((p) => p.path === '/migrations').pop();
+check('Apply posts to /api/migrations', !!applyPost, posted.map((p) => p.path));
+devText = await page.textContent('#app');
+check('the result says what actually ran', devText.includes('schema-phase5.sql (7 run'), devText.slice(0, 400));
+check('and nothing is pending afterwards', devText.includes('0 pending of 3'), devText.slice(0, 400));
+
+await page.click('#navDashboard');
+await page.waitForTimeout(600);
+dashText = await page.textContent('#app');
+check('the banner is gone once nothing is pending', !dashText.includes('migrations are pending'), dashText.slice(0, 300));
 
 // ---- assignment-spec.md §9.3, §9.4 -----------------------------------------
 console.log('\n[Devices — the family clock]');
