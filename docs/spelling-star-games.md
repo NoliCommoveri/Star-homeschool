@@ -1,9 +1,11 @@
 # Spelling Star — Game Ideas
 
-Status: **backlog.** Nothing in this file is committed to being built, and
-nothing here has been designed past the point where the real problems show up.
-The purpose is to have the ideas written down with their costs attached, so
-picking one is a decision rather than a fresh start.
+Status: **mostly backlog.** 5.2 Missing Letters is built and shipped, and with
+it the slot board of §5.0 — so 5.1 Unscramble is now a configuration of
+existing machinery rather than a new engine. Everything else here is still
+unbuilt, and nothing else has been designed past the point where the real
+problems show up. The purpose is to have the ideas written down with their
+costs attached, so picking one is a decision rather than a fresh start.
 
 Target file: `spelling-star-v6_3.html` (self-contained, like every Star app).
 
@@ -11,9 +13,9 @@ Target file: `spelling-star-v6_3.html` (self-contained, like every Star app).
 
 ## 1. Why this file exists
 
-Spelling Star ships one game — Spot the Spelling — and the Games hub was built
-to hold more: `renderGames()` lays its cards out in a `flex-wrap` row that has
-only ever had one card in it. The distractor engine carries a comment saying as
+Spelling Star shipped one game — Spot the Spelling — and the Games hub was
+built to hold more: `renderGames()` lays its cards out in a `flex-wrap` row
+that had only ever had one card in it (it now has two). The distractor engine carries a comment saying as
 much (`// Shared generator: reusable by future recognition games.`), and that
 comment was, before this file, the entire documented plan for a second game.
 
@@ -109,15 +111,23 @@ Build the slot board once — slots, selection, auto-advance, lift-to-correct,
 assemble-and-compare — and the second game is its configuration rather than a
 second engine.
 
-So the decision this file supports is not "which of five games." It is:
+**This is now built**, as `makeBoard()` / `boardSelect()` / `boardPlace()` /
+`boardLift()` / `boardComplete()` / `boardString()`, and it deliberately knows
+nothing about where the letters come from. Missing Letters (5.2) is the
+configuration where most slots arrive given and the keypad is the tap source.
+Unscramble (5.1) is the same board with nothing given and a consumable bank,
+and should be built as a configuration of those six functions rather than as a
+second engine — that is the only thing keeping it cheap.
 
-1. **Build the board, or not.** This is the only medium-sized piece of work in
-   the file, and it is paid once.
-2. **If yes, which configuration ships first**, and whether 5.3 or 5.5 later
-   reuse it. Neither needs it, but both could.
+So the decision this file supported was never "which of five games." It was:
 
-Ranking the five games against each other (§6) hides that, because it charges
-5.1 and 5.2 each for a board that only one of them pays for.
+1. **Build the board, or not.** The only medium-sized piece of work in the
+   file, and it is paid once. *Paid.*
+2. **Which configuration ships first**, and whether 5.3 or 5.5 later reuse it.
+   Neither needs it, but both could.
+
+Ranking the five games against each other (§6) hid that, because it charged
+5.1 and 5.2 each for a board that only one of them ever pays for.
 
 ---
 
@@ -224,7 +234,11 @@ is a game rather than a Practice variant.
 
 ---
 
-### 5.2 Missing Letters
+### 5.2 Missing Letters — **built**
+
+*Shipped. `startMissing()` and the slot board in `spelling-star-v6_3.html`,
+tests in `tests/missing-letters.test.mjs`. What follows is the idea as
+specified; three things changed on contact with the code, noted at the end.*
 
 The word appears with two or three letters blanked — `b_lie_e` — and the child
 fills them from the existing on-screen keypad. Hear-it and hint available.
@@ -245,6 +259,31 @@ Fall back to blanking vowels and vowel teams when a word has no error history.
 **Cost:** the cheapest of the five, and the one with the best
 teaching-per-line-of-code. If only one game gets built, this is the argument
 for it being this one.
+
+**Three things the build changed:**
+
+1. **The error span is the board; it is not padded to a quota.** The first
+   version treated "two or three blanks" as a target and topped a two-letter
+   span up with a random vowel — which turned `bel__ve`, the exact trap, into
+   `bel__v_`, a meaningful hole next to a meaningless one. The rule is now:
+   where there is error history, the diff decides how many blanks there are
+   (capped at three, widened to two if the span is a single letter so the
+   board still reads as a puzzle). The 2–3 quota governs only the no-history
+   fallback.
+2. **A pure insertion has no wrong position to find.** A child who writes
+   "untill" for "until" has disagreed with no letter of the real word, so
+   trimming the matching head and tail leaves an empty span. `errorSpan()`
+   returns the letter beside the insertion instead — which for a doubled
+   consonant is the "one `l` or two" question, exactly the thing §5.1 notes
+   Unscramble structurally cannot ask.
+3. **The game does not write `missedAs`.** Tempting, since a wrong board is a
+   real misspelling the child produced — but the blanks constrain what they
+   could possibly have typed, so feeding it back into the history that picks
+   the blanks is a loop rather than evidence: blank the position they get
+   wrong, record that they got it wrong, blank it again forever. Free-typed
+   errors from Practice and Test stay the only source. This is narrower than
+   the §7 question about the review list and was settled in code; the review
+   question is still open and still the parent's.
 
 ---
 
@@ -364,20 +403,20 @@ are configurations of it rather than two engines.
 
 | Item | Interaction | New content needed | Cost |
 |---|---|---|---|
-| **The slot board** (§5.0) | slots, selection, auto-advance, lift-to-correct | none | **Medium — the only real work in this file, paid once** |
+| **The slot board** (§5.0) | slots, selection, auto-advance, lift-to-correct | none | **Medium — the only real work in this file. ✅ Built** |
+| 5.2 Missing Letters | board + existing keypad as the source | none | ✅ Built |
+| 5.1 Unscramble | board + a consumable letter bank | none | Low — the board exists; this is a bank and a config |
 | 5.4 Four-Up | none — existing | none | Trivial in code; see §5.4 on risk |
-| 5.2 Missing Letters | board + existing keypad as the source | none | Low **on top of the board** |
-| 5.1 Unscramble | board + a consumable letter bank | none | Low **on top of the board** |
 | 5.3 Sentence Slot | existing keypad; board optional | none | Low |
 | 5.5 Rule Sort | tap a bucket | **a rule tag on 855 words** | Highest |
 
 Read that as one medium decision and a set of cheap ones, not as five
-comparable options. The earlier version of this table ranked 5.1 and 5.2 as
+comparable options. An earlier version of this table ranked 5.1 and 5.2 as
 peers at "Low" while charging each of them for a slot board — which contradicts
-§5.0, where the board is built once. Whichever of the two ships first carries
-the board; the second is genuinely cheap.
+§5.0, where the board is built once. Missing Letters shipped first and carried
+the board, so Unscramble is now genuinely cheap.
 
-This is still a large change from the file's first draft, where Unscramble was
+That is still a large change from the file's first draft, where Unscramble was
 the expensive idea because it was specified as a drag. Respecifying it as
 tapping (5.1) is what made the board shared in the first place (§5.0).
 
@@ -391,9 +430,12 @@ The useful split is no longer cost but what each one asks of the child:
 | 5.3 Sentence Slot | spells the whole word in context | production, with meaning attached |
 | 5.5 Rule Sort | classifies by pattern | the rule behind the word |
 
-The shipped game is recognition only. Every idea here except 5.4 moves toward
-production, and they do it in that order — which is also a reasonable build
-order, since each step reuses the one before it.
+Spot the Spelling was recognition only, and that was the gap. Every idea here
+except 5.4 moves toward production, and they do it in that order — which is
+also a reasonable build order, since each step reuses the one before it.
+Missing Letters was built first for that reason rather than for its cost: it
+is the shortest distance from recognition to production, and it is the only
+one of the five that aims at the trap a particular child actually falls into.
 
 ---
 

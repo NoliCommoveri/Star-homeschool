@@ -6,8 +6,8 @@ npx playwright install chromium     # only for the browser suites
 npm test
 ```
 
-`npm test` runs all five suites and exits non-zero if any fail. If Chromium
-isn't available the four browser suites are **skipped, not failed**, so the
+`npm test` runs every suite and exits non-zero if any fail. If Chromium
+isn't available the browser suites are **skipped, not failed**, so the
 API suite still runs anywhere Node does.
 
 Individual suites are plain scripts — `node tests/api.test.mjs`.
@@ -20,6 +20,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 | `child-apps.test.mjs` | Chromium | Spelling Star and Math Star in a browser |
 | `practice-sets.test.mjs` | Chromium | Spelling Star practice sets, per-list tests, list order |
 | `spot-the-spelling.test.mjs` | Chromium | Spelling Star's distractors: plausibility, the child's own errors, curation, and every curated column in `wordlists/` |
+| `missing-letters.test.mjs` | Chromium | Spelling Star's Missing Letters game and the slot board under it: where the blanks land, and that a game stays ungraded |
 | `parent-dashboard.test.mjs` | Chromium | `parent.html` against a mocked API |
 | `setup-wizard.test.mjs` | Chromium | First launch, and opening a profile saved by an older version |
 
@@ -66,6 +67,19 @@ the app keeps working and quietly does the wrong thing:
 - **Old profiles keep opening.** Every app's `load()` migrates tolerantly;
   there are checks that a pre-grade profile opens, is not silently graded, and
   is not rewritten just by being read.
+- **Missing Letters blanks the letters this child gets wrong.** That is the
+  only thing the game does that Spot the Spelling cannot, and it is invisible
+  when it stops: if `pickBlanks()` quietly stops diffing the child's recorded
+  misspellings and falls back to blanking vowels, no error is raised and the
+  board still looks like a puzzle. A child who writes "beleive" every week
+  would go on filling a random hole in "believe" forever. There are checks
+  that the blanks land on the diffed span, that the apostrophe is never
+  blanked (it would signal a contraction the way the always-present keypad key
+  is designed not to), and that a game miss is never written back into the
+  history that picks the blanks — which would be a loop rather than evidence.
+- **A game is never a grade.** The gradebook holds one row per graded sitting
+  per list (§16), so a game writing a non-zero `score`/`total` would compete
+  with a Test for it. Checked on the session the game actually writes.
 - **Spot the Spelling's wrong answer stays plausible.** A bad distractor is the
   quietest failure in the repo: nothing crashes, no score moves, and the game
   keeps running while it stops teaching — a child rejects "levae" on shape

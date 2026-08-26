@@ -106,6 +106,33 @@
   button.spot-choice.ok { border-color: var(--green); background: var(--green-soft); color: var(--green-dark); }
   button.spot-choice.bad { border-color: var(--danger); background: #FBEAE6; color: var(--danger); }
   button.spot-choice:disabled { opacity: .85; }
+  /* ---------- The slot board ----------
+     One row of per-letter slots filled by tapping a source. Missing Letters is
+     the first configuration (most slots given, the keypad as the source);
+     Unscramble is the same board with nothing given and a consumable letter
+     bank, which is why none of this knows what the source is. See
+     docs/spelling-star-games.md §5.0.
+     Wraps for the same reason the keypad does: the corpus runs to 14 letters
+     ("administration") and a phone is 360px, so a fixed row would run off the
+     side. Static layout that wraps is the whole reason tapping is cheap here —
+     a drag board would have had to solve this as geometry. */
+  .board { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; margin: 4px 0 20px; }
+  .slot { min-width: 34px; height: 56px; border-radius: 10px; font-size: 26px; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; justify-content: center; padding: 0 5px; letter-spacing: 0; }
+  /* Given letters are the word showing through, not controls: no border, no
+     tap target, nothing to suggest they can be changed. */
+  .slot.given { background: transparent; color: var(--text); border: 3px solid transparent; }
+  /* The apostrophe is always given and never blanked (see pickBlanks), and it
+     sits narrow so "o'clock" reads as one word rather than eight tiles. */
+  .slot.punct { min-width: 12px; padding: 0; color: var(--muted); border: 3px solid transparent; background: transparent; }
+  .slot.open { background: var(--card); color: var(--accent); border: 3px dashed var(--border); cursor: pointer; }
+  .slot.open.filled { border-style: solid; }
+  .slot.open.sel { border-color: var(--accent); background: var(--accent-soft); border-style: solid; }
+  .slot.open.ok { border-color: var(--green); background: var(--green-soft); color: var(--green-dark); border-style: solid; }
+  .slot.open:disabled { cursor: default; }
+  @media (max-width: 480px) {
+    .board { gap: 4px; }
+    .slot { min-width: 28px; height: 48px; font-size: 22px; }
+  }
 </style>
 </head>
 <body>
@@ -122,7 +149,36 @@
 
 <script>
 // ============================================================================
-// Apostrophes (this pass) — the on-screen keypad was letters and erase only,
+// Missing Letters (this pass) — a second game, and the first thing in the hub
+// that asks the child to PRODUCE a spelling rather than recognise one. The
+// word appears with two or three letters blanked and they fill them from the
+// existing keypad. See docs/spelling-star-games.md §5.2.
+//
+// Two things are worth knowing about how it is built:
+//
+//   - The slot board is a shared primitive, not part of this game. It owns
+//     slots, selection, auto-advance, lift-to-correct and assemble-and-compare,
+//     and knows nothing about where the letters come from. Missing Letters is
+//     the configuration where most slots are given and the keypad is the tap
+//     source; Unscramble (games doc §5.0) is the same board with nothing given
+//     and a consumable letter bank, and should be built as a configuration of
+//     makeBoard/boardPlace/boardLift rather than a second engine. That is the
+//     whole reason this game is small: the board is the medium-sized piece and
+//     it is now paid for.
+//
+//   - The blanks are not random, which is the point of the idea. pickBlanks()
+//     diffs the child's own recorded misspellings (missedAs, via
+//     observedErrorsFor) against the real word and blanks exactly where they
+//     went wrong — a child who has written "beleive" gets "bel__ve". Words
+//     with no error history fall back to vowels and vowel teams. So the game
+//     teaches the specific trap this child falls into, using data the app has
+//     been recording since v6.2 and only ever used for distractors.
+//
+// It does NOT write missedAs back. A wrong board is a real misspelling, but
+// the blanks constrain what could have been typed, so feeding it back would
+// be a loop rather than evidence. Free-typed errors stay the only source.
+// ============================================================================
+// Apostrophes (previous pass) — the on-screen keypad was letters and erase only,
 // which made a list of contractions literally unspellable: the child could
 // hear "don't", know it, and have no way to type it. There is now an
 // apostrophe key on the last row of both layouts (and of the Repeat keypad,
@@ -551,6 +607,7 @@ function go(view) {
   SP = null; // cancel any pending Spot the Spelling auto-advance — a stale timer must not fire post-navigation
   S = null;  // same discipline: a pending Practice/Test/Pretest timer must not fire post-navigation
   RP = null; // same discipline for Repeat
+  ML = null; // same discipline for Missing Letters: a pending next-word timer must not fire post-navigation
   currentView = view;
   // Navigating just cleared every in-progress session, so anything a parent
   // sent mid-activity can safely land now (§15.5).
@@ -771,7 +828,7 @@ function renderHome() {
       <div style="font-size:18px;font-weight:700;color:var(--green-dark);margin-bottom:12px">You aced "${esc(list.name)}"! Ready for the next list?</div>
       <button class="big green" onclick="tryAdvance()">Yes, let's go! &rarr;</button>
     </div>` : ""}
-    ${last ? `<div class="card" style="cursor:pointer" onclick="renderLastResults()"><div class="muted">Last session</div><div style="font-size:17px;font-weight:600">${last.mode==="test"?`Test — ${fmtTest(last)}`:last.mode==="pretest"?`Pretest — ${fmtTest(last)}`:last.mode==="repeat"?"Repeat session":last.mode==="spotit"?"Spot the Spelling game":"Practice session"}${last.listName?` · ${esc(last.listName)}`:""} · ${new Date(last.date).toLocaleDateString()}</div><div class="muted" style="margin-top:4px">Tap to see how you did &rarr;</div></div>` : ""}
+    ${last ? `<div class="card" style="cursor:pointer" onclick="renderLastResults()"><div class="muted">Last session</div><div style="font-size:17px;font-weight:600">${last.mode==="test"?`Test — ${fmtTest(last)}`:last.mode==="pretest"?`Pretest — ${fmtTest(last)}`:last.mode==="repeat"?"Repeat session":last.mode==="spotit"?"Spot the Spelling game":last.mode==="missing"?"Missing Letters game":"Practice session"}${last.listName?` · ${esc(last.listName)}`:""} · ${new Date(last.date).toLocaleDateString()}</div><div class="muted" style="margin-top:4px">Tap to see how you did &rarr;</div></div>` : ""}
     ${practiceSetOfferable() ? `<div class="center" style="margin-bottom:10px">
       <button class="outline" style="font-size:14px;padding:8px 16px" onclick="go('practiceset')">&#128218; Choose lists to practice</button>
     </div>` : ""}
@@ -793,6 +850,11 @@ function renderGames() {
           <div style="font-size:36px;margin-bottom:6px">&#128269;</div>
           <div style="font-weight:700;margin-bottom:4px">Spot the Spelling</div>
           <div class="muted" style="font-size:14px">Pick the correctly spelled word!</div>
+        </div>
+        <div class="card" style="flex:1;min-width:200px;max-width:240px;margin-bottom:0;cursor:pointer;text-align:center" onclick="startMissing()">
+          <div style="font-size:36px;margin-bottom:6px">&#129513;</div>
+          <div style="font-weight:700;margin-bottom:4px">Missing Letters</div>
+          <div class="muted" style="font-size:14px">Put the runaway letters back!</div>
         </div>
       </div>
     </div>
@@ -929,6 +991,24 @@ function renderLastResults() {
           <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
             <span style="font-size:22px">${r.correct?"&#9989;":"&#128270;"}</span>
             <span style="font-size:22px;font-weight:800;letter-spacing:.1em">${esc(r.word)}</span>
+          </div>`).join("") || '<span class="muted">No words in this round.</span>'}
+      </div>
+      <div class="center" style="margin-top:6px"><button class="big" onclick="go('games')">&#127918; Play again</button></div>`;
+    return;
+  }
+  if (last.mode === "missing") {
+    const firstTry = last.results.filter(r => r.correct).length;
+    app.innerHTML = `
+      <div class="card">
+        <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px">&#129513; Your last Missing Letters game</div>
+        <h2 style="margin:0 0 4px;font-weight:800">${last.listName?esc(last.listName):""}</h2>
+        <div class="muted" style="margin-bottom:10px">${new Date(last.date).toLocaleDateString()} &middot; ${last.results.length} word${last.results.length===1?"":"s"}, ${firstTry} on the first try</div>
+        ${last.results.map(r => `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
+            <span style="font-size:22px">${r.correct?"&#9989;":"&#129513;"}</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:.1em">${esc(r.word)}</span>
+            <span class="muted">${r.revealed?"had a look":r.correct?"first try":`${r.attempts} tries`}</span>
+            <button class="outline" onclick="speak('${esc(r.word)}')">&#128266;</button>
           </div>`).join("") || '<span class="muted">No words in this round.</span>'}
       </div>
       <div class="center" style="margin-top:6px"><button class="big" onclick="go('games')">&#127918; Play again</button></div>`;
@@ -1757,6 +1837,350 @@ function finishSpotIt() {
     </div>`;
 }
 
+// ---------- The slot board (shared primitive) ----------
+//
+// A row of per-letter slots filled by tapping a source. Missing Letters is the
+// first configuration; Unscramble is the same board with nothing given and a
+// consumable letter bank as its source (docs/spelling-star-games.md §5.0).
+// Nothing below knows what the source is, which is the point of building it
+// once: the board owns slots, selection, auto-advance, lift-to-correct and
+// assemble-and-compare, so the second game configures it rather than
+// reimplementing it.
+//
+// A slot is { ch, fixed }. A `fixed` slot is given to the child — the letters
+// still showing in "bel__ve", and the pre-placed apostrophe in "o'clock". It
+// is never selectable and never cleared, so the assembled string always has
+// the right length and the child only ever moves what is theirs to move.
+function makeBoard(word, blanks) {
+  const blank = new Set(blanks);
+  const slots = [...word].map((ch, i) => blank.has(i) ? { ch: "", fixed: false } : { ch, fixed: true });
+  const board = { slots, sel: -1 };
+  board.sel = nextOpenSlot(board, -1);
+  return board;
+}
+// Wraps, so filling the last blank sends selection back to the first still
+// empty one rather than stranding it at the end of the word.
+function nextOpenSlot(board, from) {
+  const n = board.slots.length;
+  for (let k = 1; k <= n; k++) {
+    const i = (from + k + n) % n;
+    if (!board.slots[i].fixed && !board.slots[i].ch) return i;
+  }
+  return -1; // every blank is filled
+}
+function boardSelect(board, i) { if (board && !board.slots[i].fixed) board.sel = i; }
+// Place from whatever the source is, then move on. Straightforward
+// left-to-right filling is therefore just tap-tap with no slot-selecting at
+// all, while a child who wants to anchor the hard part first can tap that slot
+// and get it — the out-of-order path costs the child who doesn't want it
+// nothing.
+function boardPlace(board, ch) {
+  if (!board || board.sel < 0) return;
+  board.slots[board.sel].ch = ch;
+  const next = nextOpenSlot(board, board.sel);
+  if (next !== -1) board.sel = next; // last blank filled: selection stays put
+}
+// Tapping a filled blank lifts its letter out and leaves that slot selected.
+// One rule covers correction, and it is the rule Unscramble needs too (there
+// it also returns the letter to the bank).
+function boardLift(board, i) {
+  if (!board || board.slots[i].fixed) return;
+  board.slots[i].ch = "";
+  board.sel = i;
+}
+function boardComplete(board) { return board.slots.every(s => s.fixed || s.ch); }
+function boardString(board) { return board.slots.map(s => s.ch || " ").join(""); }
+
+// ---------- Missing Letters: choosing the blanks ----------
+//
+// The whole idea of the game (docs/spelling-star-games.md §5.2) is that the
+// blanks are not random. Every misspelling this child has actually written is
+// already in session history as `missedAs`, so diff their spelling against the
+// real one and blank exactly where they went wrong: a child who has written
+// "beleive" gets "bel__ve" and drills the trap itself rather than a random
+// hole. That is also what makes this a production game rather than a
+// recognition one — Spot the Spelling can show them the trap, this makes them
+// produce their way out of it.
+//
+// Trim the matching head and the matching tail; what is left in the middle of
+// the REAL word is the part their spelling disagreed with. Length differences
+// fall out of this for free — "wich" against "which" leaves just the `h`.
+function errorSpan(word, miss) {
+  if (!miss || word === miss) return null;
+  let p = 0;
+  while (p < word.length && p < miss.length && word[p] === miss[p]) p++;
+  let s = 0;
+  while (s < word.length - p && s < miss.length - p &&
+         word[word.length - 1 - s] === miss[miss.length - 1 - s]) s++;
+  const from = p, to = word.length - s;
+  if (to > from) return { from, to };
+  // Their spelling is the real word with something INSERTED — "untill" for
+  // "until", "runing" the other way round. No position in the real word is
+  // itself wrong, so there is nothing for the trim to leave behind. Blank the
+  // letter beside the insertion instead, which for a doubled consonant is
+  // exactly the "one l or two" question — the thing the games doc (§5.0) says
+  // Unscramble structurally cannot ask and this game can.
+  const i = Math.max(0, Math.min(p, word.length - 1));
+  return { from: i, to: i + 1 };
+}
+
+function letterCount(word) { return [...foldApos(word)].filter(ch => ch !== "'").length; }
+
+// Two blanks for a short word, three once there is room to spare. Never every
+// letter: a board with nothing given is Practice with extra steps.
+function blankTarget(word) { return letterCount(word) >= 7 ? 3 : 2; }
+
+function pickBlanks(word) {
+  const w = foldApos(word).toLowerCase();
+  const target = blankTarget(w);
+  // An apostrophe is never blanked. Same posture as the keypad's apostrophe
+  // key, which is always present so it never signals which words need one:
+  // here it is always given, so a blank never gives away that a contraction is
+  // coming.
+  const blankable = [];
+  for (let i = 0; i < w.length; i++) if (w[i] !== "'") blankable.push(i);
+  if (blankable.length <= target) return []; // too short to be a puzzle; caller filters
+
+  const chosen = [];
+  const take = (i, cap) => {
+    if (chosen.length < cap && blankable.includes(i) && !chosen.includes(i)) chosen.push(i);
+  };
+
+  // 1. Where this child has actually gone wrong, commonest error first, since
+  //    a spelling they have produced three times is more truly theirs than a
+  //    one-off slip (observedErrorsFor already orders them that way).
+  for (const miss of observedErrorsFor(w)) {
+    const span = errorSpan(w, miss);
+    if (!span) continue;
+    for (let i = span.from; i < span.to; i++) take(i, 3); // at most three, however wide the disagreement
+    if (chosen.length) break;
+  }
+  if (chosen.length) {
+    // Their error IS the board, and it does not get padded out to a quota. An
+    // earlier version topped a two-letter span up to three with a random
+    // vowel, which turned "bel__ve" — the exact trap — into "bel__v_" and put
+    // a meaningless hole next to a meaningful one.
+    //
+    // A single-letter span is the one case worth widening, because a lone
+    // blank barely reads as a puzzle. Take the letter beside it, so the trap
+    // stays covered rather than a second hole opening elsewhere in the word.
+    if (chosen.length === 1) {
+      const i = chosen[0];
+      [i + 1, i - 1].some(j => { take(j, 2); return chosen.length === 2; });
+    }
+    return chosen.sort((a, b) => a - b);
+  }
+  // 2. No usable history: vowels and vowel teams, which is where English keeps
+  //    most of its traps anyway.
+  shuffle(blankable.filter(i => "aeiouy".includes(w[i]))).forEach(i => take(i, target));
+  // 3. A word with too few vowels to go round ("rhythm", "strength").
+  if (chosen.length < target) shuffle(blankable).forEach(i => take(i, target));
+  return chosen.sort((a, b) => a - b);
+}
+
+// ---------- Missing Letters (production mini-game) ----------
+//
+// Ungraded and unlosable, like every game (§2): `score: 0, total: 0`, a wrong
+// board costs nothing and the letters stay put for another go.
+//
+// One thing this deliberately does NOT do: write `missedAs`. A wrong board is
+// a real misspelling the child produced, and it is tempting to feed it back
+// into the same history that picks the blanks — but the blanks constrain what
+// they could possibly have typed, so it would be a loop rather than evidence:
+// blank the position they get wrong, record that they got it wrong, blank it
+// again forever. Free-typed errors from Practice and Test stay the only
+// source. Whether a game should surface anything to the parent at all is the
+// open question in the games doc §7, and it is theirs to answer, not this
+// file's.
+let ML = null;
+function startMissing() {
+  const lists = practiceLists();
+  const list = lists[0];
+  // Whole word objects: the round needs the hint and the sentence, same as
+  // Practice, because a board with two holes and no clue is a guess.
+  const seen = new Set();
+  const candidates = [];
+  const add = w => { if (w && w.word && !seen.has(w.word)) { seen.add(w.word); candidates.push(w); } };
+  lists.forEach(l => l.words.forEach(add));
+  data.reviewWords.forEach(add);
+  // Blanking two letters of a three-letter word is not a puzzle, it is a coin
+  // toss — and 36 of the corpus's 855 words are that short.
+  const pool = shuffle(candidates.filter(w => letterCount(w.word) >= 4));
+  const targetCount = Math.min(pool.length, 6 + Math.floor(Math.random() * 3)); // burst of 6-8
+  // The length filter above already guarantees pickBlanks() finds room, so the
+  // filter here is belt-and-braces — but an empty round list would be a blank
+  // screen on a child's tablet, so it gets the same courteous exit as no words.
+  const rounds = pool.slice(0, targetCount).map(w => {
+    const word = foldApos(w.word).toLowerCase();
+    return { word, hint: w.hint || "", sentence: w.sentence || "", blanks: pickBlanks(word) };
+  }).filter(r => r.blanks.length);
+  if (!rounds.length) {
+    ML = null; // no round started — don't leave a stale board from a previous game in memory
+    app.innerHTML = `<div class="card">No words long enough to play with yet! Ask a parent to add some longer words in the parent dashboard.</div>
+      <div class="center" style="margin-top:6px"><button class="big outline" onclick="go('games')">Back</button></div>`;
+    return;
+  }
+  ML = {
+    rounds, idx: 0, results: [], attempts: 0, locked: false,
+    board: makeBoard(rounds[0].word, rounds[0].blanks),
+    ...listStamp(list), coverIds: lists.map(l => l.id),
+  };
+  app.innerHTML = `
+    <div class="card center" style="padding:40px">
+      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#129513; Missing Letters</div>
+      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${lists.length > 1 ? lists.map(l => esc(l.name)).join(" + ") : esc(ML.listName)}</h2>
+      <div class="muted" style="margin-bottom:20px">${ML.rounds.length} words &mdash; fill in the letters that ran away!</div>
+      <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">Some letters are hiding. Can you put them back?</div>
+      <button class="big green" onclick="renderMissingRound()">Let's play! &rarr;</button>
+    </div>`;
+}
+
+function slotHtml(board, i, done) {
+  const slot = board.slots[i];
+  if (slot.fixed) {
+    return slot.ch === "'"
+      ? `<div class="slot punct">&#39;</div>`
+      : `<div class="slot given">${esc(slot.ch)}</div>`;
+  }
+  const cls = ["slot", "open"];
+  if (slot.ch) cls.push("filled");
+  if (done) cls.push("ok");
+  else if (i === board.sel) cls.push("sel");
+  return `<button class="${cls.join(" ")}" ${done ? "disabled" : ""} onclick="mlTapSlot(${i})">${slot.ch ? esc(slot.ch) : "&nbsp;"}</button>`;
+}
+
+function renderMissingRound(fb) {
+  if (!ML) return;
+  const r = ML.rounds[ML.idx];
+  const board = ML.board;
+  // A wrong board does not lock: the letters stay where the child put them and
+  // there is another go, which is the difference between a game and a test.
+  const done = fb === "correct" || fb === "reveal";
+  const ready = boardComplete(board);
+  app.innerHTML = `
+    <div class="card" style="padding:32px">
+      <div style="font-size:14px;color:var(--muted);margin-bottom:20px">&#129513; Missing Letters &middot; word ${ML.idx+1} of ${ML.rounds.length}</div>
+      <div class="row" style="margin-bottom:20px">
+        <button onclick="speak(ML.rounds[ML.idx].word)">&#128266; Hear the word</button>
+        <button class="outline" onclick="speak(ML.rounds[ML.idx].word,true)">&#128034; Say it slowly</button>
+        ${r.sentence ? `<button class="outline" onclick="speak(ML.rounds[ML.idx].sentence)">&#128214; Hear a sentence</button>` : ""}
+      </div>
+      ${r.hint ? `<div class="hint">&#128161; ${esc(r.hint)}</div>` : ""}
+      <div class="board">${board.slots.map((_, i) => slotHtml(board, i, done)).join("")}</div>
+      <div class="kb" id="kb">
+        ${kbRows().map((row,ri) => `<div class="kb-row">
+          ${row.split("").map(ch => `<button class="${ch === "'" ? "kb-punct" : ""}" ${done?"disabled":""} onclick="mlType(&quot;${ch.toLowerCase()}&quot;)">${ch}</button>`).join("")}
+          ${ri===2 ? `<button class="kb-back" ${done?"disabled":""} onclick="mlErase()">&#9003; erase</button>` : ""}
+        </div>`).join("")}
+      </div>
+      <div class="feedback center" id="fb">${
+        fb === "correct" ? `<span style="color:var(--green)">&#9989; Yes! <strong>${esc(r.word)}</strong> &mdash; you found them!</span>` :
+        fb === "wrong" ? `<span style="color:var(--accent)">Not quite &mdash; have another look. Tap a letter you want to change.</span>` :
+        fb === "reveal" ? `<span style="color:var(--accent);letter-spacing:.2em;font-size:26px">${esc(r.word.toUpperCase())}</span>` : ""
+      }</div>
+      <div class="row" style="margin-top:10px;justify-content:center">
+        ${done
+          ? (fb === "reveal" ? '<button class="big green" onclick="nextMissing()">Next word &rarr;</button>' : "")
+          : `<button class="big" ${ready?"":"disabled"} onclick="submitMissing()">Check it</button>
+             ${ML.attempts >= 2 ? '<button class="outline" onclick="revealMissing()">Show me the word</button>' : ""}`}
+      </div>
+    </div>`;
+}
+
+function mlTapSlot(i) {
+  if (!ML || ML.locked) return;
+  const slot = ML.board.slots[i];
+  if (slot.fixed) return;
+  if (slot.ch) boardLift(ML.board, i); else boardSelect(ML.board, i);
+  renderMissingRound();
+}
+// The keypad is the tap source. The apostrophe key is live like everywhere
+// else — it can be placed and lifted back out like any letter — because a key
+// that greys out only in this game would be telling the child something about
+// the word, which is exactly what the always-present key exists to avoid.
+function mlType(ch) {
+  if (!ML || ML.locked) return;
+  boardPlace(ML.board, ch);
+  renderMissingRound();
+}
+// Erase clears the selected blank if it holds a letter, otherwise the last
+// filled one, so the key does the obvious thing whichever way the child got here.
+function mlErase() {
+  if (!ML || ML.locked) return;
+  const b = ML.board;
+  if (b.sel >= 0 && !b.slots[b.sel].fixed && b.slots[b.sel].ch) { boardLift(b, b.sel); }
+  else {
+    for (let i = b.slots.length - 1; i >= 0; i--) {
+      if (!b.slots[i].fixed && b.slots[i].ch) { boardLift(b, i); break; }
+    }
+  }
+  renderMissingRound();
+}
+function submitMissing() {
+  if (!ML || ML.locked || !boardComplete(ML.board)) return;
+  const r = ML.rounds[ML.idx];
+  ML.attempts++;
+  if (foldApos(boardString(ML.board)).toLowerCase() !== foldApos(r.word).toLowerCase()) {
+    // Nothing is lost and nothing is recorded yet. The board is left exactly as
+    // they built it — telling them WHICH slot is wrong would turn the puzzle
+    // into one-slot trial and error, so the whole board just says "look again".
+    renderMissingRound("wrong");
+    return;
+  }
+  ML.locked = true;
+  // `correct` is first-try, which is the only measure worth a parent's
+  // attention; `attempts` carries the rest. Neither is ever shown to the child
+  // as a failure — they filled in the word, and the screen says so.
+  ML.results.push({ word: r.word, correct: ML.attempts === 1, attempts: ML.attempts });
+  renderMissingRound("correct");
+  setTimeout(nextMissing, 1200);
+}
+function revealMissing() {
+  if (!ML || ML.locked) return;
+  const r = ML.rounds[ML.idx];
+  r.blanks.forEach(i => { ML.board.slots[i].ch = r.word[i]; });
+  ML.locked = true;
+  ML.results.push({ word: r.word, correct: false, attempts: ML.attempts, revealed: true });
+  renderMissingRound("reveal");
+}
+function nextMissing() {
+  if (!ML) return; // navigated away before the timer fired — nothing to advance
+  ML.idx++;
+  if (ML.idx >= ML.rounds.length) return finishMissing();
+  const r = ML.rounds[ML.idx];
+  ML.locked = false; ML.attempts = 0;
+  ML.board = makeBoard(r.word, r.blanks);
+  renderMissingRound();
+}
+function finishMissing() {
+  if (!ML) return;
+  const session = {
+    id: Date.now(), date: new Date().toISOString(), mode: "missing", ...carryListStamp(ML), ...coverStamp(ML),
+    results: ML.results, score: 0, total: 0,
+  };
+  data.sessions.push(session);
+  const saved = persist();
+  syncPush();
+  const firstTry = ML.results.filter(r => r.correct).length;
+  const total = ML.results.length;
+  // The round is over, so nothing is in flight any more. Same discipline as
+  // go()'s null-out and for the same reason: a next-word timer still pending
+  // from the last word would otherwise run off the end of the round and write
+  // the session a second time.
+  ML = null;
+  app.innerHTML = `
+    ${saved ? "" : saveFailedBannerHtml("history-only")}
+    <div class="card center" style="padding:40px">
+      <div style="font-size:46px;margin-bottom:8px">&#129513;</div>
+      <h2 style="margin:0 0 8px;font-weight:800">You found them all, ${esc(data.childName)}!</h2>
+      <div class="muted">${total} word${total===1?"":"s"} filled in${firstTry ? ` &mdash; ${firstTry} on the very first try` : ""}. Knowing which letters go where is real spelling!</div>
+      <div style="margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="big outline" onclick="go('games')">Play again</button>
+        <button class="big" onclick="go('home')">Done</button>
+      </div>
+    </div>`;
+}
+
 let selectedListId = null;
 let selectedResultsList = null;
 
@@ -1930,7 +2354,7 @@ function renderParent(view) {
       html += `<div class="card"><div style="font-weight:700;margin-bottom:10px">Session history — ${esc(group.name)}</div>`;
       sessions.forEach(s => {
         const mainCorrect = s.results.filter(r => r.type==="main" && r.correct).length;
-        const modeLabel = s.mode==="test"?"Test":s.mode==="pretest"?"Pretest":s.mode==="repeat"?"Repeat":s.mode==="spotit"?"Spot the Spelling":"Practice";
+        const modeLabel = s.mode==="test"?"Test":s.mode==="pretest"?"Pretest":s.mode==="repeat"?"Repeat":s.mode==="spotit"?"Spot the Spelling":s.mode==="missing"?"Missing Letters":"Practice";
         let improve = "";
         if (s.mode === "test" && s.promotedFrom) {
           improve = ` <span style="color:var(--green);font-weight:700">(perfect pretest &rarr; counted as test)</span>`;
@@ -1945,11 +2369,14 @@ function renderParent(view) {
         const scoreSummary = (s.mode==="test"||s.mode==="pretest") ? ` · ${fmtTest(s)} (${mainCorrect}/${s.total} main${s.bonusEarned?`, +${s.bonusEarned} bonus`:""})${improve}`
           : s.mode==="repeat" ? ` · ${s.results.length} word${s.results.length===1?"":"s"} written out`
           : s.mode==="spotit" ? ` · ${s.results.filter(r=>r.correct).length}/${s.results.length} correct`
+          : s.mode==="missing" ? ` · ${s.results.length} word${s.results.length===1?"":"s"}, ${s.results.filter(r=>r.correct).length} first try`
           : "";
         const resultRows = s.mode==="repeat"
           ? s.results.map(r => `<div>&#9997; ${esc(r.word)} &middot; written ${r.reps}&times;${r.extra?" (extra practice word)":""}</div>`).join("")
           : s.mode==="spotit"
           ? s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)}</div>`).join("")
+          : s.mode==="missing"
+          ? s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)}${r.revealed?" (shown)":r.attempts>1?` · ${r.attempts} tries`:""}</div>`).join("")
           : s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)} ${r.type!=="main"?`(${r.type})`:""} ${r.attempts>1?`· ${r.attempts} tries`:""}</div>`).join("");
         html += `<details><summary><strong>${modeLabel}</strong> · ${new Date(s.date).toLocaleString()}${scoreSummary}</summary>
           <div style="font-size:14px;padding-top:6px;color:var(--body-text)">
@@ -2280,7 +2707,7 @@ function exportCSV() {
   const rows = [["child","date","time","mode","grade","list","word","type","correct","attempts"]];
   data.sessions.forEach(s => {
     const d = new Date(s.date);
-    s.results.forEach(r => rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), s.mode, s.listGrade || "", s.listName || "", r.word, r.type || (s.mode==="repeat" ? (r.extra?"repeat-extra":"repeat") : s.mode==="spotit" ? "spotit" : ""), r.correct===undefined ? "n/a" : (r.correct?"yes":"no"), r.attempts!==undefined ? r.attempts : (r.reps!==undefined ? r.reps : "")]));
+    s.results.forEach(r => rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), s.mode, s.listGrade || "", s.listName || "", r.word, r.type || (s.mode==="repeat" ? (r.extra?"repeat-extra":"repeat") : s.mode==="spotit" ? "spotit" : s.mode==="missing" ? (r.revealed ? "missing-shown" : "missing") : ""), r.correct===undefined ? "n/a" : (r.correct?"yes":"no"), r.attempts!==undefined ? r.attempts : (r.reps!==undefined ? r.reps : "")]));
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
