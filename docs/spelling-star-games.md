@@ -1,9 +1,11 @@
 # Spelling Star — Game Ideas
 
-Status: **backlog.** Nothing in this file is committed to being built, and
-nothing here has been designed past the point where the real problems show up.
-The purpose is to have the ideas written down with their costs attached, so
-picking one is a decision rather than a fresh start.
+Status: **mostly backlog.** 5.2 Missing Letters is built and shipped, and with
+it the slot board of §5.0 — so 5.1 Unscramble is now a configuration of
+existing machinery rather than a new engine. Everything else here is still
+unbuilt, and nothing else has been designed past the point where the real
+problems show up. The purpose is to have the ideas written down with their
+costs attached, so picking one is a decision rather than a fresh start.
 
 Target file: `spelling-star-v6_3.html` (self-contained, like every Star app).
 
@@ -11,9 +13,9 @@ Target file: `spelling-star-v6_3.html` (self-contained, like every Star app).
 
 ## 1. Why this file exists
 
-Spelling Star ships one game — Spot the Spelling — and the Games hub was built
-to hold more: `renderGames()` lays its cards out in a `flex-wrap` row that has
-only ever had one card in it. The distractor engine carries a comment saying as
+Spelling Star shipped one game — Spot the Spelling — and the Games hub was
+built to hold more: `renderGames()` lays its cards out in a `flex-wrap` row
+that had only ever had one card in it (it now has two). The distractor engine carries a comment saying as
 much (`// Shared generator: reusable by future recognition games.`), and that
 comment was, before this file, the entire documented plan for a second game.
 
@@ -57,7 +59,7 @@ The reason a second game is cheaper than the first:
 | `kbRows()` | `abc` or `qwerty`, apostrophe key on the last row | An on-screen keypad matching the child's setting |
 | `foldApos()` | Folds curly and straight apostrophes on both entry and checking | Contractions compare correctly |
 | Theme tokens | `--accent`, `--soft`, `--green`, `--danger`, `--gold`, `--line` across four themes | A game that themes itself if it uses the variables |
-| Curated content | 60 list files under `wordlists/spelling/`, 855 unique words, each with `hint`, `sentence`, and often `misspellings` | Real material to play against on day one |
+| Curated content | 60 list files under `wordlists/spelling/`, 988 rows and 855 unique words, **every one** carrying `hint`, `sentence` and two curated `misspellings` (seven rows carry three) | Real material to play against on day one |
 
 ---
 
@@ -76,7 +78,10 @@ every place that switches on a mode string:
 5. `renderLastResults()` — the tap-through summary
 6. History: `modeLabel`, the per-row summary, and the expanded detail
 7. The CSV export's per-result `type` column
-8. `parent.html` — the mode map (`spotit: { label: 'Spot it', tone: 'play' }`)
+8. `parent.html` — the mode map (`spotit: { label: 'Spot it', tone: 'play' }`).
+   The map's key *order* is semantic as well as its contents: `modeOrder()`
+   reads `Object.keys(MODES[appId]).indexOf(mode)` to sort a day's sittings
+   on the dashboard, so a new mode picks a position, not just a label
 9. `docs/parent-sync-spec.md` §2 — the `mode` enum in the session-payload table
 10. A test suite, following `tests/spot-the-spelling.test.mjs`
 11. `sw.js` — bump `CACHE_VERSION`
@@ -88,6 +93,43 @@ and never validates it against a list. Ungraded modes are invisible to
 ---
 
 ## 5. The ideas
+
+### 5.0 The slot board is one primitive, not one game
+
+This comes first because it changes what the rest of the section is a list of.
+With 5.1 specified as tapping rather than dragging, **5.1 and 5.2 are the same
+machine**. Both are a row of per-letter slots filled by tapping a source. They
+differ in exactly two parameters:
+
+| | Unscramble (5.1) | Missing Letters (5.2) |
+|---|---|---|
+| Slots pre-filled | none | all but 2–3 |
+| Tap source | a consumable bank of the word's letters | the existing keypad, unrestricted |
+| Answers "one `l` or two" | the bank does | the child must |
+
+Build the slot board once — slots, selection, auto-advance, lift-to-correct,
+assemble-and-compare — and the second game is its configuration rather than a
+second engine.
+
+**This is now built**, as `makeBoard()` / `boardSelect()` / `boardPlace()` /
+`boardLift()` / `boardComplete()` / `boardString()`, and it deliberately knows
+nothing about where the letters come from. Missing Letters (5.2) is the
+configuration where most slots arrive given and the keypad is the tap source.
+Unscramble (5.1) is the same board with nothing given and a consumable bank,
+and should be built as a configuration of those six functions rather than as a
+second engine — that is the only thing keeping it cheap.
+
+So the decision this file supported was never "which of five games." It was:
+
+1. **Build the board, or not.** The only medium-sized piece of work in the
+   file, and it is paid once. *Paid.*
+2. **Which configuration ships first**, and whether 5.3 or 5.5 later reuse it.
+   Neither needs it, but both could.
+
+Ranking the five games against each other (§6) hid that, because it charged
+5.1 and 5.2 each for a board that only one of them ever pays for.
+
+---
 
 ### 5.1 Unscramble — tap a slot, tap a letter
 
@@ -141,9 +183,9 @@ the DOM while looking identical, so comparing tile arrangement rather than the
 assembled string marks a correct board wrong. Tapping makes this vanish — the
 child places a *character* into a slot, so the assembled string is built
 directly and compared directly. Length gets easier too: slots and bank are
-static layout that can wrap, so the 120 words of 9+ letters and the 14-letter
-longest ("characteristic", "administration") are a wrapping problem rather than
-a drag-geometry one.
+static layout that can wrap, so the 120 words of 9+ letters and the three
+14-letter longest ("administration", "characteristic", "representative") are a
+wrapping problem rather than a drag-geometry one.
 
 **What remains true regardless of interaction:**
 
@@ -153,8 +195,23 @@ a drag-geometry one.
   right about English and would be marked wrong. Check the assembled string
   against the child's own word set before rejecting it, and when it is another
   real word, say so — "that's a word! but not this one" — rather than buzzing.
-  Note the limit: `realWordSet()` is the child's own lists, review and graduated
-  words, not a dictionary, so it catches these six and nothing else.
+
+  **That mitigates the problem rather than solving it, and the gap is wider
+  than the six pairs suggest.** `realWordSet()` is the child's own lists plus
+  review and graduated words — not the corpus, and not a dictionary — so both
+  halves of a pair must be loaded at once for the guard to fire. Only one pair
+  ever is: `tired` and `tried` share `Spelling_5.19.csv`. The other five are
+  split across lists and mostly across grades (silent 3.18/5.6 vs listen 5.24;
+  dear 3.18 vs read 3.19; grown 3.17 vs wrong 3.26/5.24; three 3.2 vs there
+  3.29; quiet 5.15 vs quite 5.6), so the guard fires only when the partner
+  happens to be in review or graduated — weeks later, if ever.
+
+  It is also aimed at the narrower risk. A child unscrambling "listen" is
+  likelier to build *enlist* or *tinsel* than specifically the anagram that is
+  on their list, and no list-derived word set will ever hold those. So
+  Unscramble will sometimes buzz a child who is right about English. That is
+  probably an acceptable price for a game that costs nothing to lose — but it
+  should be picked as an accepted cost, not filed as handled.
 - **36 words are 3 letters or shorter**, which is not a puzzle. Filter them out
   or accept wasted rounds.
 - **Apostrophes.** `o'clock`, `don't`, `we're` and friends are in the lists.
@@ -177,31 +234,16 @@ is a game rather than a Practice variant.
 
 ---
 
-### 5.1a The slot board is one primitive, not one game
+### 5.2 Missing Letters — **built**
 
-Worth noticing before anything gets built: with 5.1 as tapping rather than
-dragging, **5.1 and 5.2 are the same machine**. Both are a row of per-letter
-slots filled by tapping a source. They differ in exactly two parameters:
-
-| | Unscramble | Missing Letters |
-|---|---|---|
-| Slots pre-filled | none | all but 2–3 |
-| Tap source | a consumable bank of the word's letters | the existing keypad, unrestricted |
-| Answers "one `l` or two" | the bank does | the child must |
-
-Build the slot board once — slots, selection, auto-advance, lift-to-correct,
-assemble-and-compare — and the second game is its configuration rather than a
-second engine. That is a real argument for doing 5.1 and 5.2 together, and for
-doing them before 5.3 or 5.5, either of which could then reuse the same board.
-
----
-
-### 5.2 Missing Letters
+*Shipped. `startMissing()` and the slot board in `spelling-star-v6_3.html`,
+tests in `tests/missing-letters.test.mjs`. What follows is the idea as
+specified; three things changed on contact with the code, noted at the end.*
 
 The word appears with two or three letters blanked — `b_lie_e` — and the child
 fills them from the existing on-screen keypad. Hear-it and hint available.
 
-**Reuses:** the slot board from 5.1 if it exists (see 5.1a — this game is that
+**Reuses:** the slot board (§5.0 — this game is that
 board with most slots pre-filled and the keypad as the tap source), `kbRows()`
 and the whole keypad idiom, `foldApos()`, `speak()`, plus — the point of the idea — `observedErrorsFor(word)`. The blanks do not
 have to be random. The letters this child actually gets wrong are already
@@ -218,6 +260,31 @@ Fall back to blanking vowels and vowel teams when a word has no error history.
 teaching-per-line-of-code. If only one game gets built, this is the argument
 for it being this one.
 
+**Three things the build changed:**
+
+1. **The error span is the board; it is not padded to a quota.** The first
+   version treated "two or three blanks" as a target and topped a two-letter
+   span up with a random vowel — which turned `bel__ve`, the exact trap, into
+   `bel__v_`, a meaningful hole next to a meaningless one. The rule is now:
+   where there is error history, the diff decides how many blanks there are
+   (capped at three, widened to two if the span is a single letter so the
+   board still reads as a puzzle). The 2–3 quota governs only the no-history
+   fallback.
+2. **A pure insertion has no wrong position to find.** A child who writes
+   "untill" for "until" has disagreed with no letter of the real word, so
+   trimming the matching head and tail leaves an empty span. `errorSpan()`
+   returns the letter beside the insertion instead — which for a doubled
+   consonant is the "one `l` or two" question, exactly the thing §5.1 notes
+   Unscramble structurally cannot ask.
+3. **The game does not write `missedAs`.** Tempting, since a wrong board is a
+   real misspelling the child produced — but the blanks constrain what they
+   could possibly have typed, so feeding it back into the history that picks
+   the blanks is a loop rather than evidence: blank the position they get
+   wrong, record that they got it wrong, blank it again forever. Free-typed
+   errors from Practice and Test stay the only source. This is narrower than
+   the §7 question about the review list and was settled in code; the review
+   question is still open and still the parent's.
+
 ---
 
 ### 5.3 Sentence Slot
@@ -227,9 +294,9 @@ into the gap — "She ____ she would be here soon." Hear-the-sentence already
 exists as a button in Practice.
 
 **Reuses:** the `sentence` field, which is the most underused asset in the app.
-Every word has one, 987 of 988 curated sentences contain their word, and the
-child ever meets it in exactly one place: a "Hear a sentence" button in
-Practice that speaks it aloud. The only other reference in the file is the CSV
+Every word has one, all 988 curated sentences contain their word somewhere in
+the string (984 of them on a word boundary), and the child ever meets it in
+exactly one place: a "Hear a sentence" button in Practice that speaks it aloud. The only other reference in the file is the CSV
 importer setting its default. It is never shown on screen anywhere.
 
 **New:** blanking the word out of its sentence, which is where the edge cases
@@ -239,10 +306,24 @@ live:
   (`String(raw.sentence || "").trim() || word`). A word whose sentence *is* the
   word gives a blank and no context — skip those words rather than showing a
   bare gap.
-- Blank on a word boundary. The one sentence in the corpus that fails a
-  `\b`-anchored match is `fire`, whose sentence is "We roasted marshmallows over
-  the campfire." A naive substring blank turns that into "the camp____," which
-  hands the child a different word to spell. Skip when the anchored match fails.
+- Blank on a word boundary. Four sentences in the corpus fail a `\b`-anchored
+  match, and they fail for two different reasons:
+
+  | word | sentence | why |
+  |---|---|---|
+  | fire | "We roasted marshmallows over the **campfire**." | compound |
+  | segment | "…divided the lesson into three separate **segments**." | inflection |
+  | infect | "…help stop germs from **infecting** others." | inflection |
+  | oyster | "…a plate of fresh **oysters** at the restaurant." | inflection |
+
+  Only `fire` is the case the naive-substring worry describes: blanking it
+  turns the sentence into "the camp____," which hands the child a different
+  word to spell. The other three contain the word plus a suffix, where the
+  kinder handling is to blank the inflected form and accept the stem — the
+  child spelling "segment" into a gap that was "segments" has done the thing
+  being asked. Skipping on a failed anchored match covers all four and costs
+  three words out of 855, which is the right first cut; the inflection case is
+  worth revisiting only if the corpus grows a lot more of them.
 - Match case-insensitively but keep the sentence's capitalisation around the gap.
 
 **Cost:** low. Closer to a Practice variant than a game, which is either the
@@ -258,16 +339,33 @@ outgrown the coin-flip.
 **Reuses:** everything. `distractorsFor()` already returns a ranked *list* and
 the game currently picks one entry from it and discards the rest.
 
-**New:** filling out to three wrong options when history and curation supply
-fewer, by calling `generateMisspelling()` repeatedly with the already-chosen
-ones banned. The plausibility bar matters more here: a round with one real
-error and two obviously-typo distractors is *easier* than the two-option
-version, because the child eliminates on shape without reading. That is exactly
-the silent failure `tests/spot-the-spelling.test.mjs` was written to catch, and
-the test suite would need extending alongside.
+**New:** filling out to three wrong options. This is a slightly bigger change
+than it sounds, because `distractorsFor()` reaches the generator only when
+everything else came up empty:
 
-**Cost:** lowest of all, but it is a difficulty tier rather than a new game, and
-it does not add a second card to the hub so much as a setting to the first.
+```js
+if (!out.length) push(generateMisspelling(word, banned));
+```
+
+Four-Up needs it restructured from *fall back if empty* to *top up to N* —
+still small, but it is a change to a shared function rather than a call site.
+
+And that restructure is where the risk actually sits. Because every curated
+row carries two misspellings (§3), `generateMisspelling()` almost never fires
+on the shipped lists today; it is reserved for parent-typed words with no
+curation. Four-Up would make it routine — three distractors from two curated
+ones means a generated third on most rounds — so Four-Up is the first feature
+that would put a ranked generator on the critical path for real content.
+
+The plausibility bar also matters more with four options than two: a round with
+one real error and two obviously-typo distractors is *easier* than the
+two-option version, because the child eliminates on shape without reading. That
+is exactly the silent failure `tests/spot-the-spelling.test.mjs` was written to
+catch, and the suite would need extending alongside.
+
+**Cost:** lowest of all in lines of code, but not in risk, and it is a
+difficulty tier rather than a new game — it does not add a second card to the
+hub so much as a setting to the first.
 
 ---
 
@@ -300,18 +398,27 @@ the word, but it should not be picked without accepting the tagging work.
 
 ## 6. Ranked by build cost
 
-| Idea | Interaction | New content needed | Cost |
+Costed honestly, per §5.0: the slot board is one shared item, and 5.1 and 5.2
+are configurations of it rather than two engines.
+
+| Item | Interaction | New content needed | Cost |
 |---|---|---|---|
-| 5.4 Four-Up | none — existing | none | Trivial |
-| 5.2 Missing Letters | slot board + existing keypad | none | Low |
-| 5.3 Sentence Slot | existing keypad | none | Low |
-| 5.1 Unscramble | slot board + a letter bank | none | Low |
+| **The slot board** (§5.0) | slots, selection, auto-advance, lift-to-correct | none | **Medium — the only real work in this file. ✅ Built** |
+| 5.2 Missing Letters | board + existing keypad as the source | none | ✅ Built |
+| 5.1 Unscramble | board + a consumable letter bank | none | Low — the board exists; this is a bank and a config |
+| 5.4 Four-Up | none — existing | none | Trivial in code; see §5.4 on risk |
+| 5.3 Sentence Slot | existing keypad; board optional | none | Low |
 | 5.5 Rule Sort | tap a bucket | **a rule tag on 855 words** | Highest |
 
-Four of the five are now cheap, and the ranking barely separates them. That is
-a change from this file's first draft, where Unscramble was the expensive idea
-because it was specified as a drag; respecifying it as tapping (5.1) moved it
-down a whole tier and made it share an engine with 5.2 (5.1a).
+Read that as one medium decision and a set of cheap ones, not as five
+comparable options. An earlier version of this table ranked 5.1 and 5.2 as
+peers at "Low" while charging each of them for a slot board — which contradicts
+§5.0, where the board is built once. Missing Letters shipped first and carried
+the board, so Unscramble is now genuinely cheap.
+
+That is still a large change from the file's first draft, where Unscramble was
+the expensive idea because it was specified as a drag. Respecifying it as
+tapping (5.1) is what made the board shared in the first place (§5.0).
 
 The useful split is no longer cost but what each one asks of the child:
 
@@ -323,9 +430,12 @@ The useful split is no longer cost but what each one asks of the child:
 | 5.3 Sentence Slot | spells the whole word in context | production, with meaning attached |
 | 5.5 Rule Sort | classifies by pattern | the rule behind the word |
 
-The shipped game is recognition only. Every idea here except 5.4 moves toward
-production, and they do it in that order — which is also a reasonable build
-order, since each step reuses the one before it.
+Spot the Spelling was recognition only, and that was the gap. Every idea here
+except 5.4 moves toward production, and they do it in that order — which is
+also a reasonable build order, since each step reuses the one before it.
+Missing Letters was built first for that reason rather than for its cost: it
+is the shortest distance from recognition to production, and it is the only
+one of the five that aims at the trap a particular child actually falls into.
 
 ---
 
