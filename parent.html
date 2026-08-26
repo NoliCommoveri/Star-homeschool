@@ -60,7 +60,19 @@
   .badge.tone-diagnostic { background: var(--gold-soft); color: #7A5300; }
   .badge.tone-practice { background: var(--green-soft); color: var(--green-dark); }
   .badge.tone-play { background: var(--soft); color: var(--body-text); }
+  .badge.tone-lifecycle { background: var(--soft); color: var(--muted); }
   .mode-breakdown { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 12px; }
+  /* Plan (assignment-spec.md §8.3): a count and a bar, never a percentage.
+     The bar's width is a proportion, but nothing ever prints one — the number
+     beside it is "2 of 3", which reads better and keeps a kid-facing view and
+     a parent-facing one saying the same thing. */
+  .plan-item { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .plan-item:last-child { border-bottom: none; }
+  .plan-item-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .plan-item-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }
+  .bar { height: 9px; border-radius: 6px; background: var(--soft); overflow: hidden; margin: 10px 0 6px; }
+  .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+  .bar.met > span { background: var(--green); }
   .picker label { font-size: 14px; margin-bottom: 6px; }
   .picker select { margin-bottom: 12px; }
   .app-toggle { gap: 8px; }
@@ -131,6 +143,21 @@ const APPS = [
   { id: 'reading', label: 'Reading Star' },
 ];
 
+// ---------- The mode registry and evaluator (docs/assignment-spec.md §5, §10) ----------
+// Everything from here to the end of evaluateItem() is shared source, to be
+// copied byte-for-byte into today.html and the three synced apps as §17 steps
+// 3 and 4 land, and guarded against drift by tests/shared-code.test.mjs the way
+// the plan document block already is. Only parent.html holds it today.
+//
+// Drift here is the silent-wrongness the suites exist to catch: nothing throws
+// and no screen breaks, the phone and the tablet simply start counting the
+// same week differently and neither can be shown to be the wrong one.
+//
+// It depends on exactly one thing outside itself — localDate(instant, tz),
+// which is already hand-duplicated across parent.html and the three apps under
+// the same rule. Nothing else from any host file may be referenced here, or the
+// block stops being copyable, which is the only property that makes it safe.
+//
 // What kind of sitting a session was. A pretest, a test and a practice all
 // arrive as a row with a score, and "2 sessions, averaging 100%" flattened
 // them into something a parent can't read: the diagnostic before the list and
@@ -138,6 +165,10 @@ const APPS = [
 // follow the child apps' own screens (Spelling Star's Pretest / Test /
 // Practice, Math Star's Drill / Practice) so the dashboard names a session the
 // same way the child saw it.
+//
+// §5 promotes this from a badge-labelling table to the registry both sides
+// evaluate against, which is why `tone` now decides what counts as work and
+// not just what colour a badge is.
 const MODES = {
   spelling: {
     pretest:  { label: 'Pretest',  tone: 'diagnostic' },
@@ -152,16 +183,188 @@ const MODES = {
     practice: { label: 'Practice', tone: 'practice' },
   },
   // reading-star-spec.md §6: quiz is the graded sitting, the same way Test is
-  // for Spelling and Drill is for Math. The other four modes never carry a
-  // score, so they read as "practice" tone rather than graded/diagnostic.
+  // for Spelling and Drill is for Math. `log-session` is the sitting that
+  // actually is reading, so it reads as practice.
+  //
+  // The other three are `lifecycle` (assignment-spec.md §5): Reading Star
+  // writes a session row when a book is *started*, and again when it is
+  // finished or abandoned. Those are transitions of a book, not sittings at
+  // one — counting them would make "5 reading sessions a week" satisfiable by
+  // opening five books and reading none of them.
   reading: {
-    start:        { label: 'Started',        tone: 'practice' },
+    start:        { label: 'Started',        tone: 'lifecycle' },
     'log-session':{ label: 'Reading session', tone: 'practice' },
-    finish:       { label: 'Finished',       tone: 'practice' },
-    abandon:      { label: 'Quit',           tone: 'practice' },
+    finish:       { label: 'Finished',       tone: 'lifecycle' },
+    abandon:      { label: 'Quit',           tone: 'lifecycle' },
     quiz:         { label: 'Quiz',           tone: 'graded' },
   },
+  // §5, §14. Neither app syncs yet, so nothing here is reachable from the
+  // dashboard or the Plan tab's editor — the phone cannot verify a session it
+  // never receives, which is why §11 keeps them out of the editor. They are
+  // written down now so that the model that ships is already the model those
+  // apps slot into, rather than one that has to be reshaped to admit them:
+  // when §14 lands, an app id becomes selectable and nothing else moves.
+  //
+  // Nine Geography modes and four Logic ones collapse to one countable unit
+  // each. A round is a round; whether it was capitals or rivers is a question
+  // the dashboard answers, not one a target should have to.
+  geography: {
+    round:  { label: 'Round',  tone: 'practice' },
+  },
+  logic: {
+    puzzle: { label: 'Puzzle', tone: 'practice' },
+  },
 };
+
+// Unknown modes still render — a future app screen shows its raw mode rather
+// than vanishing from the dashboard.
+function modeInfo(appId, mode) {
+  return (MODES[appId] || {})[mode] || { label: mode || 'Session', tone: 'play' };
+}
+
+// assignment-spec.md §5. Two rules rather than an enumeration, because an
+// enumeration goes stale: Spelling Star shipped `spotit`, then `missing`, and
+// docs/spelling-star-games.md is a backlog of more. Each arrives as a mode with
+// tone 'play' and should land in the plan already knowing it is not homework,
+// without anyone remembering to come back here.
+//
+// A parent who wants to encourage games can still target one by naming its
+// mode explicitly — this governs only what a broad match sweeps up.
+const UNCOUNTED_TONES = ['play', 'lifecycle'];
+
+// An unrecognized mode falls to modeInfo's 'play' default and therefore does
+// not count, which is the direction worth failing in: a target that undercounts
+// shows "2 of 3" for a child who did three, and a parent goes and looks. One
+// that overcounts shows "3 of 3" for a child who did two, and nobody does.
+function countsAsWork(appId, mode) {
+  return !UNCOUNTED_TONES.includes(modeInfo(appId, mode).tone);
+}
+
+// Date arithmetic on a YYYY-MM-DD string, with no timezone involved anywhere.
+// That is the whole payoff of §9.3 stamping local_date at write time: once a
+// session carries the calendar day it belongs to, every bucket downstream is
+// string comparison and day counting, and the IANA database is needed exactly
+// once — to ask what today is.
+//
+// The arithmetic goes through UTC deliberately. A local Date would put these
+// on a clock that has 23- and 25-hour days, and "seven days after" would
+// occasionally land on the wrong one.
+function shiftDate(date, days) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  return new Date(at + days * 86400000).toISOString().slice(0, 10);
+}
+function daysBetween(from, to) {
+  const a = Date.parse(from + 'T00:00:00Z');
+  const b = Date.parse(to + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
+
+// §9.4: the most recent weekStart weekday on or before this date. 0 = Sunday,
+// matching data.schedule's existing indexing, so a family that has set its week
+// to start on Monday gets the same answer from both.
+function weekBucketStart(date, weekStart) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  const shift = (new Date(at).getUTCDay() - (weekStart === 1 ? 1 : 0) + 7) % 7;
+  return shiftDate(date, -shift);
+}
+
+// The local-date window an item is being counted over right now, plus whether
+// that window has closed. §4.3's three period kinds, and nothing else: there is
+// deliberately no Mon–Fri "schoolweek", because whether a week includes
+// Saturday is a question about the family's week and weekStart answers it.
+//
+// `closed` can only ever be true for a dated period. A day or a week bucket is
+// derived from today and therefore always contains it — which is what §10.4
+// needs: mid-period neither surface renders a judgment, so a target that has
+// not closed has no verdict to show, only a count and the days left.
+function periodWindow(item, { timezone, weekStart, now }) {
+  const today = localDate(new Date(now), timezone);
+  if (!today) return null;
+
+  const period = item && item.period;
+  if (period === 'day') return { from: today, to: today, closed: false };
+  if (period === 'week') {
+    const from = weekBucketStart(today, weekStart);
+    return { from, to: shiftDate(from, 6), closed: false };
+  }
+  if (period && typeof period === 'object' && period.from && period.to) {
+    return { from: period.from, to: period.to, closed: today > period.to };
+  }
+  return null;
+}
+
+// §10.2. One pure function, evaluated identically on the phone, on the hub and
+// in the apps, so no client ever has to report "I have done 2 of 3" — both
+// sides count the same sessions with the same rules and arrive at the same
+// number on their own. There is no progress field to get out of sync.
+//
+// `sessions` are normalized to { at, localDate, app, mode, scopeId, deviceId,
+// id }. `now` is a parameter rather than Date.now() so a past period is
+// answerable retroactively (§10.1) — which is the point of plan revisions
+// carrying an effective date.
+function evaluateItem(item, sessions, { timezone, weekStart, now }) {
+  const window = periodWindow(item, { timezone, weekStart, now });
+  const count = (item && item.count) || 0;
+  if (!window) return { done: 0, count, met: false, from: null, to: null, closed: false, daysLeft: 0 };
+
+  const match = (item && item.match) || {};
+
+  // Deduplicated on (deviceId, sessionId) before counting, which is not
+  // optional: a merged child holds the same sitting under more than one childId
+  // (§6.2), and an app re-pushes its history when it adopts the shared one.
+  // /api/summary carries an inner DISTINCT for exactly this reason. Without it
+  // a re-push inflates every count and a child appears to have met a target
+  // they did not.
+  //
+  // today.html has no deviceId — everything it reads is by definition from the
+  // one device — so the key collapses to the session id there, on its own. That
+  // is the same line of code doing the right thing in both places rather than a
+  // branch, which is what lets this stay byte-identical.
+  const seen = new Set();
+  let done = 0;
+
+  for (const s of sessions || []) {
+    // A session with no local_date cannot be placed in a calendar day at all
+    // (§9.6): it was recorded before plans existed, or on a tablet that has
+    // never received one. Excluded rather than guessed at — the phone
+    // backfills what it can before this ever runs.
+    if (!s || !s.localDate) continue;
+    if (s.localDate < window.from || s.localDate > window.to) continue;
+
+    if (match.app && s.app !== match.app) continue;
+    if (match.scopeId && s.scopeId !== match.scopeId) continue;
+
+    if (match.modes && match.modes.length) {
+      // Naming a mode explicitly targets it whatever its tone, so a parent who
+      // wants to encourage a game can. Only a broad match defers to §5's rule.
+      if (!match.modes.includes(s.mode)) continue;
+    } else if (!countsAsWork(s.app, s.mode)) {
+      continue;
+    }
+
+    const key = (s.deviceId || '') + ':' + (s.id || '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    done += 1;
+  }
+
+  const today = localDate(new Date(now), timezone);
+  return {
+    done,
+    count,
+    met: done >= count,
+    from: window.from,
+    to: window.to,
+    closed: window.closed,
+    // Inclusive of today: on the last day of a week this reads 0, which the
+    // surfaces render as "last day" rather than "0 days left".
+    daysLeft: today && today <= window.to ? daysBetween(today, window.to) : 0,
+  };
+}
+// ---------- end of the shared registry and evaluator ----------
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -179,11 +382,6 @@ function scopeColumnLabel(appId, long) {
   return long ? 'Focus area' : 'Focus';
 }
 
-// Unknown modes still render — a future app screen shows its raw mode rather
-// than vanishing from the dashboard.
-function modeInfo(appId, mode) {
-  return (MODES[appId] || {})[mode] || { label: mode || 'Session', tone: 'play' };
-}
 function modeOrder(appId, mode) {
   const i = Object.keys(MODES[appId] || {}).indexOf(mode);
   return i === -1 ? 99 : i;
@@ -216,6 +414,12 @@ const state = {
   // into every child_state row, per §15.4's size argument) and the book
   // currently being added/edited, or null when the list view is showing.
   readingCatalog: null, readingEditor: null,
+  // Plan tab (assignment-spec.md §11). `plan` is the document as the server
+  // last handed it back; `planEditor` is the one item being added or changed,
+  // or null when the list is showing. Snapshots are per app, and are what a
+  // scoped target is composed against (§15.4) so the phone never carries a
+  // second copy of a child app's data model.
+  plan: null, planEditor: null, planSnapshots: {}, planErr: '', planNote: '', planBusy: false,
   // assignment-spec.md §9.3: the family's time policy, fetched once and reused.
   // The dashboard buckets a child's week in the FAMILY's zone, not this
   // phone's — a parent reading it from a different timezone should see their
@@ -459,15 +663,16 @@ function renderShell() {
     <button class="outline" id="navDashboard" onclick="showView('dashboard')">Dashboard</button>
     <button class="outline" id="navYears" onclick="showView('years')">Years</button>
     <button class="outline" id="navAssign" onclick="showView('assign')">Assign</button>
+    <button class="outline" id="navPlan" onclick="showView('plan')">Plan</button>
     <button class="outline" id="navDevices" onclick="showView('devices')">Devices</button>
     <button class="link" onclick="signOut()">Sign out</button>`;
 }
 
-const VIEWS = { dashboard: renderDashboard, years: renderYears, assign: renderAssign, devices: renderDevices };
+const VIEWS = { dashboard: renderDashboard, years: renderYears, assign: renderAssign, plan: renderPlan, devices: renderDevices };
 
 function showView(view) {
   state.view = view;
-  for (const [id, name] of [['navDashboard', 'dashboard'], ['navYears', 'years'], ['navAssign', 'assign'], ['navDevices', 'devices']]) {
+  for (const [id, name] of [['navDashboard', 'dashboard'], ['navYears', 'years'], ['navAssign', 'assign'], ['navPlan', 'plan'], ['navDevices', 'devices']]) {
     document.getElementById(id)?.classList.toggle('active', view === name);
   }
   (VIEWS[view] || renderDashboard)();
@@ -512,6 +717,42 @@ function mergeChildren(children) {
   return [...byName.values()];
 }
 
+// The 90 days of history both the Dashboard and the Plan tab read from, filed
+// into state.sessionsByKey as `<childId>:<appId>`. Extracted from the Dashboard
+// so the Plan tab does not silently depend on someone having opened the
+// Dashboard first — and so progress against a target costs no new endpoint and
+// no new request, which is the whole of §11's "Progress" bullet.
+//
+// Returns one cell per (child, app) because the Dashboard's grid is built from
+// them; the Plan tab reads state.sessionsByKey directly instead.
+async function loadSessions() {
+  const since = Date.now() - 90 * 86400000;
+  const cells = []; // { child, app, sessions }
+  for (const child of state.children) {
+    for (const a of APPS) {
+      const sessions = [];
+      const seen = new Set();
+      for (const id of child.ids) {
+        const res = await api(`/sessions?childId=${encodeURIComponent(id)}&app=${a.id}&since=${since}`);
+        for (const s of res.sessions) {
+          // A merged child can hold the same session under more than one id:
+          // an app re-pushes its history when it adopts the shared childId.
+          // (deviceId, id) is the session's real identity — the storage key
+          // minus child and app.
+          const k = s.deviceId + ':' + s.id;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          sessions.push(s);
+        }
+      }
+      sessions.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
+      state.sessionsByKey[child.id + ':' + a.id] = backfillLocalDates(sessions);
+      cells.push({ child, app: a, sessions });
+    }
+  }
+  return cells;
+}
+
 async function renderDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
@@ -526,30 +767,7 @@ async function renderDashboard() {
       return;
     }
 
-    const since = Date.now() - 90 * 86400000;
-    const cells = []; // { child, app, sessions }
-    for (const child of children) {
-      for (const a of APPS) {
-        const sessions = [];
-        const seen = new Set();
-        for (const id of child.ids) {
-          const res = await api(`/sessions?childId=${encodeURIComponent(id)}&app=${a.id}&since=${since}`);
-          for (const s of res.sessions) {
-            // A merged child can hold the same session under more than one id:
-            // an app re-pushes its history when it adopts the shared childId.
-            // (deviceId, id) is the session's real identity — the storage key
-            // minus child and app.
-            const k = s.deviceId + ':' + s.id;
-            if (seen.has(k)) continue;
-            seen.add(k);
-            sessions.push(s);
-          }
-        }
-        sessions.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
-        state.sessionsByKey[child.id + ':' + a.id] = backfillLocalDates(sessions);
-        cells.push({ child, app: a, sessions });
-      }
-    }
+    const cells = await loadSessions();
 
     // Land on someone with data rather than an empty card.
     if (!children.some((c) => c.id === state.detailChildId)) {
@@ -1512,6 +1730,521 @@ async function cancelCommand(ids) {
   } catch (err) {
     setAssignError(err.message);
   }
+}
+
+// ---------- Plan (targets and assignments, assignment-spec.md §4, §11) ----------
+//
+// The one screen that says how MUCH work is owed, as against Assign's what.
+// The two are deliberately different questions: Assign points a child at a
+// list, this counts sittings, and neither gates anything — every button in
+// every app stays as live as it was (§8.2).
+//
+// Progress is never stored and never reported by a client (§3, §10.1). It is
+// recounted here, from the same 90 days the Dashboard already downloaded,
+// with the same evaluator the tablet will run. There is no progress field to
+// get out of sync, and no reconciliation to get wrong.
+//
+// Only the three synced apps are offered (§11, §14): a target for an app the
+// phone cannot verify would be a row that never fills in.
+
+// A new item's id has to survive every later revision, because "she has missed
+// her Friday test three weeks running" is a question about one item over time
+// (§4.2). So it is opaque and random rather than derived from the label —
+// derived identity is what docs/reading-star-spec-review.md catches going wrong
+// three separate times, and renaming a target must not silently start a new
+// history.
+function newPlanItemId() {
+  return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function renderPlan() {
+  const appEl = document.getElementById('app');
+  appEl.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    await ensureChildren();
+    await ensureFamilySettings();
+    if (!state.children.length) {
+      appEl.innerHTML = `<div class="card empty">No children synced yet.<br><br>
+        <button onclick="showView('devices')">Go to Devices to add one</button></div>`;
+      return;
+    }
+    if (!state.children.some((c) => c.id === state.detailChildId)) state.detailChildId = state.children[0].id;
+    const child = state.children.find((c) => c.id === state.detailChildId);
+
+    // The plan and the history it is counted against. Snapshots come too, so
+    // the editor's scope picker offers the lists and focus areas the tablet
+    // actually reported rather than a second copy of either app's model.
+    const [plan] = await Promise.all([
+      api('/plan?' + childQuery(child)),
+      loadSessions(),
+      loadPlanSnapshots(child),
+    ]);
+    state.plan = plan;
+    paintPlan();
+  } catch (err) {
+    appEl.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+// Spelling and Math only. Reading's sessions carry a bookId from the child's
+// own shelf, while child_state reports the catalog — two different id spaces,
+// so offering catalog keys as a scope would compose a target that matches
+// nothing. §11 asks for "the lists and focus areas the tablet actually has",
+// which is exactly the pair where the ids line up.
+const SCOPED_APPS = ['spelling', 'math'];
+
+async function loadPlanSnapshots(child) {
+  state.planSnapshots = {};
+  await Promise.all(SCOPED_APPS.map(async (appId) => {
+    try {
+      const res = await api('/child-state?' + childQuery(child) + '&app=' + appId);
+      // Freshest wins: two tablets can both report, and the server hands them
+      // back newest-first.
+      state.planSnapshots[appId] = (res.snapshots || [])[0] || null;
+    } catch {
+      // A missing snapshot costs the scope picker for that app and nothing
+      // else. The rest of the plan still edits and still counts.
+      state.planSnapshots[appId] = null;
+    }
+  }));
+}
+
+function selectPlanChild(id) {
+  state.detailChildId = id;
+  state.planEditor = null; state.planErr = ''; state.planNote = '';
+  renderPlan();
+}
+
+// What a scoped target can name, per app, straight from the tablet's own
+// report (§15.4).
+function planScopeOptions(appId) {
+  const snapshot = state.planSnapshots[appId];
+  if (!snapshot || !snapshot.state) return [];
+  if (appId === 'spelling') return (snapshot.state.lists || []).map((l) => ({ id: l.id, name: l.name }));
+  if (appId === 'math') return (snapshot.state.focusAreas || []).map((f) => ({ id: f.id, name: f.name }));
+  return [];
+}
+
+function planScopeName(appId, scopeId) {
+  const found = planScopeOptions(appId).find((o) => o.id === scopeId);
+  return found ? found.name : scopeId;
+}
+
+// The item's match, in a sentence a parent reads rather than a shape they
+// decode.
+function planMatchLabel(item) {
+  const match = item.match || {};
+  const appLabel = match.app
+    ? (APPS.find((a) => a.id === match.app) || { label: match.app }).label
+    : 'Any app';
+  const modes = (match.modes || []).map((m) => modeInfo(match.app, m).label);
+  const modeLabel = modes.length ? modes.join(' or ') : 'Any sitting that counts as work';
+  const scope = match.scopeId ? ' · ' + planScopeName(match.app, match.scopeId) : '';
+  return appLabel + ' · ' + modeLabel + scope;
+}
+
+function planPeriodLabel(period) {
+  if (period === 'day') return 'every day';
+  if (period === 'week') return 'a week';
+  if (period && period.from) return 'between ' + period.from + ' and ' + period.to;
+  return '';
+}
+
+// Every session the evaluator needs, normalized to the shape it expects and
+// flattened across apps — a cross-app target counts sittings from all three at
+// once (§4).
+//
+// scopeId is derived here rather than returned by /api/sessions, which hands
+// back the payload the client pushed. It has to mirror sessionScope() in
+// functions/api/sync.js exactly, because that is what filled the scope_id
+// column a future aggregate will match on (§4.1).
+function planSessions(child) {
+  const out = [];
+  for (const a of APPS) {
+    for (const s of state.sessionsByKey[child.id + ':' + a.id] || []) {
+      out.push({
+        id: s.id,
+        deviceId: s.deviceId,
+        at: Date.parse(s.date),
+        localDate: s.localDate || null,
+        app: a.id,
+        mode: s.mode,
+        scopeId: a.id === 'spelling' ? (s.listId || null)
+          : a.id === 'math' ? (s.focusId || null)
+            : (s.bookId || null),
+      });
+    }
+  }
+  return out;
+}
+
+function paintPlan() {
+  const child = state.children.find((c) => c.id === state.detailChildId);
+  const childOptions = state.children
+    .map((c) => `<option value="${esc(c.id)}"${c.id === child.id ? ' selected' : ''}>${esc(c.name || 'Unnamed')}</option>`)
+    .join('');
+
+  const picker = `
+    <div class="card picker">
+      <label for="planChildSel">Plan for:</label>
+      <select id="planChildSel" onchange="selectPlanChild(this.value)">${childOptions}</select>
+      <p class="muted" style="margin:6px 0 0">Counted in ${state.family.timezone ? esc(state.family.timezone) : 'no timezone yet'},
+        weeks starting ${state.family.weekStart === 1 ? 'Monday' : 'Sunday'}.
+        <button class="link" onclick="showView('devices')">Change</button></p>
+    </div>`;
+
+  const notes = `
+    ${state.planNote ? `<div class="card" style="background:var(--green-soft);border-color:var(--green)"><strong>${esc(state.planNote)}</strong><div class="muted" style="margin-top:4px">It reaches the tablet on its next sync — no tablet needs to be on right now.</div></div>` : ''}
+    ${state.planErr ? `<div class="card error">${esc(state.planErr)}</div>` : ''}`;
+
+  // §9, and the reason it is a hard stop rather than a warning: with no family
+  // timezone, /api/sync hands down no plan document at all, no session is ever
+  // stamped with a local date, and every bar here would read 0 of 3 forever
+  // with nothing visibly wrong. Better to ask for the one setting that makes
+  // all three work.
+  if (!state.family.timezone) {
+    document.getElementById('app').innerHTML = `${picker}
+      <div class="card">
+        <h2>Set the family's timezone first</h2>
+        <p class="muted">A target counts sittings inside a day or a week, and those need a timezone
+          to be days and weeks at all. Until one is set, tablets record the exact time of a sitting
+          but not which day it belongs to.</p>
+        <button class="big" onclick="showView('devices')">Open Devices to set it</button>
+      </div>`;
+    return;
+  }
+
+  if (state.planEditor) {
+    document.getElementById('app').innerHTML = picker + notes + renderPlanEditor(child);
+    return;
+  }
+
+  const items = (state.plan && state.plan.items) || [];
+  const sessions = planSessions(child);
+  const ctx = { timezone: state.family.timezone, weekStart: state.family.weekStart, now: Date.now() };
+
+  const byApp = new Map();
+  for (const item of items) {
+    const key = (item.match && item.match.app) || '';
+    if (!byApp.has(key)) byApp.set(key, []);
+    byApp.get(key).push(item);
+  }
+
+  // Cross-app targets first — they are the frame the per-app ones sit inside.
+  const groups = [...byApp.keys()].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
+
+  const body = items.length
+    ? groups.map((appId) => `
+        <div class="card">
+          <h2>${appId ? esc((APPS.find((a) => a.id === appId) || { label: appId }).label) : 'Across every app'}</h2>
+          ${byApp.get(appId).map((item) => renderPlanItem(item, sessions, ctx)).join('')}
+        </div>`).join('')
+    : `<div class="card empty">No targets for ${esc(child.name || 'this child')} yet.<br><br>
+        <span class="muted">A target says how much work is owed — "3 spelling practices a week."
+        It never blocks anything; it only shows what is done and what is left.</span></div>`;
+
+  document.getElementById('app').innerHTML = `${picker}${notes}${body}
+    <div class="card">
+      <button class="big" onclick="startPlanItem()">Add a target</button>
+      ${renderPlanCopy(child)}
+    </div>`;
+}
+
+function renderPlanItem(item, sessions, ctx) {
+  const result = evaluateItem(item, sessions, ctx);
+  const pct = result.count ? Math.min(100, Math.round((result.done / result.count) * 100)) : 0;
+
+  // §10.4: no judgment until the period closes. A red badge on Monday morning
+  // for every weekly target is a badge everyone has learned to ignore by
+  // Wednesday, so mid-period this shows the count and the time left and stops
+  // there. "Met" is worth saying as soon as it is true — that is not a verdict
+  // on a child, it is the good news.
+  const status = result.met
+    ? '<span class="badge ok">Met</span>'
+    : result.closed
+      ? '<span class="badge warn">Not met</span>'
+      : `<span class="muted">${result.daysLeft === 0 ? 'last day' : result.daysLeft + ' day' + (result.daysLeft === 1 ? '' : 's') + ' left'}</span>`;
+
+  return `<div class="plan-item">
+    <div class="plan-item-head">
+      <div>
+        <strong>${esc(item.label)}</strong>
+        <div class="muted">${esc(planMatchLabel(item))}</div>
+      </div>
+      <div style="white-space:nowrap">
+        <button class="outline" onclick="${esc(`startPlanItem(${JSON.stringify(item.id)})`)}">Edit</button>
+        <button class="link" style="color:var(--danger)" onclick="${esc(`removePlanItem(${JSON.stringify(item.id)}, ${JSON.stringify(item.label)})`)}">Remove</button>
+      </div>
+    </div>
+    <div class="bar${result.met ? ' met' : ''}"><span style="width:${pct}%"></span></div>
+    <div class="plan-item-foot">
+      <span><strong>${result.done} of ${result.count}</strong> ${esc(planPeriodLabel(item.period))}</span>
+      ${status}
+    </div>
+  </div>`;
+}
+
+// §11: most families want one plan with small per-child differences, and
+// re-composing it by hand is the kind of chore that stops a feature being used.
+function renderPlanCopy(child) {
+  const siblings = state.children.filter((c) => c.id !== child.id);
+  if (!siblings.length) return '';
+  const options = siblings.map((c) => `<option value="${esc(c.id)}">${esc(c.name || 'Unnamed')}</option>`).join('');
+  return `
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+      <label for="planCopyFrom">Or copy every target from</label>
+      <select id="planCopyFrom">${options}</select>
+      <button class="outline" onclick="copyPlanFromSibling()">Copy${state.plan && state.plan.items.length ? ' (replaces what is here)' : ''}</button>
+    </div>`;
+}
+
+// ---------- The item editor ----------
+
+function startPlanItem(itemId) {
+  const existing = ((state.plan && state.plan.items) || []).find((i) => i.id === itemId);
+  state.planErr = ''; state.planNote = '';
+  state.planEditor = existing
+    ? {
+      id: existing.id,
+      isNew: false,
+      label: existing.label,
+      app: (existing.match && existing.match.app) || '',
+      modes: (existing.match && existing.match.modes) || [],
+      scopeId: (existing.match && existing.match.scopeId) || '',
+      count: existing.count,
+      // A dated period is composed in §17 step 5. One that already exists is
+      // carried through an edit untouched rather than silently flattened to a
+      // week — this editor can change an item's label and count without being
+      // able to author its period kind.
+      period: existing.period,
+    }
+    : { id: newPlanItemId(), isNew: true, label: '', app: 'spelling', modes: [], scopeId: '', count: 3, period: 'week' };
+  paintPlan();
+}
+
+function cancelPlanItem() { state.planEditor = null; state.planErr = ''; paintPlan(); }
+
+// Only the app picker repaints, and the restraint is load-bearing rather than
+// an optimization. A repaint replaces the whole card, including the Save button
+// — so a field that repaints on `change` destroys that button during the blur
+// that tapping Save causes, and the tap lands on nothing. The parent taps Save,
+// watches the count update, and has to tap it again.
+//
+// Changing the app is the one edit that has to repaint, because the mode
+// checkboxes and the scope picker are both composed from it. It is also safe to:
+// a <select> fires `change` on choosing, not on blur, so the tap that caused it
+// is already finished.
+function setPlanLabel(value) { if (state.planEditor) state.planEditor.label = value; }
+function setPlanScope(value) { if (state.planEditor) state.planEditor.scopeId = value; }
+function setPlanPeriod(value) { if (state.planEditor) state.planEditor.period = value; }
+
+// Clamped, then written back to the field, because the alternative is a box
+// reading 0 while the target it saves is 1.
+function setPlanCount(el) {
+  if (!state.planEditor) return;
+  state.planEditor.count = Math.max(1, Math.min(50, Math.round(Number(el.value)) || 1));
+  el.value = state.planEditor.count;
+}
+
+function setPlanApp(value) {
+  const ed = state.planEditor;
+  if (!ed) return;
+  ed.app = value;
+  // Modes and scopes belong to an app. Keeping them across a switch would
+  // compose a target matching a mode the new app does not have.
+  ed.modes = []; ed.scopeId = '';
+  paintPlan();
+}
+
+function togglePlanMode(mode, on) {
+  const ed = state.planEditor;
+  if (!ed) return;
+  ed.modes = on ? [...new Set([...ed.modes, mode])] : ed.modes.filter((m) => m !== mode);
+  paintPlan();
+}
+
+function renderPlanEditor(child) {
+  const ed = state.planEditor;
+  const appOptions = [{ id: '', label: 'Any app' }, ...APPS]
+    .map((a) => `<option value="${esc(a.id)}"${a.id === ed.app ? ' selected' : ''}>${esc(a.label)}</option>`)
+    .join('');
+
+  // Only the chosen app's modes, and only ones that count as work by default.
+  // A play mode is still targetable — it just has to be asked for by name,
+  // which is what §5's rule means in practice.
+  const modeRows = ed.app
+    ? Object.keys(MODES[ed.app] || {}).map((mode) => {
+      const info = modeInfo(ed.app, mode);
+      const on = ed.modes.includes(mode);
+      return `<label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text);padding:3px 0">
+          <input type="checkbox" class="planMode" value="${esc(mode)}" ${on ? 'checked' : ''}
+            onchange="togglePlanMode(${esc(JSON.stringify(mode))}, this.checked)" style="width:auto;margin:0">
+          ${esc(info.label)} ${countsAsWork(ed.app, mode) ? '' : '<span class="badge tone-' + info.tone + '">not counted unless named</span>'}
+        </label>`;
+    }).join('')
+    : '<p class="muted">Pick an app to choose particular sittings. Across every app, a target counts every sitting that counts as work.</p>';
+
+  const scopes = ed.app ? planScopeOptions(ed.app) : [];
+  // A scope the tablet no longer reports still gets an option of its own,
+  // rather than being left out. Leaving it out would drop the <select> back to
+  // "Any" while the item still carried the old id — the screen would say one
+  // thing and the saved target would mean another.
+  const orphan = ed.scopeId && !scopes.some((o) => o.id === ed.scopeId);
+  const scopePicker = scopes.length ? `
+    <label for="planScopeSel">${esc(scopeColumnLabel(ed.app, true))}</label>
+    <select id="planScopeSel" onchange="setPlanScope(this.value)">
+      <option value=""${ed.scopeId ? '' : ' selected'}>Any</option>
+      ${scopes.map((o) => `<option value="${esc(o.id)}"${o.id === ed.scopeId ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}
+      ${orphan ? `<option value="${esc(ed.scopeId)}" selected>No longer on the tablet</option>` : ''}
+    </select>
+    <p class="muted" style="margin:-4px 0 12px">From ${esc(child.name || 'the child')}'s tablet, so this is what it actually has.</p>`
+    : ed.app && SCOPED_APPS.includes(ed.app)
+      ? `<p class="muted">${esc(child.name || 'This child')}'s tablet hasn't reported its ${esc(scopeColumnLabel(ed.app, true).toLowerCase())}s yet, so this target counts any of them.</p>`
+      : '';
+
+  const dated = ed.period && typeof ed.period === 'object';
+
+  return `
+    <div class="card">
+      <h2>${ed.isNew ? 'Add a target' : 'Edit a target'}</h2>
+
+      <label for="planLabelIn">What to call it</label>
+      <input type="text" id="planLabelIn" maxlength="80" value="${esc(ed.label)}"
+        placeholder="e.g. Spelling practice" oninput="setPlanLabel(this.value)">
+
+      <label for="planAppSel">App</label>
+      <select id="planAppSel" onchange="setPlanApp(this.value)">${appOptions}</select>
+
+      <label>Which sittings ${ed.modes.length ? '' : '<span class="muted" style="font-weight:400">— none picked, so any that counts as work</span>'}</label>
+      ${modeRows}
+
+      ${scopePicker}
+
+      <div class="row" style="margin-top:12px">
+        <div class="col">
+          <label for="planCountIn">How many</label>
+          <input type="text" id="planCountIn" inputmode="numeric" value="${esc(ed.count)}"
+            onchange="setPlanCount(this)">
+        </div>
+        <div class="col">
+          <label for="planPeriodSel">Per</label>
+          ${dated
+            ? `<p style="margin:0 0 10px">${esc(planPeriodLabel(ed.period))}</p>`
+            : `<select id="planPeriodSel" onchange="setPlanPeriod(this.value)">
+                <option value="week"${ed.period === 'week' ? ' selected' : ''}>Week</option>
+                <option value="day"${ed.period === 'day' ? ' selected' : ''}>Day</option>
+              </select>`}
+        </div>
+      </div>
+
+      <p class="muted">A target never blocks anything. ${esc(child.name || 'They')} can always do more, and
+        is never locked out for having done less.</p>
+
+      <div class="row" style="margin-top:8px">
+        <button class="big" onclick="savePlanItem()"${state.planBusy ? ' disabled' : ''}>${state.planBusy ? 'Saving…' : 'Save'}</button>
+        <button class="outline" onclick="cancelPlanItem()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+// ---------- Writes ----------
+
+function planItemFromEditor(ed) {
+  return {
+    id: ed.id,
+    label: ed.label.trim(),
+    match: {
+      app: ed.app || null,
+      modes: ed.modes.length ? ed.modes : null,
+      scopeId: ed.scopeId || null,
+    },
+    count: ed.count,
+    period: ed.period,
+  };
+}
+
+async function savePlanItem() {
+  const ed = state.planEditor;
+  if (!ed) return;
+  if (!ed.label.trim()) { state.planErr = 'Give the target a name.'; paintPlan(); return; }
+
+  const items = [...((state.plan && state.plan.items) || [])];
+  const item = planItemFromEditor(ed);
+  const at = items.findIndex((i) => i.id === item.id);
+  // Replaced in place, keeping its id and its position (§4.2): editing an
+  // item's count is an edit to that item, not a new one that happens to read
+  // the same.
+  if (at === -1) items.push(item); else items[at] = item;
+
+  await savePlan(items, ed.isNew ? `Added “${item.label}”` : `Updated “${item.label}”`);
+}
+
+async function removePlanItem(itemId, label) {
+  if (!confirm(`Remove “${label}”? Nothing a child has already done is affected — this only stops counting it.`)) return;
+  const items = ((state.plan && state.plan.items) || []).filter((i) => i.id !== itemId);
+  await savePlan(items, `Removed “${label}”`);
+}
+
+async function copyPlanFromSibling() {
+  const fromId = document.getElementById('planCopyFrom').value;
+  const from = state.children.find((c) => c.id === fromId);
+  if (!from) return;
+  if (!confirm(`Copy every target from ${from.name || 'them'}? This replaces the targets on this screen.`)) return;
+
+  state.planErr = ''; state.planNote = '';
+  try {
+    const theirs = await api('/plan?' + childQuery(from));
+    if (!(theirs.items || []).length) { state.planErr = `${from.name || 'They'} have no targets to copy.`; paintPlan(); return; }
+
+    // A list or focus area belongs to one child's tablet: two siblings can hold
+    // the same built-in id and their own ids for everything they added since.
+    // So a scope survives the copy only if this child's tablet has reported it,
+    // and is otherwise widened to "any" rather than carried across — a target
+    // scoped to a list this child does not have would never fill in, and would
+    // look like the evaluator was broken rather than like the copy was.
+    let loosened = 0;
+    const items = (theirs.items || []).map((i) => {
+      const match = { ...(i.match || {}) };
+      if (match.scopeId && !planScopeOptions(match.app).some((o) => o.id === match.scopeId)) {
+        match.scopeId = null;
+        loosened += 1;
+      }
+      // Fresh ids: two children's targets are two separate histories, and
+      // sharing an id would make "has she missed her Friday test three weeks
+      // running" a question about both of them at once (§4.2).
+      return { ...i, id: newPlanItemId(), match };
+    });
+
+    const note = `Copied ${items.length} target${items.length === 1 ? '' : 's'} from ${from.name || 'them'}`;
+    await savePlan(items, loosened
+      ? `${note}. ${loosened} of them counted any list or focus area, since this tablet has its own.`
+      : note);
+  } catch (err) {
+    state.planErr = err.message;
+    paintPlan();
+  }
+}
+
+// One write path for every edit: the plan is a document revised in place, not
+// a set of per-item operations (§6). The server allocates the revision, so two
+// phones editing at once resolve to last-write-wins rather than to a silently
+// lost edit.
+async function savePlan(items, note) {
+  const child = state.children.find((c) => c.id === state.detailChildId);
+  if (!child) return;
+  state.planBusy = true; state.planErr = '';
+  paintPlan();
+  try {
+    const saved = await api('/plan', { method: 'PUT', body: { childIds: child.ids, items } });
+    state.plan = { ...state.plan, revision: saved.revision, items: saved.items };
+    state.planEditor = null;
+    state.planNote = note;
+  } catch (err) {
+    state.planErr = err.message;
+  } finally {
+    state.planBusy = false;
+  }
+  paintPlan();
 }
 
 // ---------- Devices ----------

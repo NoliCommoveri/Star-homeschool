@@ -968,8 +968,252 @@ async function onRequestPost10({ request, env }) {
 }
 __name(onRequestPost10, "onRequestPost");
 
-// api/sessions.js
+// api/plan.js
+var MATCH_KEYS = ["app", "modes", "scopeId"];
+var PLAN_APPS = ["spelling", "math", "reading", "geography", "logic"];
+var MAX_ITEMS = 40;
+var MAX_ITEMS_BYTES = 32 * 1024;
+var MAX_LABEL_LENGTH = 80;
+var MAX_ID_LENGTH = 64;
+var MAX_MODES = 12;
+var MAX_COUNT = 50;
 async function onRequestGet8({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  const url = new URL(request.url);
+  const childIds = await familyChildIds(env, device.family_id, url.searchParams.getAll("childId"));
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const family = await familySettings(env, device.family_id);
+  const current = await highestPlan(env, childIds);
+  return json({
+    // Revision 0 with no items is the same document /api/sync hands a tablet
+    // before any plan exists (§17 step 1), so "never planned" and "planned,
+    // then emptied" read alike to a client and differently to nobody.
+    revision: current ? current.revision : 0,
+    items: current ? current.items : [],
+    timezone: family.timezone,
+    weekStart: family.weekStart
+  });
+}
+__name(onRequestGet8, "onRequestGet");
+async function onRequestPut2({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const requestedIds = Array.isArray(body?.childIds) ? body.childIds : [body?.childId];
+  const childIds = await familyChildIds(env, device.family_id, requestedIds);
+  if (!childIds.length) return json({ error: "not found" }, { status: 404 });
+  const family = await familySettings(env, device.family_id);
+  if (Array.isArray(body?.items) && body.items.length && !family.timezone) {
+    return json({
+      error: "Set the family's timezone under Devices first \u2014 until it's set, a target has no day or week to count within."
+    }, { status: 400 });
+  }
+  const validated = validateItems(body?.items);
+  if (validated.error) return json({ error: validated.error }, { status: 400 });
+  const items = validated.items;
+  const serialized = JSON.stringify(items);
+  if (serialized.length > MAX_ITEMS_BYTES) {
+    return json({ error: "plan too large" }, { status: 413 });
+  }
+  if (body?.effectiveFrom !== void 0 && !normalizeLocalDate(body.effectiveFrom)) {
+    return json({ error: "effectiveFrom must be a YYYY-MM-DD local date" }, { status: 400 });
+  }
+  const effectiveFrom = normalizeLocalDate(body?.effectiveFrom) || familyToday(family.timezone) || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const revision = await highestRevision(env, childIds) + 1;
+  const now = Date.now();
+  for (const childId of childIds) {
+    await env.DB.prepare(
+      `INSERT INTO plans (child_id, family_id, revision, items, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(child_id) DO UPDATE SET
+         revision = excluded.revision,
+         items = excluded.items,
+         updated_at = excluded.updated_at,
+         updated_by = excluded.updated_by`
+    ).bind(childId, device.family_id, revision, serialized, now, device.id).run();
+    await env.DB.prepare(
+      `INSERT INTO plan_revisions (child_id, revision, items, effective_from, created_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(child_id, revision) DO NOTHING`
+    ).bind(childId, revision, serialized, effectiveFrom, now, device.id).run();
+  }
+  return json({ revision, effectiveFrom, items });
+}
+__name(onRequestPut2, "onRequestPut");
+function validateItems(items) {
+  if (!Array.isArray(items)) return { error: "items must be an array" };
+  if (items.length > MAX_ITEMS) return { error: `a plan may hold at most ${MAX_ITEMS} items` };
+  const seen = /* @__PURE__ */ new Set();
+  const clean = [];
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return { error: "each item must be an object" };
+    }
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (!id || id.length > MAX_ID_LENGTH) {
+      return { error: `item id must be a string of 1\u2013${MAX_ID_LENGTH} characters` };
+    }
+    if (seen.has(id)) return { error: `duplicate item id "${id}"` };
+    seen.add(id);
+    const label = typeof raw.label === "string" ? raw.label.trim() : "";
+    if (!label || label.length > MAX_LABEL_LENGTH) {
+      return { error: `item "${id}" needs a label of 1\u2013${MAX_LABEL_LENGTH} characters` };
+    }
+    const match2 = validateMatch(raw.match, id);
+    if (match2.error) return match2;
+    if (!Number.isInteger(raw.count) || raw.count < 1 || raw.count > MAX_COUNT) {
+      return { error: `item "${id}" needs a whole count between 1 and ${MAX_COUNT}` };
+    }
+    const period = validatePeriod(raw.period, id);
+    if (period.error) return period;
+    clean.push({ id, label, match: match2.match, count: raw.count, period: period.period });
+  }
+  return { items: clean };
+}
+__name(validateItems, "validateItems");
+function validateMatch(match2, id) {
+  if (match2 === void 0 || match2 === null) {
+    return { error: `item "${id}" needs a match` };
+  }
+  if (typeof match2 !== "object" || Array.isArray(match2)) {
+    return { error: `item "${id}"'s match must be an object` };
+  }
+  if ("minScorePct" in match2 || "minScore" in match2) {
+    return {
+      error: `item "${id}": a target cannot carry a score floor. Targets count effort \u2014 the dashboard shows how the sittings went.`
+    };
+  }
+  for (const key of Object.keys(match2)) {
+    if (!MATCH_KEYS.includes(key)) {
+      return {
+        error: `item "${id}": a match may only name ${MATCH_KEYS.join(", ")} \u2014 "${key}" is not one of them.`
+      };
+    }
+  }
+  let app = null;
+  if (match2.app !== void 0 && match2.app !== null) {
+    if (!PLAN_APPS.includes(match2.app)) {
+      return { error: `item "${id}": unknown app "${match2.app}"` };
+    }
+    app = match2.app;
+  }
+  let modes = null;
+  if (match2.modes !== void 0 && match2.modes !== null) {
+    if (!Array.isArray(match2.modes) || !match2.modes.length) {
+      return { error: `item "${id}": modes must be a non-empty array, or omitted for any mode` };
+    }
+    if (match2.modes.length > MAX_MODES) {
+      return { error: `item "${id}": at most ${MAX_MODES} modes` };
+    }
+    if (!match2.modes.every((m) => typeof m === "string" && m.trim() && m.length <= 40)) {
+      return { error: `item "${id}": each mode must be a short string` };
+    }
+    modes = match2.modes.map((m) => m.trim());
+  }
+  let scopeId = null;
+  if (match2.scopeId !== void 0 && match2.scopeId !== null) {
+    if (typeof match2.scopeId !== "string" || !match2.scopeId.trim() || match2.scopeId.length > 120) {
+      return { error: `item "${id}": scopeId must be a short string, or omitted` };
+    }
+    scopeId = match2.scopeId.trim();
+  }
+  return { match: { app, modes, scopeId } };
+}
+__name(validateMatch, "validateMatch");
+function validatePeriod(period, id) {
+  if (period === "week") return { period: "week" };
+  if (period === "day") return { period: "day" };
+  if (period && typeof period === "object" && !Array.isArray(period)) {
+    for (const key of Object.keys(period)) {
+      if (key !== "from" && key !== "to") {
+        return { error: `item "${id}": a dated period may only name from and to` };
+      }
+    }
+    const from = normalizeLocalDate(period.from);
+    const to = normalizeLocalDate(period.to);
+    if (!from || !to) {
+      return { error: `item "${id}": a dated period needs from and to as YYYY-MM-DD local dates` };
+    }
+    if (from > to) return { error: `item "${id}": the period ends before it starts` };
+    return { period: { from, to } };
+  }
+  return { error: `item "${id}": period must be "day", "week", or { from, to }` };
+}
+__name(validatePeriod, "validatePeriod");
+function normalizeLocalDate(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const date = /* @__PURE__ */ new Date(text + "T00:00:00Z");
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10) === text ? text : null;
+}
+__name(normalizeLocalDate, "normalizeLocalDate");
+async function familySettings(env, familyId) {
+  const row = await env.DB.prepare(
+    "SELECT timezone, week_start FROM families WHERE id = ?"
+  ).bind(familyId).first();
+  return {
+    // Null rather than a guessed default, matching /api/family/settings:
+    // "this family has never set a zone" is a state the Plan tab has to see,
+    // because it is the reason a tablet stamps nothing (§9.6).
+    timezone: row && normalizeTimezone(row.timezone) || null,
+    weekStart: row ? row.week_start : 0
+  };
+}
+__name(familySettings, "familySettings");
+async function highestPlan(env, childIds) {
+  const placeholders = childIds.map(() => "?").join(",");
+  const row = await env.DB.prepare(
+    `SELECT revision, items FROM plans WHERE child_id IN (${placeholders})
+     ORDER BY revision DESC LIMIT 1`
+  ).bind(...childIds).first();
+  if (!row) return null;
+  return { revision: row.revision, items: safeParse3(row.items) || [] };
+}
+__name(highestPlan, "highestPlan");
+async function highestRevision(env, childIds) {
+  const placeholders = childIds.map(() => "?").join(",");
+  const row = await env.DB.prepare(
+    `SELECT MAX(revision) AS revision FROM plan_revisions WHERE child_id IN (${placeholders})`
+  ).bind(...childIds).first();
+  return row && row.revision || 0;
+}
+__name(highestRevision, "highestRevision");
+function familyToday(timezone) {
+  if (!timezone) return null;
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(/* @__PURE__ */ new Date());
+  } catch {
+    return null;
+  }
+}
+__name(familyToday, "familyToday");
+function safeParse3(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+__name(safeParse3, "safeParse");
+
+// api/sessions.js
+async function onRequestGet9({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -1014,10 +1258,10 @@ async function onRequestGet8({ request, env }) {
   }));
   return json({ sessions });
 }
-__name(onRequestGet8, "onRequestGet");
+__name(onRequestGet9, "onRequestGet");
 
 // api/summary.js
-async function onRequestGet9({ request, env }) {
+async function onRequestGet10({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -1062,7 +1306,7 @@ async function onRequestGet9({ request, env }) {
   }));
   return json({ lists });
 }
-__name(onRequestGet9, "onRequestGet");
+__name(onRequestGet10, "onRequestGet");
 
 // api/sync.js
 async function onRequestPost11({ request, env }) {
@@ -1166,7 +1410,7 @@ async function onRequestPost11({ request, env }) {
   const commands = [...pending, ...legacy].map((row) => ({
     id: row.id,
     kind: row.kind,
-    payload: safeParse3(row.payload),
+    payload: safeParse4(row.payload),
     createdAt: row.created_at
   }));
   if (Number.isInteger(planRevision)) {
@@ -1194,7 +1438,7 @@ async function currentPlan(env, familyId, childId) {
     revision: row ? row.revision : 0,
     timezone: family.timezone,
     weekStart: family.week_start,
-    items: row ? safeParse3(row.items) || [] : []
+    items: row ? safeParse4(row.items) || [] : []
   };
 }
 __name(currentPlan, "currentPlan");
@@ -1228,16 +1472,16 @@ function sessionScope(app, rest) {
   return { grade: null, id: null, name: null };
 }
 __name(sessionScope, "sessionScope");
-function safeParse3(text) {
+function safeParse4(text) {
   try {
     return JSON.parse(text);
   } catch {
     return null;
   }
 }
-__name(safeParse3, "safeParse");
+__name(safeParse4, "safeParse");
 
-// ../.wrangler/tmp/pages-Ze0z61/functionsRoutes-0.009229571282303617.mjs
+// ../.wrangler/tmp/pages-JEUKvj/functionsRoutes-0.4932123346142654.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",
@@ -1366,18 +1610,32 @@ var routes = [
     modules: [onRequestPost10]
   },
   {
-    routePath: "/api/sessions",
+    routePath: "/api/plan",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet8]
   },
   {
-    routePath: "/api/summary",
+    routePath: "/api/plan",
+    mountPath: "/api",
+    method: "PUT",
+    middlewares: [],
+    modules: [onRequestPut2]
+  },
+  {
+    routePath: "/api/sessions",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet9]
+  },
+  {
+    routePath: "/api/summary",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet10]
   },
   {
     routePath: "/api/sync",
