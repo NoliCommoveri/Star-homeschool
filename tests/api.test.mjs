@@ -576,6 +576,209 @@ await sync.onRequestPost(post('http://x/api/sync', {
 const silent = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-2').first();
 check('a client that reports nothing writes no row', silent === null, silent);
 
+// ============ Phase 5 step 2: the plan document (assignment-spec §4, §12) ====
+//
+// The three things worth pinning here are the three that fail silently: a
+// revision the client got to choose (concurrent edits lose an edit rather than
+// conflict), a match that names a payload field (evaluable on one surface out
+// of three, so the phone and the tablet disagree forever), and a score floor
+// (a bar reading 0 of 3 for a child who did the work).
+const plan = await mod('plan.js');
+
+console.log('\n[§12.1] a child with no plan reads as revision 0');
+let [pst, p0] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+check('200 with an empty plan', pst === 200 && p0.revision === 0 && p0.items.length === 0, p0);
+check('and carries the family clock', p0.timezone === 'America/Chicago' && p0.weekStart === 0, p0);
+
+console.log('\n[§12.1] the server allocates the revision, never the client');
+const WEEKLY = {
+  id: 'wk-spell-practice',
+  label: 'Spelling practice',
+  match: { app: 'spelling', modes: ['practice'], scopeId: null },
+  count: 3,
+  period: 'week',
+};
+let [put1st, put1] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD, items: [WEEKLY], revision: 99,
+}, parentToken)));
+check('the first revision is 1, not the 99 the client asked for', put1st === 200 && put1.revision === 1, put1);
+// Above the revision-0 placeholder /api/sync hands a tablet with no plan, so a
+// real plan can never lose to it under §7.1's highest-revision-wins rule.
+check('which is above the empty-plan placeholder', put1.revision > 0, put1);
+
+let [, put2] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD, items: [{ ...WEEKLY, count: 4 }],
+}, parentToken)));
+check('the next write allocates the next revision', put2.revision === 2, put2);
+
+let [, pRead] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+check('GET reads back the newest revision', pRead.revision === 2 && pRead.items[0].count === 4, pRead);
+check('and the item kept its id across the edit', pRead.items[0].id === 'wk-spell-practice', pRead.items);
+
+console.log('\n[§6.3] revisions are append-only, with an effective date');
+const revs = await DB.prepare(
+  'SELECT revision, effective_from FROM plan_revisions WHERE child_id = ? ORDER BY revision'
+).bind(CHILD).all();
+check('both revisions are kept, not overwritten', revs.results.length === 2, revs.results);
+check('each carries a local date', revs.results.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.effective_from)), revs.results);
+
+// Supplied when the parent has an intent ("from Monday"), computed in the
+// family's zone otherwise — the Worker has the IANA database even though D1
+// does not (§9.2).
+let [, dated] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD, items: [WEEKLY], effectiveFrom: '2026-03-02',
+}, parentToken)));
+check('a supplied effectiveFrom is kept', dated.effectiveFrom === '2026-03-02', dated);
+let [badFrom] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD, items: [WEEKLY], effectiveFrom: 'Monday',
+}, parentToken)));
+// Silently substituting today would put a date the revision did not take
+// effect on into the one column §6.3 exists to make trustworthy.
+check('an unusable one is refused rather than replaced (400)', badFrom === 400, badFrom);
+
+console.log('\n[§4.1] a match may only name envelope columns');
+const reject = async (items, what) => {
+  const [st, b2] = await body(await plan.onRequestPut(put('http://x/api/plan', { childId: CHILD, items }, parentToken)));
+  check(what, st === 400, [st, b2]);
+  return b2;
+};
+await reject([{ ...WEEKLY, match: { app: 'spelling', minutes: 20 } }], 'a payload field in a match is refused');
+await reject([{ ...WEEKLY, match: { app: 'spelling', modes: ['practice'], word: 'rhythm' } }], 'so is one that also names a real column');
+await reject([{ ...WEEKLY, match: { app: 'nope' } }], 'an unknown app is refused');
+await reject([{ ...WEEKLY, match: { app: 'spelling', modes: [] } }], 'an empty modes array is refused, not read as "any"');
+
+// §4.4 is a decision, not an omission, so it gets its own message rather than
+// falling out of the unknown-key check above.
+const floor = await reject(
+  [{ ...WEEKLY, match: { app: 'spelling', modes: ['practice'], minScorePct: 80 } }],
+  'a score floor is refused'
+);
+check('and says why, in the parent\'s terms', /effort/.test(floor.error || ''), floor);
+
+// A mode is shape-checked and never checked against a registry: Spelling Star
+// ships a new mode with every game, and a list here would mean a backend
+// deploy before a parent could target one.
+let [newModeSt] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD,
+  items: [{ ...WEEKLY, id: 'game', label: 'A game', match: { app: 'spelling', modes: ['not-shipped-yet'] } }],
+}, parentToken)));
+check('a mode the server has never heard of is accepted', newModeSt === 200, newModeSt);
+
+console.log('\n[§4.3] periods');
+await reject([{ ...WEEKLY, period: 'schoolweek' }], 'there is no Mon–Fri period');
+await reject([{ ...WEEKLY, period: { from: '2026-05-10', to: '2026-05-03' } }], 'a period that ends before it starts is refused');
+await reject([{ ...WEEKLY, period: { from: '2026-02-31', to: '2026-03-05' } }], 'a date that is not a day is refused');
+await reject([{ ...WEEKLY, period: { from: '2026-5-1', to: '2026-05-05' } }], 'so is one that is not YYYY-MM-DD');
+let [datedOk, datedBody] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD,
+  items: [{ ...WEEKLY, id: 'assign-1', label: 'Test on 5.12', period: { from: '2026-05-04', to: '2026-05-08' } }],
+}, parentToken)));
+check('a dated assignment is accepted before the editor composes one', datedOk === 200, datedBody);
+
+console.log('\n[§4.2] identity is the id');
+await reject([WEEKLY, { ...WEEKLY, label: 'A second one' }], 'two items sharing an id is an error, not a silent de-dup');
+await reject([{ ...WEEKLY, id: '' }], 'an item with no id is refused');
+await reject([{ ...WEEKLY, label: '   ' }], 'an item with no label is refused');
+await reject([{ ...WEEKLY, count: 0 }], 'a count of zero is refused');
+await reject([{ ...WEEKLY, count: 2.5 }], 'a fractional count is refused');
+await reject('not-an-array', 'items must be an array');
+
+console.log('\n[§4] unknown top-level keys are dropped, not stored');
+await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD, items: [{ ...WEEKLY, colour: 'red', progress: 2 }],
+}, parentToken));
+let [, cleaned] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+// Storing them would put a field in a document that rides down to every tablet
+// and that nothing has agreed the meaning of. `progress` especially: §3 makes
+// progress a thing that is recomputed, never carried.
+check('the stored item holds only the fields §4 defines',
+  Object.keys(cleaned.items[0]).sort().join(',') === 'count,id,label,match,period', cleaned.items[0]);
+
+console.log('\n[§9] a plan needs the family clock to mean anything');
+{
+  // A second family, deliberately left with no timezone: /api/sync hands it no
+  // plan document at all (§9.6), no session is ever stamped with a local date,
+  // and every bar on the Plan tab would read 0 of 3 forever with nothing
+  // visibly wrong. Refusing here is the only place that failure is visible.
+  const [, zoneless] = await body(await family.onRequestPost(post('http://x/api/family', {
+    signupSecret: 'test-secret', deviceId: 'zoneless-phone', label: 'No zone',
+  })));
+  const zonelessToken = zoneless.token;
+  const zonelessTablet = await (async () => {
+    const [, c] = await body(await pairingCode.onRequestPost(post('http://x/api/pairing-code', { role: 'child' }, zonelessToken)));
+    const [, d] = await body(await pair.onRequestPost(post('http://x/api/pair', { code: c.code, deviceId: 'zoneless-tablet', role: 'child', label: 'Tablet' })));
+    return d.token;
+  })();
+  check('the zoneless family has a tablet to plan for', !!zonelessTablet);
+  await sync.onRequestPost(post('http://x/api/sync', {
+    app: 'spelling', childId: 'zoneless-kid', childName: 'Bo', sessions: [], applied: [],
+  }, zonelessTablet));
+
+  let [noTz, noTzBody] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+    childId: 'zoneless-kid', items: [WEEKLY],
+  }, zonelessToken)));
+  check('a target is refused until the family has a timezone', noTz === 400, noTzBody);
+  check('and the message names the setting', /timezone/i.test(noTzBody.error || ''), noTzBody);
+
+  // A parent must always be able to take a target back off a child, whatever
+  // the family's settings are.
+  let [clearSt] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+    childId: 'zoneless-kid', items: [],
+  }, zonelessToken)));
+  check('but emptying a plan is always allowed', clearSt === 200, clearSt);
+}
+
+console.log('\n[§6.5] authorization is unchanged');
+let [foreignGet] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, otherParent)));
+check("another family's child matches nothing (404, not 403)", foreignGet === 404, foreignGet);
+let [foreignPut] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+  childId: CHILD, items: [],
+}, otherParent)));
+check('and cannot be written either', foreignPut === 404, foreignPut);
+let [childGet] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, tabletToken)));
+// A tablet receives the plan inside /api/sync's response, which is a
+// round-trip it already makes. It has no business here.
+check('a child token is forbidden (403)', childGet === 403, childGet);
+let [childPut] = await body(await plan.onRequestPut(put('http://x/api/plan', { childId: CHILD, items: [] }, tabletToken)));
+check('and cannot write a plan for itself', childPut === 403, childPut);
+let [anonGet] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`)));
+check('an unauthenticated caller gets 401', anonGet === 401, anonGet);
+
+console.log('\n[§6.2] the plan reaches the tablet through the sync response');
+await plan.onRequestPut(put('http://x/api/plan', { childId: CHILD, items: [WEEKLY] }, parentToken));
+let [, delivered] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+}, tabletToken)));
+check('the document carries the items', delivered.plan.items.length === 1, delivered.plan);
+check('and a revision above the placeholder', delivered.plan.revision > 0, delivered.plan);
+// §7.1 filters at read time, never at write time: the tablet stores the whole
+// document verbatim, which is what lets a plan reach an app that is not itself
+// synced.
+check('a Spelling sync still receives the whole document, unfiltered',
+  delivered.plan.items[0].match.app === 'spelling' && 'weekStart' in delivered.plan, delivered.plan);
+
+console.log('\n[§6.2] a merged child is planned under every id it synced with');
+{
+  // The same child pushing under a second id (§6.2). The plan has to reach the
+  // tablet whichever id it is currently using, and both ids must never hold
+  // two different documents claiming the same revision — §7.1 resolves a tie
+  // by NOT writing, so the loser would keep a stale plan forever.
+  await sync.onRequestPost(post('http://x/api/sync', {
+    app: 'math', childId: 'child-ada-2', childName: 'Ada', sessions: [], applied: [],
+  }, tablet2Token));
+  const [, merged] = await body(await plan.onRequestPut(put('http://x/api/plan', {
+    childIds: [CHILD, 'child-ada-2'], items: [WEEKLY],
+  }, parentToken)));
+  const rows = await DB.prepare(
+    'SELECT child_id, revision FROM plans WHERE child_id IN (?, ?)'
+  ).bind(CHILD, 'child-ada-2').all();
+  check('both ids hold a plan', rows.results.length === 2, rows.results);
+  check('at the same revision', rows.results.every((r) => r.revision === merged.revision), rows.results);
+  // Allocated over plan_revisions across every id, so a child merged after one
+  // id was already planned cannot be handed a revision that id has used.
+  check('which is above every revision either id had used', merged.revision > 2, merged.revision);
+}
+
 
 // =============== The migration runner (functions/api/_lib/migrations.js) ====
 //

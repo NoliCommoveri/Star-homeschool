@@ -1,19 +1,24 @@
 # Assignment and Targets — Specification
 
-Status: **Step 1 of §17 is built. Steps 2–6 are still design.** This is the
-plan for making "assigned" mean something with a quantity and a deadline
+Status: **Steps 1 and 2 of §17 are built. Steps 3–6 are still design.** This is
+the plan for making "assigned" mean something with a quantity and a deadline
 attached, and for spanning the apps rather than living inside one.
 
-What has landed: `schema-phase5.sql`, `families.timezone` / `week_start`,
-`sessions.local_date`, `GET`/`PUT /api/family/settings`, the plan document
-riding down in `/api/sync`'s response, the shared `starplan-<slug>` key in the
-three synced apps, the local-date stamp, and the phone-side backfill. Nothing a
-parent or child sees has changed except one new card on the Devices screen.
+What has landed in step 1: `schema-phase5.sql`, `families.timezone` /
+`week_start`, `sessions.local_date`, `GET`/`PUT /api/family/settings`, the plan
+document riding down in `/api/sync`'s response, the shared `starplan-<slug>` key
+in the three synced apps, the local-date stamp, and the phone-side backfill.
 
-Still to build: a new `today.html` (the kid-facing hub), `functions/api/plan.js`,
-the Plan tab in `parent.html`, and the evaluator. Nothing changes in
-`geography-star.html` or `logic-star.html` in this phase, and no existing
-behavior changes when a family has no plan.
+What has landed in step 2: `functions/api/plan.js`, the Plan tab in
+`parent.html`, and the evaluator. A parent can now set targets, per app or
+across all of them, and watch them fill in. No tablet changes at all — which is
+the point of the ordering: you find out whether these are the right targets
+before a child ever sees one.
+
+Still to build: a new `today.html` (the kid-facing hub), the apps showing their
+own items on their home screens, and dated assignments in the editor. Nothing
+changes in `geography-star.html` or `logic-star.html` in this phase, and no
+existing behavior changes when a family has no plan.
 
 Read `docs/parent-sync-spec.md` first. Section references of the form §15.2
 are to that document unless they say otherwise.
@@ -680,13 +685,13 @@ invariant: both handlers resolve `family_id` from the bearer token, and a
 | `functions/api/sessions.js` | Return `local_date`, so the phone knows what to backfill | ✅ |
 | `functions/api/family.js` | Accept `timezone` and `weekStart` at creation | ✅ |
 | `sw.js` | `CACHE_VERSION` bump | ✅ |
-| `functions/api/plan.js` | New. `GET` / `PUT` | |
-| `parent.html` | Family timezone setting ✅; Plan tab, `MODES` gains `countsAsWork`, the evaluator | partly |
+| `functions/api/plan.js` | New. `GET` / `PUT` | ✅ |
+| `parent.html` | Family timezone setting ✅; Plan tab ✅; the evaluator ✅; `MODES` promoted to the registry, with tone deciding what counts ✅ | ✅ |
 | `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7) ✅; stamp `localDate` ✅; report `planRevision` ✅; show their own items on the home screen | partly |
 | `today.html` | New (§8) | |
 | `index.html` | A link to it | |
 | `sw.js` | Cache `today.html` | |
-| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API; a `today.html` suite | partly |
+| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API ✅; Plan tab ✅; a `today.html` suite | partly |
 
 Untouched: `geography-star.html`, `logic-star.html`.
 
@@ -809,10 +814,48 @@ Each step is useful on its own and shippable without the next.
    statement runs on its own and an object that already exists counts as
    success, so a hand-migrated database and a fresh one converge. See
    `docs/parent-sync-spec.md` §12 Step 4b.
-2. **Plan model and the Plan tab** (§4, §6, §11), parent-side only. Progress
-   computed from sessions already downloaded. No tablet changes at all — which
-   is the point: you find out whether these are the right targets before a
-   child ever sees one.
+2. **Plan model and the Plan tab** (§4, §6, §11), parent-side only. ✅ **Built.**
+   Progress computed from sessions already downloaded. No tablet changes at all
+   — which is the point: you find out whether these are the right targets before
+   a child ever sees one.
+
+   Three things are worth recording, because each departs from what §4–§12 say
+   on the page.
+
+   **§4.1 and §4.4 are enforced by the server, not only by the editor.** A match
+   naming a payload field, or carrying a score floor, is a 400. Leaving those to
+   the UI would make the constraint a comment: the property §4.1 buys is that
+   one predicate is evaluable in three places, and it is only true if nothing
+   can write a fourth kind of predicate. The score floor gets its own message
+   rather than falling out of the generic unknown-key check, because it is the
+   first thing a parent asks for and it is refused on purpose.
+
+   **The family timezone gates the whole plan, not just a day-period item.** §12
+   states it narrowly, but the reason it gives applies to a weekly target
+   exactly as completely: with no zone, `/api/sync` delivers no plan document at
+   all (§9.6), no session carries a `local_date`, and every bar reads 0 of 3
+   forever with nothing visibly wrong. The Plan tab asks for the zone before it
+   will open the editor, and `PUT /api/plan` refuses a non-empty plan without
+   one. Emptying a plan stays available either way — a parent must always be
+   able to take a target back off a child.
+
+   **`MODES` did not gain a `countsAsWork` field.** §13's table asks for one,
+   but §5's own argument rules it out: the point of the two rules is that the
+   next game lands already knowing it is not homework *without anyone
+   remembering to come back here*, and a per-mode field is exactly the thing
+   somebody forgets to set. Tone decides, `play` and `lifecycle` do not count,
+   and an unrecognized mode falls to `play` — the safe direction, because a
+   target that undercounts shows "2 of 3" for a child who did three and a parent
+   goes and looks, while one that overcounts shows "3 of 3" and nobody does.
+
+   Reading's `start` / `finish` / `abandon` were tone `practice` in
+   `parent.html` and are now `lifecycle`, per §5. Until this they would have
+   made "5 reading sessions a week" satisfiable by opening five books.
+
+   The evaluator, the registry and the tone rules ship as one contiguous block
+   in `parent.html`, marked as shared source and depending on nothing outside
+   itself but `localDate`. It joins the §10.3 drift test when step 3 lands its
+   second copy; there is only one copy to guard today.
 3. **`today.html`** (§8). Reader-only, five adapters. Works against local
    history before any plan exists, so it is useful the day it ships.
 4. **Delivery** (§6.2, §7). The sync response carries `plan`; the three apps

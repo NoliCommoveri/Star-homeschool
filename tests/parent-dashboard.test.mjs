@@ -74,6 +74,10 @@ const server = {
     math: [],
     reading: [],
   },
+  // assignment-spec.md §12.1. Keyed by childId, and the revision is allocated
+  // here rather than accepted from the page, because that is the property the
+  // real handler has and the one the page must not be written to depend on.
+  plans: {},
 };
 
 const posted = [];
@@ -114,6 +118,15 @@ await page.route('**/api/**', async (route) => {
     if (path === '/commands') return send({ commands: server.commands[url.searchParams.get('app')] || [] });
     if (path === '/devices') return send({ devices: [] });
     if (path === '/family/settings') return send(server.family);
+    if (path === '/plan') {
+      const held = server.plans[url.searchParams.get('childId')];
+      return send({
+        revision: held ? held.revision : 0,
+        items: held ? held.items : [],
+        timezone: server.family.timezone,
+        weekStart: server.family.weekStart,
+      });
+    }
     if (path === '/migrations') return send(server.migrations);
     if (path === '/summary') {
       lastSummaryQuery = url.search;
@@ -131,6 +144,14 @@ await page.route('**/api/**', async (route) => {
       }
       server.family = { timezone: b.timezone ?? server.family.timezone, weekStart: b.weekStart ?? server.family.weekStart };
       return send(server.family);
+    }
+    if (path === '/plan') {
+      const revision = Math.max(0, ...(b.childIds || []).map((id) => (server.plans[id] || {}).revision || 0)) + 1;
+      // One document per id the merged child synced under (§6.2), all at the
+      // same revision — a tablet must see the same plan whichever id it pushes
+      // with.
+      for (const id of b.childIds || []) server.plans[id] = { revision, items: b.items };
+      return send({ revision, effectiveFrom: '2026-01-01', items: b.items });
     }
   }
   if (req.method() === 'POST') {
@@ -170,6 +191,26 @@ await page.waitForTimeout(700);
 console.log('\n[Dashboard]');
 check('dashboard loaded', (await page.textContent('#app')).includes('Last 7 days'));
 check('Assign tab present', await page.isVisible('#navAssign'));
+check('Plan tab present', await page.isVisible('#navPlan'));
+
+// assignment-spec.md §9, checked here because this is the only point in the run
+// where the fixture family still has no timezone — which is the state every
+// existing family is in the moment this ships.
+//
+// With no zone, /api/sync hands down no plan document at all (§9.6), no session
+// is ever stamped with a local date, and every bar on this screen would read
+// 0 of 3 forever with nothing visibly wrong anywhere. A hard stop is the only
+// place that failure is visible to the person who can fix it.
+console.log('\n[§9] the Plan tab asks for the family clock before anything else');
+await page.click('#navPlan');
+await page.waitForTimeout(400);
+{
+  const text = await page.textContent('#app');
+  check('no editor until a timezone is set', text.includes("Set the family's timezone first"), text.slice(0, 160));
+  check('and no Add a target button', !(await page.isVisible('button:has-text("Add a target")')));
+}
+await page.click('#navDashboard');
+await page.waitForTimeout(700);
 
 console.log('\n[Delete a session from the dashboard]');
 await page.click('summary:has-text("Recent sessions")');
@@ -458,6 +499,206 @@ check('and it is the day in the family zone, not the UTC one',
     const inZone = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date(r.date));
     return r.localDate === inZone;
   }), backfilled);
+
+// ============ The Plan tab (assignment-spec.md §4, §10, §11) ================
+//
+// The family now has a timezone, so the editor opens. Everything below counts
+// against the same 90 days the Dashboard downloaded — no new endpoint and no
+// new request, which is §11's "Progress" bullet and the reason §10.1 makes
+// progress a query rather than a stored counter.
+
+// History for the counting tests arrives now rather than in the fixture at the
+// top, so the Dashboard's assertions above run against exactly what they always
+// did — and so these counts do not quietly depend on how many sessions the
+// delete test further up removed.
+//
+// Every one of these is a few hours old on purpose. A fixture dated in days
+// would fall into last week's bucket whenever the suite happened to run on a
+// Monday, and the failure would look like an evaluator bug.
+//
+// What is on file afterwards, for one child, this week:
+//   spelling  practice, practice, spot-it     → 2 count, spot-it is play (§5)
+//   math      drill                           → 1 counts
+//   reading   start, log-session, finish      → 1 counts, 2 are lifecycle (§5)
+// Seven rows; four of them are work.
+server.sessions['child-ada:spelling'].push(
+  { id: '1101', date: iso(5400000), deviceId: 'tablet-1', mode: 'practice', score: 9, total: 10, listId: 'l99', listName: 'Week 11', results: [] },
+  { id: '1102', date: iso(4800000), deviceId: 'tablet-1', mode: 'spotit', score: 6, total: 6, listId: 'l99', listName: 'Week 11', results: [] },
+);
+server.sessions['child-ada:reading'] = [
+  { id: '3001', date: iso(5400000), deviceId: 'tablet-1', mode: 'start', bookId: 'b1', bookTitle: 'A Parent Book' },
+  { id: '3002', date: iso(3600000), deviceId: 'tablet-1', mode: 'log-session', bookId: 'b1', bookTitle: 'A Parent Book', minutes: 20 },
+  { id: '3003', date: iso(1800000), deviceId: 'tablet-1', mode: 'finish', bookId: 'b1', bookTitle: 'A Parent Book' },
+];
+
+console.log('\n[§11] a target is composed against what the tablet reported');
+await page.click('#navPlan');
+await page.waitForTimeout(700);
+check('the editor is reachable once a zone exists', await page.isVisible('button:has-text("Add a target")'));
+check('and says which clock it counts in', (await page.textContent('#app')).includes('America/Chicago'));
+
+await page.click('button:has-text("Add a target")');
+await page.waitForTimeout(200);
+check('the app picker offers a cross-app target',
+  (await page.textContent('#planAppSel')).includes('Any app'));
+// §15.4: the scope picker is the tablet's own report, so the phone never holds
+// a second copy of Spelling Star's data model.
+check('and the list picker is the tablet\'s own list',
+  (await page.textContent('#planScopeSel')).includes('Week 11'));
+// §5: a game is targetable, but only by being asked for by name.
+check('a play mode is offered, marked as not counted by default',
+  (await page.textContent('#app')).includes('not counted unless named'));
+
+console.log('\n[§10.2] progress is recounted, never reported');
+// Three spelling rows this week, of which the spot-it is play and does not
+// count, against a target of five.
+await page.fill('#planLabelIn', 'Spelling, any sitting');
+await page.fill('#planCountIn', '5');
+await page.click('button:has-text("Save")');
+await page.waitForTimeout(600);
+{
+  const text = await page.textContent('#app');
+  check('the target lands and counts the week', text.includes('2 of 5'), text.slice(0, 400));
+  // §8.3 / §10.4: a count and a bar, never a percentage, and no verdict while
+  // the period is still open. A red badge on Monday morning for every weekly
+  // target is a badge everyone has learned to ignore by Wednesday.
+  check('mid-period it shows time left, not a verdict', /day(s)? left|last day/.test(text), text.slice(0, 400));
+  check('and renders no percentage', !/\d+%/.test(text), text.slice(0, 400));
+  check('a bar is drawn', await page.isVisible('.bar'));
+}
+
+console.log('\n[§5] play and lifecycle tones do not count as work');
+// The whole of §5's two rules, in one number. Seven rows are on file for this
+// week; a cross-app target must count four.
+//
+// Reading Star writes a session row when a book is started, and again when it
+// is finished — counting those would make "5 reading sessions a week"
+// satisfiable by opening five books and reading none of them. Spelling Star
+// ships a new game every few releases, each arriving as a mode with tone
+// 'play', and each has to land in the plan already knowing it is not homework
+// without anyone remembering to come back and say so.
+await page.click('button:has-text("Add a target")');
+await page.waitForTimeout(200);
+await page.selectOption('#planAppSel', '');
+await page.waitForTimeout(200);
+await page.fill('#planLabelIn', 'Everything');
+await page.fill('#planCountIn', '9');
+await page.click('button:has-text("Save")');
+await page.waitForTimeout(600);
+{
+  const text = await page.textContent('#app');
+  check('a cross-app target counts the four sittings that are work', text.includes('4 of 9'), text.slice(0, 600));
+  check('and not the seven rows on file', !text.includes('7 of 9'), text.slice(0, 600));
+  check('and files itself across every app', text.includes('Across every app'), text.slice(0, 600));
+}
+
+console.log('\n[§10.4] a met target says so as soon as it is true');
+await page.click('button:has-text("Add a target")');
+await page.waitForTimeout(200);
+await page.selectOption('#planAppSel', 'math');
+await page.waitForTimeout(200);
+await page.fill('#planLabelIn', 'One math sitting');
+await page.fill('#planCountIn', '1');
+await page.click('button:has-text("Save")');
+await page.waitForTimeout(600);
+check('met is good news and is shown immediately', (await page.textContent('#app')).includes('Met'));
+
+console.log('\n[§4.2] editing an item keeps its id');
+{
+  const before = await page.evaluate(() => state.plan.items.map((i) => i.id));
+  await page.click('.plan-item:has-text("One math sitting") button:has-text("Edit")');
+  await page.waitForTimeout(200);
+  await page.fill('#planCountIn', '4');
+  await page.click('button:has-text("Save")');
+  await page.waitForTimeout(600);
+  const after = await page.evaluate(() => state.plan.items.map((i) => ({ id: i.id, count: i.count })));
+  check('the count changed', after.find((i) => i.count === 4), after);
+  // Derived identity is what reading-star-spec-review.md catches going wrong
+  // three separate times: renaming or re-counting a target must not silently
+  // start a second history for it.
+  check('and every id survived the edit',
+    after.map((i) => i.id).sort().join() === before.sort().join(), { before, after });
+  check('the revision advanced', await page.evaluate(() => state.plan.revision) > 1);
+}
+
+console.log('\n[§10.2] one sitting under two childIds is counted once');
+{
+  // A merged child holds the same session under more than one id (§6.2): an
+  // app re-pushes its history when it adopts the shared childId. Without the
+  // dedup on (deviceId, sessionId) a re-push inflates every count and a child
+  // appears to have met a target they did not.
+  const done = await page.evaluate(() => {
+    const child = state.children.find((c) => c.id === state.detailChildId);
+    const sessions = planSessions(child);
+    const item = { id: 'x', label: 'x', match: { app: 'math', modes: null, scopeId: null }, count: 5, period: 'week' };
+    const ctx = { timezone: state.family.timezone, weekStart: state.family.weekStart, now: Date.now() };
+    const once = evaluateItem(item, sessions, ctx).done;
+    const twice = evaluateItem(item, [...sessions, ...sessions], ctx).done;
+    const twoDevices = evaluateItem(item, [...sessions, ...sessions.map((s) => ({ ...s, deviceId: 'tablet-9' }))], ctx).done;
+    return { once, twice, twoDevices };
+  });
+  check('a duplicate push does not inflate the count', done.twice === done.once, done);
+  // A genuine second device is a genuine second sitting, so the key is the
+  // pair and not the id alone.
+  check('but a real second device still counts', done.twoDevices === done.once * 2, done);
+}
+
+console.log('\n[§11] copy from a sibling');
+{
+  // A second child, and a reload so the picker sees them. Most families want
+  // one plan with small per-child differences, and re-composing it by hand is
+  // the kind of chore that stops a feature being used.
+  server.children.push({ id: 'child-bo', name: 'Bo', created_at: now - 86400000 });
+  // One of Ada's targets is scoped to a list her tablet no longer reports. A
+  // list belongs to one child's tablet, so this must not be carried across as
+  // a target that can never fill in.
+  server.plans['child-ada'].items.push({
+    id: 'scoped-1', label: 'That one list', count: 2, period: 'week',
+    match: { app: 'spelling', modes: ['practice'], scopeId: 'gone-list' },
+  }, {
+    // And one scoped to a list that IS reported, which must survive untouched:
+    // the rule is "drop what this tablet cannot match", not "drop every scope".
+    id: 'scoped-2', label: 'Week 11 practice', count: 2, period: 'week',
+    match: { app: 'spelling', modes: ['practice'], scopeId: 'l99' },
+  });
+  await page.reload();
+  await page.waitForTimeout(700);
+  await page.click('#navPlan');
+  await page.waitForTimeout(700);
+  await page.selectOption('#planChildSel', 'child-bo');
+  await page.waitForTimeout(700);
+  check('the sibling starts with nothing', (await page.textContent('#app')).includes('No targets'));
+
+  await page.selectOption('#planCopyFrom', 'child-ada');
+  await page.click('button:has-text("Copy")');
+  await page.waitForTimeout(700);
+  const copied = await page.evaluate(() => state.plan.items);
+  check('every target came across', copied.length === 5, copied.length);
+  check('with the labels intact', copied.some((i) => i.label === 'Everything'), copied.map((i) => i.label));
+  // Widened rather than carried: a target scoped to a list this child does not
+  // have would read 0 of 2 forever, and would look like the evaluator was
+  // broken rather than like the copy was.
+  const scoped = copied.find((i) => i.label === 'That one list');
+  check('a scope the tablet does not have is widened to any', scoped && scoped.match.scopeId === null, scoped);
+  check('and the parent is told it happened', (await page.textContent('#app')).includes('counted any list'));
+  const kept = copied.find((i) => i.label === 'Week 11 practice');
+  check('a scope the tablet does have survives untouched', kept && kept.match.scopeId === 'l99', kept);
+  // Two children's targets are two separate histories. Sharing an id would
+  // make "has she missed her Friday test three weeks running" a question about
+  // both of them at once (§4.2).
+  const adaIds = server.plans['child-ada'].items.map((i) => i.id);
+  check('but on fresh ids, not the sibling\'s', copied.every((i) => !adaIds.includes(i.id)), { copied: copied.map((i) => i.id), adaIds });
+}
+
+console.log('\n[§8.2] the plan displays; it never blocks');
+// Worth pinning as a property of the page rather than trusting the copy: this
+// screen must not be able to grow a gate. data.schedule remains the only thing
+// that gates, and it is a tablet-side setting.
+{
+  const posts = posted.filter((p) => p.path === '/plan');
+  check('every write is a plan revision and nothing else', posts.length > 0 && posts.every((p) => Array.isArray(p.body.items)), posts.length);
+  check('the Plan tab queued no commands', !posted.some((p) => p.path === '/commands' && p.body.kind === 'set-plan'));
+}
 
 console.log('\n[General]');
 check('no page errors anywhere', errors.length === 0, errors);
