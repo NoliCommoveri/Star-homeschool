@@ -42,6 +42,8 @@ var COMMAND_KINDS = [
   // spelling: add/replace a word list, optionally make it active
   "set-active-list",
   // spelling: switch which existing list is assigned
+  "reorder-lists",
+  // spelling: set the order of existing lists (drives "the next list")
   "assign-focus",
   // math: add/replace a focus area, optionally make it active
   "set-active-focus",
@@ -55,6 +57,23 @@ var COMMAND_KINDS = [
   "set-reading-support-level"
   // reading: a parent-set generic tier, hook for future point weighting (§7)
 ];
+function normalizeTimezone(value) {
+  if (typeof value !== "string") return null;
+  const name = value.trim();
+  if (!name || !/^[A-Za-z][A-Za-z0-9_+\-/]*$/.test(name) || /^UTC[+-]/i.test(name)) return null;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: name });
+    return name;
+  } catch {
+    return null;
+  }
+}
+__name(normalizeTimezone, "normalizeTimezone");
+function normalizeWeekStart(value) {
+  const n = typeof value === "string" ? Number(value) : value;
+  return n === 0 || n === 1 ? n : null;
+}
+__name(normalizeWeekStart, "normalizeWeekStart");
 var MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024;
 var MAX_CHILD_STATE_BYTES = 128 * 1024;
 async function familyChildIds(env, familyId, ids) {
@@ -155,6 +174,70 @@ async function onRequestPost2({ request, env }) {
 }
 __name(onRequestPost2, "onRequestPost");
 
+// api/family/settings.js
+async function onRequestGet({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  const family = await env.DB.prepare(
+    "SELECT timezone, week_start FROM families WHERE id = ?"
+  ).bind(device.family_id).first();
+  return json({
+    // Null rather than a guessed default: "this family has never set a zone"
+    // is a state the Plan tab has to be able to see, because §9.6 makes it the
+    // reason a tablet stamps nothing.
+    timezone: family && family.timezone || null,
+    weekStart: family ? family.week_start : 0
+  });
+}
+__name(onRequestGet, "onRequestGet");
+async function onRequestPut({ request, env }) {
+  let device;
+  try {
+    device = await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const { timezone, weekStart } = body || {};
+  const updates = [];
+  const params = [];
+  if (timezone !== void 0) {
+    const tz = normalizeTimezone(timezone);
+    if (!tz) return json({ error: "timezone must be an IANA zone name" }, { status: 400 });
+    updates.push("timezone = ?");
+    params.push(tz);
+  }
+  if (weekStart !== void 0) {
+    const ws = normalizeWeekStart(weekStart);
+    if (ws === null) return json({ error: "weekStart must be 0 (Sunday) or 1 (Monday)" }, { status: 400 });
+    updates.push("week_start = ?");
+    params.push(ws);
+  }
+  if (!updates.length) {
+    return json({ error: "nothing to update" }, { status: 400 });
+  }
+  await env.DB.prepare(
+    `UPDATE families SET ${updates.join(", ")} WHERE id = ?`
+  ).bind(...params, device.family_id).run();
+  const family = await env.DB.prepare(
+    "SELECT timezone, week_start FROM families WHERE id = ?"
+  ).bind(device.family_id).first();
+  return json({
+    timezone: family && family.timezone || null,
+    weekStart: family ? family.week_start : 0
+  });
+}
+__name(onRequestPut, "onRequestPut");
+
 // api/sessions/delete.js
 async function onRequestPost3({ request, env }) {
   let device;
@@ -198,8 +281,361 @@ async function onRequestPost3({ request, env }) {
 }
 __name(onRequestPost3, "onRequestPost");
 
+// api/_lib/migrations.js
+var MIGRATIONS = [
+  {
+    name: "schema-phase3.sql",
+    sql: `-- Parent Sync \u2014 Phase 3 migration (docs/parent-sync-spec.md \xA715).
+-- Adds the parent -> child command queue and the child-state snapshot to a
+-- database already created from schema.sql. Purely additive: no existing
+-- table or column changes, so a tablet still running the Phase 1 client keeps
+-- working untouched.
+--
+-- Apply with:
+--   npx wrangler d1 execute star-homeschool --remote --file=./schema-phase3.sql
+--
+-- The --remote flag matters (\xA712 Step 4): without it you migrate a local dev
+-- copy and the real database stays on the old schema, with every step
+-- appearing to succeed.
+--
+-- schema.sql carries these same statements, so a *fresh* deployment needs
+-- only that file. This one exists for the deployment that is already live.
+
+CREATE TABLE commands (
+  id          TEXT PRIMARY KEY,
+  family_id   TEXT NOT NULL REFERENCES families(id),
+  child_id    TEXT NOT NULL REFERENCES children(id),
+  app         TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  payload     TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  created_by  TEXT NOT NULL REFERENCES devices(id),
+  canceled    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_commands_child ON commands(child_id, app, created_at);
+
+CREATE TABLE command_acks (
+  command_id  TEXT NOT NULL REFERENCES commands(id),
+  device_id   TEXT NOT NULL REFERENCES devices(id),
+  applied_at  INTEGER NOT NULL,
+  PRIMARY KEY (command_id, device_id)
+);
+
+CREATE TABLE child_state (
+  child_id    TEXT NOT NULL REFERENCES children(id),
+  app         TEXT NOT NULL,
+  device_id   TEXT NOT NULL REFERENCES devices(id),
+  updated_at  INTEGER NOT NULL,
+  state       TEXT NOT NULL,
+  PRIMARY KEY (child_id, app, device_id)
+);
+
+-- Grade columns for the multi-year "previous years" view, landing in this
+-- migration deliberately rather than a later one.
+--
+-- They are columns and not payload fields because the view GROUPs BY them,
+-- and a Worker cannot parse every session's payload to do that inside its CPU
+-- budget. They are nullable and nothing writes them yet: the apps only start
+-- stamping them once word lists carry a grade, which is separate work. NULL
+-- therefore reads as "before grades", which is also the permanent value for
+-- every session recorded up to now.
+--
+-- Why not a second migration when that work lands: both ship the same day, so
+-- there is no window worth separating, and a missed second migration is not a
+-- benign failure. Once the grade code deploys, sync.js's INSERT names these
+-- columns; if they are absent every write throws and /api/sync 500s on every
+-- tablet \u2014 invisibly, because \xA73 rule 1 keeps sync failures away from the
+-- child. One migration is one thing to get right.
+-- scope_name is denormalized on purpose. The name is already inside \`payload\`,
+-- but the aggregate cannot read payload, and a label frozen at write time is
+-- the more correct one anyway: renaming a list should not retroactively
+-- relabel the year it was worked under.
+ALTER TABLE sessions ADD COLUMN grade TEXT;
+ALTER TABLE sessions ADD COLUMN scope_id TEXT;
+ALTER TABLE sessions ADD COLUMN scope_name TEXT;
+`
+  },
+  {
+    name: "schema-phase4.sql",
+    sql: `-- Parent Sync \u2014 Phase 4 migration (docs/parent-sync-spec.md \xA76.2, \xA77).
+-- Adds parent-assigned child identity to pairing, to a database already
+-- created from schema.sql (+ schema-phase3.sql if applied separately).
+-- Purely additive: the new column is nullable, so an old pairing code row
+-- (already redeemed, or a parent-role code, which never carries one) is
+-- untouched.
+--
+-- Apply with:
+--   npx wrangler d1 execute star-homeschool --remote --file=./schema-phase4.sql
+--
+-- The --remote flag matters (\xA712 Step 4): without it you migrate a local dev
+-- copy and the real database stays on the old schema, with every step
+-- appearing to succeed.
+--
+-- schema.sql carries this same column, so a *fresh* deployment needs only
+-- that file. This one exists for the deployment that is already live.
+
+ALTER TABLE pairing_codes ADD COLUMN child_id TEXT REFERENCES children(id);
+`
+  },
+  {
+    name: "schema-phase5.sql",
+    sql: `-- Assignment and Targets \u2014 Phase 5 migration (docs/assignment-spec.md \xA712).
+-- Adds the plan document, its revision history, per-device delivery state, the
+-- family's timezone/week start, and the stamped local date on sessions, to a
+-- database already created from schema.sql (+ the phase 3/4 migrations if they
+-- were applied separately). Purely additive: every new column is nullable or
+-- defaulted, so a tablet still running an older client keeps working.
+--
+-- Apply with:
+--   npx wrangler d1 execute star-homeschool --remote --file=./schema-phase5.sql
+--
+-- The --remote flag matters (parent-sync-spec.md \xA712 Step 4): without it you
+-- migrate a local dev copy and the real database stays on the old schema, with
+-- every step appearing to succeed.
+--
+-- schema.sql carries these same statements, so a *fresh* deployment needs only
+-- that file. This one exists for the deployment that is already live.
+--
+-- Why the three plan tables land here, in the timezone step, when nothing
+-- writes them until the Plan tab ships (assignment-spec.md \xA717 step 2): the
+-- same reason the grade columns landed in schema-phase3.sql ahead of the code
+-- that stamps them. Both ship within days of each other, so there is no window
+-- worth separating, and a missed second migration is not a benign failure \u2014
+-- once plan.js deploys, its INSERT names these tables, and if they are absent
+-- every parent write 500s. One migration is one thing to get right.
+
+-- The current plan for one child, as a document. Parent-owned state (\xA73): an
+-- instruction, not a record, which is why it may live server-side without
+-- inverting the one-way rule.
+CREATE TABLE plans (
+  child_id    TEXT PRIMARY KEY REFERENCES children(id),
+  family_id   TEXT NOT NULL REFERENCES families(id),
+  revision    INTEGER NOT NULL,
+  items       TEXT NOT NULL,        -- JSON, \xA74
+  updated_at  INTEGER NOT NULL,
+  updated_by  TEXT NOT NULL REFERENCES devices(id)
+);
+
+-- Every version, so a past period evaluates against the plan that was in force
+-- (\xA76.3). Append-only, like sessions and commands: without this, editing the
+-- plan on Thursday silently rewrites what Monday's targets were.
+CREATE TABLE plan_revisions (
+  child_id       TEXT NOT NULL REFERENCES children(id),
+  revision       INTEGER NOT NULL,
+  items          TEXT NOT NULL,
+  effective_from TEXT NOT NULL,     -- local date, YYYY-MM-DD (\xA79)
+  created_at     INTEGER NOT NULL,
+  created_by     TEXT NOT NULL REFERENCES devices(id),
+  PRIMARY KEY (child_id, revision)
+);
+
+-- Which revision each device holds, for the delivery status in \xA711. Written by
+-- /api/sync from the client's reported planRevision; not an ack, because a
+-- plan needs none (\xA76.1) \u2014 it is idempotent desired-state, so a device that
+-- misses a delivery self-heals on its next sync.
+CREATE TABLE plan_state (
+  child_id    TEXT NOT NULL REFERENCES children(id),
+  device_id   TEXT NOT NULL REFERENCES devices(id),
+  revision    INTEGER NOT NULL,
+  seen_at     INTEGER NOT NULL,
+  PRIMARY KEY (child_id, device_id)
+);
+
+-- \xA79.3, \xA79.4. The family timezone is the *policy* \u2014 one family, one school
+-- day \u2014 and is nullable because a family created before this ships has none
+-- until a parent phone sets one. week_start is 0 for Sunday, matching
+-- data.schedule's existing 0 = Sunday indexing.
+ALTER TABLE families ADD COLUMN timezone   TEXT;
+ALTER TABLE families ADD COLUMN week_start INTEGER NOT NULL DEFAULT 0;
+
+-- \xA79.3. The *record*: YYYY-MM-DD, computed by the client at write time in the
+-- family timezone. It is a column and not a derivation because SQLite has no
+-- IANA timezone database (\xA79.2) \u2014 date(x,'localtime') resolves against the
+-- host process's zone, which on Workers is UTC, so GROUP BY local day is not
+-- merely awkward server-side, it is impossible.
+--
+-- Nullable and additive, exactly like the \xA716 grade columns: an old client
+-- that never stamps it keeps working, and NULL reads as "before plans", which
+-- is the permanent and correct value for every session recorded up to now.
+ALTER TABLE sessions ADD COLUMN local_date TEXT;
+CREATE INDEX idx_sessions_local_date ON sessions(child_id, app, local_date);
+`
+  }
+];
+function splitStatements(sql) {
+  return sql.split("\n").map((line) => {
+    const i = line.indexOf("--");
+    return i === -1 ? line : line.slice(0, i);
+  }).join("\n").split(";").map((s) => s.trim()).filter(Boolean);
+}
+__name(splitStatements, "splitStatements");
+var ALREADY_PRESENT = [
+  /table\s+\S+\s+already exists/i,
+  /index\s+\S+\s+already exists/i,
+  /duplicate column name/i
+];
+function isAlreadyPresent(error) {
+  const message = String(error && error.message || error || "");
+  return ALREADY_PRESENT.some((re) => re.test(message));
+}
+__name(isAlreadyPresent, "isAlreadyPresent");
+async function ensureMigrationsTable(env) {
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at INTEGER NOT NULL)");
+}
+__name(ensureMigrationsTable, "ensureMigrationsTable");
+async function appliedNames(env) {
+  const { results } = await env.DB.prepare("SELECT name FROM d1_migrations").all();
+  return new Set((results || []).map((r) => r.name));
+}
+__name(appliedNames, "appliedNames");
+async function migrationStatus(env) {
+  await ensureMigrationsTable(env);
+  const applied = await appliedNames(env);
+  const migrations = MIGRATIONS.map((m) => ({ name: m.name, applied: applied.has(m.name) }));
+  return { migrations, pending: migrations.filter((m) => !m.applied).length };
+}
+__name(migrationStatus, "migrationStatus");
+async function applyPendingMigrations(env) {
+  await ensureMigrationsTable(env);
+  const applied = await appliedNames(env);
+  const pending = MIGRATIONS.filter((m) => !applied.has(m.name));
+  const ran = [];
+  for (const migration of pending) {
+    let changed = 0;
+    let skipped = 0;
+    for (const statement of splitStatements(migration.sql)) {
+      try {
+        await env.DB.prepare(statement).run();
+        changed += 1;
+      } catch (err) {
+        if (isAlreadyPresent(err)) {
+          skipped += 1;
+          continue;
+        }
+        return {
+          ran,
+          failed: {
+            name: migration.name,
+            statement: statement.slice(0, 200),
+            error: String(err && err.message || err)
+          }
+        };
+      }
+    }
+    await env.DB.prepare("INSERT OR REPLACE INTO d1_migrations (name, applied_at) VALUES (?, ?)").bind(migration.name, Date.now()).run();
+    ran.push({ name: migration.name, changed, skipped });
+  }
+  return { ran };
+}
+__name(applyPendingMigrations, "applyPendingMigrations");
+
+// admin/migrations.js
+async function onRequestGet2({ env }) {
+  if (!env.DB) return page({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
+  const { migrations } = await migrationStatus(env);
+  return page({ migrations });
+}
+__name(onRequestGet2, "onRequestGet");
+async function onRequestPost4({ request, env }) {
+  if (!env.DB) return page({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
+  const form = await request.formData();
+  const secret = String(form.get("secret") || "");
+  const confirmed = form.get("confirm") === "yes";
+  if (!env.SIGNUP_SECRET || !timingSafeEqual(secret, env.SIGNUP_SECRET)) {
+    const { migrations: migrations2 } = await migrationStatus(env);
+    return page({ migrations: migrations2, error: "Incorrect signup secret." }, 401);
+  }
+  if (!confirmed) {
+    const { migrations: migrations2 } = await migrationStatus(env);
+    return page({ migrations: migrations2, error: "Tick the confirm box to apply." });
+  }
+  const result = await applyPendingMigrations(env);
+  const { migrations } = await migrationStatus(env);
+  return page({ migrations, result }, result.failed ? 207 : 200);
+}
+__name(onRequestPost4, "onRequestPost");
+function timingSafeEqual(a, b) {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
+__name(timingSafeEqual, "timingSafeEqual");
+function page({ migrations = [], result, error } = {}, status = 200) {
+  const pending = migrations.filter((m) => !m.applied).length;
+  const rows = migrations.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.applied ? "applied" : "pending"}</td></tr>`).join("\n");
+  let outcome = "";
+  if (result) {
+    if (result.failed) {
+      outcome = `<p class="err">Stopped on <strong>${esc(result.failed.name)}</strong>: ${esc(result.failed.error)}</p>
+        <pre>${esc(result.failed.statement)}</pre>`;
+    } else if (!result.ran.length) {
+      outcome = "<p>Nothing was pending.</p>";
+    } else {
+      outcome = "<p>Applied:</p><ul>" + result.ran.map(
+        (r) => `<li>${esc(r.name)} \u2014 ${r.changed} statement(s) run${r.skipped ? `, ${r.skipped} already present` : ""}</li>`
+      ).join("") + "</ul>";
+    }
+  }
+  const body = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Migrations \u2014 Star Homeschool</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  td { padding: .35rem .5rem; border-bottom: 1px solid #ddd; }
+  pre { background: #f4f4f4; padding: .5rem; overflow-x: auto; }
+  .err { color: #a11; font-weight: 600; }
+  form { margin-top: 1.5rem; padding: 1rem; border: 1px solid #ccc; border-radius: 6px; }
+  label { display: block; margin: .5rem 0; }
+  input[type=password] { width: 100%; padding: .4rem; box-sizing: border-box; }
+  button { margin-top: .75rem; padding: .5rem 1rem; }
+</style>
+</head>
+<body>
+<h1>Database migrations</h1>
+<p>${pending} pending of ${migrations.length}.</p>
+${error ? `<p class="err">${esc(error)}</p>` : ""}
+${outcome}
+<table><tbody>${rows}</tbody></table>
+<form method="post" action="/admin/migrations">
+  <label>Signup secret
+    <input type="password" name="secret" required autocomplete="off">
+  </label>
+  <label>
+    <input type="checkbox" name="confirm" value="yes"> I understand this applies pending migrations to the live database.
+  </label>
+  <button type="submit">Apply pending migrations</button>
+</form>
+<p>Safe to press twice: a migration whose tables and columns are already there
+reports them as already present and changes nothing.</p>
+<p>No JavaScript runs on this page, so it works even when the parent dashboard
+does not.</p>
+</body>
+</html>`;
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+__name(page, "page");
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
+__name(esc, "esc");
+
 // api/child-state.js
-async function onRequestGet({ request, env }) {
+async function onRequestGet3({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -228,7 +664,7 @@ async function onRequestGet({ request, env }) {
   })).filter((s) => s.state);
   return json({ snapshots });
 }
-__name(onRequestGet, "onRequestGet");
+__name(onRequestGet3, "onRequestGet");
 function safeParse(text) {
   try {
     return JSON.parse(text);
@@ -239,7 +675,7 @@ function safeParse(text) {
 __name(safeParse, "safeParse");
 
 // api/children.js
-async function onRequestGet2({ request, env }) {
+async function onRequestGet4({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -251,11 +687,11 @@ async function onRequestGet2({ request, env }) {
   ).bind(device.family_id).all();
   return json({ children: results });
 }
-__name(onRequestGet2, "onRequestGet");
+__name(onRequestGet4, "onRequestGet");
 
 // api/commands.js
 var COMMAND_RETENTION_MS = 30 * 864e5;
-async function onRequestPost4({ request, env }) {
+async function onRequestPost5({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -298,8 +734,8 @@ async function onRequestPost4({ request, env }) {
   }
   return json({ commands: created, createdAt: now });
 }
-__name(onRequestPost4, "onRequestPost");
-async function onRequestGet3({ request, env }) {
+__name(onRequestPost5, "onRequestPost");
+async function onRequestGet5({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -333,7 +769,7 @@ async function onRequestGet3({ request, env }) {
   }));
   return json({ commands });
 }
-__name(onRequestGet3, "onRequestGet");
+__name(onRequestGet5, "onRequestGet");
 function safeParse2(text) {
   try {
     return JSON.parse(text);
@@ -344,7 +780,7 @@ function safeParse2(text) {
 __name(safeParse2, "safeParse");
 
 // api/delete.js
-async function onRequestPost5({ request, env }) {
+async function onRequestPost6({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["child"]);
@@ -374,10 +810,10 @@ async function onRequestPost5({ request, env }) {
   }
   return json({ deleted });
 }
-__name(onRequestPost5, "onRequestPost");
+__name(onRequestPost6, "onRequestPost");
 
 // api/devices.js
-async function onRequestGet4({ request, env }) {
+async function onRequestGet6({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -389,17 +825,17 @@ async function onRequestGet4({ request, env }) {
   ).bind(device.family_id).all();
   return json({ devices: results });
 }
-__name(onRequestGet4, "onRequestGet");
+__name(onRequestGet6, "onRequestGet");
 
 // api/family.js
-async function onRequestPost6({ request, env }) {
+async function onRequestPost7({ request, env }) {
   let body;
   try {
     body = await request.json();
   } catch {
     return json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { signupSecret, deviceId, label } = body || {};
+  const { signupSecret, deviceId, label, timezone, weekStart } = body || {};
   if (typeof signupSecret !== "string" || signupSecret !== env.SIGNUP_SECRET) {
     return json({ error: "invalid signup secret" }, { status: 401 });
   }
@@ -411,19 +847,45 @@ async function onRequestPost6({ request, env }) {
   const familyId = randomId();
   const token = randomToken();
   const tokenHash = await sha256Hex(token);
+  const tz = normalizeTimezone(timezone);
+  const ws = normalizeWeekStart(weekStart);
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO families (id, created_at) VALUES (?, ?)").bind(familyId, now),
+    env.DB.prepare("INSERT INTO families (id, created_at, timezone, week_start) VALUES (?, ?, ?, ?)").bind(familyId, now, tz, ws === null ? 0 : ws),
     env.DB.prepare(
       `INSERT INTO devices (id, family_id, token_hash, role, label, created_at, last_seen, rl_window, rl_count)
        VALUES (?, ?, ?, 'parent', ?, ?, ?, ?, 0)`
     ).bind(deviceId, familyId, tokenHash, label || null, now, now, Math.floor(now / 1e3))
   ]);
-  return json({ token, familyId, role: "parent" });
+  return json({ token, familyId, role: "parent", timezone: tz, weekStart: ws === null ? 0 : ws });
 }
-__name(onRequestPost6, "onRequestPost");
+__name(onRequestPost7, "onRequestPost");
+
+// api/migrations.js
+async function onRequestGet7({ request, env }) {
+  try {
+    await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  if (!env.DB) return json({ error: 'the D1 binding "DB" is not configured on this Worker' }, { status: 500 });
+  return json(await migrationStatus(env));
+}
+__name(onRequestGet7, "onRequestGet");
+async function onRequestPost8({ request, env }) {
+  try {
+    await authenticate(request, env, ["parent"]);
+  } catch (response) {
+    return response;
+  }
+  if (!env.DB) return json({ error: 'the D1 binding "DB" is not configured on this Worker' }, { status: 500 });
+  const result = await applyPendingMigrations(env);
+  const status = await migrationStatus(env);
+  return json({ ...result, ...status }, { status: result.failed ? 207 : 200 });
+}
+__name(onRequestPost8, "onRequestPost");
 
 // api/pair.js
-async function onRequestPost7({ request, env }) {
+async function onRequestPost9({ request, env }) {
   let body;
   try {
     body = await request.json();
@@ -462,10 +924,10 @@ async function onRequestPost7({ request, env }) {
   ).bind(deviceId, pairing.family_id, tokenHash, role, label || null, now, now, Math.floor(now / 1e3)).run();
   return json({ token, role, childId: pairing.child_id || void 0 });
 }
-__name(onRequestPost7, "onRequestPost");
+__name(onRequestPost9, "onRequestPost");
 
 // api/pairing-code.js
-async function onRequestPost8({ request, env }) {
+async function onRequestPost10({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -504,10 +966,10 @@ async function onRequestPost8({ request, env }) {
   ).bind(codeHash, device.family_id, role, boundChildId, expiresAt).run();
   return json({ code, expiresAt });
 }
-__name(onRequestPost8, "onRequestPost");
+__name(onRequestPost10, "onRequestPost");
 
 // api/sessions.js
-async function onRequestGet5({ request, env }) {
+async function onRequestGet8({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -525,7 +987,7 @@ async function onRequestGet5({ request, env }) {
   if (!child || child.family_id !== device.family_id) {
     return json({ error: "not found" }, { status: 404 });
   }
-  let query = `SELECT session_id, device_id, occurred_at, received_at, mode, score, total, payload
+  let query = `SELECT session_id, device_id, occurred_at, received_at, mode, score, total, payload, local_date
                FROM sessions WHERE child_id = ? AND app = ? AND deleted = 0`;
   const params = [childId, app];
   if (since) {
@@ -542,14 +1004,20 @@ async function onRequestGet5({ request, env }) {
     mode: row.mode,
     score: row.score,
     total: row.total,
-    ...JSON.parse(row.payload)
+    ...JSON.parse(row.payload),
+    // assignment-spec.md §9.3. After the spread, not before: the column is the
+    // record and a payload key of the same name must never shadow it. Null for
+    // anything stamped by a client that did not yet know the family's zone,
+    // which the dashboard backfills from occurred_at on the way in (§9.6) —
+    // JavaScript can apply a timezone and SQL cannot.
+    localDate: row.local_date || null
   }));
   return json({ sessions });
 }
-__name(onRequestGet5, "onRequestGet");
+__name(onRequestGet8, "onRequestGet");
 
 // api/summary.js
-async function onRequestGet6({ request, env }) {
+async function onRequestGet9({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -594,10 +1062,10 @@ async function onRequestGet6({ request, env }) {
   }));
   return json({ lists });
 }
-__name(onRequestGet6, "onRequestGet");
+__name(onRequestGet9, "onRequestGet");
 
 // api/sync.js
-async function onRequestPost9({ request, env }) {
+async function onRequestPost11({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["child"]);
@@ -610,7 +1078,7 @@ async function onRequestPost9({ request, env }) {
   } catch {
     return json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { app, childId, childName, sessions, state, applied } = body || {};
+  const { app, childId, childName, sessions, state, applied, planRevision } = body || {};
   if (!app || !childId || !Array.isArray(sessions)) {
     return json({ error: "app, childId, and sessions[] are required" }, { status: 400 });
   }
@@ -634,12 +1102,12 @@ async function onRequestPost9({ request, env }) {
   for (const session of sessions) {
     if (!session || session.id == null) continue;
     const sessionId = String(session.id);
-    const { id, date, mode, score, total, ...rest } = session;
+    const { id, date, mode, score, total, localDate, ...rest } = session;
     const occurredAt = Date.parse(date);
     const scope = sessionScope(app, rest);
     await env.DB.prepare(
-      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name, local_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(child_id, app, device_id, session_id) DO NOTHING`
     ).bind(
       childId,
@@ -654,7 +1122,14 @@ async function onRequestPost9({ request, env }) {
       JSON.stringify(rest),
       scope.grade,
       scope.id,
-      scope.name
+      scope.name,
+      // assignment-spec.md §9.3: the calendar day this sitting belongs to, in
+      // the family's timezone. Stamped by the client and only stored here,
+      // never derived — SQLite has no IANA timezone database, so the Worker
+      // could not compute it even if §3 rule 3 let it (§9.2). A client that
+      // has never received a plan sends nothing and the column stays null,
+      // which reads as "before plans" and is backfilled on the phone (§9.6).
+      isLocalDate(localDate) ? localDate : null
     ).run();
     accepted.push(sessionId);
   }
@@ -694,9 +1169,39 @@ async function onRequestPost9({ request, env }) {
     payload: safeParse3(row.payload),
     createdAt: row.created_at
   }));
-  return json({ accepted, commands });
+  if (Number.isInteger(planRevision)) {
+    await env.DB.prepare(
+      `INSERT INTO plan_state (child_id, device_id, revision, seen_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(child_id, device_id) DO UPDATE SET
+         revision = excluded.revision,
+         seen_at = excluded.seen_at`
+    ).bind(childId, device.id, planRevision, now).run();
+  }
+  const plan = await currentPlan(env, device.family_id, childId);
+  return json({ accepted, commands, ...plan ? { plan } : {} });
 }
-__name(onRequestPost9, "onRequestPost");
+__name(onRequestPost11, "onRequestPost");
+async function currentPlan(env, familyId, childId) {
+  const family = await env.DB.prepare(
+    "SELECT timezone, week_start FROM families WHERE id = ?"
+  ).bind(familyId).first();
+  if (!family || !family.timezone) return null;
+  const row = await env.DB.prepare(
+    "SELECT revision, items FROM plans WHERE child_id = ?"
+  ).bind(childId).first();
+  return {
+    revision: row ? row.revision : 0,
+    timezone: family.timezone,
+    weekStart: family.week_start,
+    items: row ? safeParse3(row.items) || [] : []
+  };
+}
+__name(currentPlan, "currentPlan");
+function isLocalDate(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+__name(isLocalDate, "isLocalDate");
 async function legacyCommands(env, device, currentChildId, app) {
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.kind, c.payload, c.created_at
@@ -732,7 +1237,7 @@ function safeParse3(text) {
 }
 __name(safeParse3, "safeParse");
 
-// ../.wrangler/tmp/pages-Iwfi1u/functionsRoutes-0.7693155950865498.mjs
+// ../.wrangler/tmp/pages-Ze0z61/functionsRoutes-0.009229571282303617.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",
@@ -749,6 +1254,20 @@ var routes = [
     modules: [onRequestPost2]
   },
   {
+    routePath: "/api/family/settings",
+    mountPath: "/api/family",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet]
+  },
+  {
+    routePath: "/api/family/settings",
+    mountPath: "/api/family",
+    method: "PUT",
+    middlewares: [],
+    modules: [onRequestPut]
+  },
+  {
     routePath: "/api/sessions/delete",
     mountPath: "/api/sessions",
     method: "POST",
@@ -756,88 +1275,116 @@ var routes = [
     modules: [onRequestPost3]
   },
   {
-    routePath: "/api/child-state",
-    mountPath: "/api",
-    method: "GET",
-    middlewares: [],
-    modules: [onRequestGet]
-  },
-  {
-    routePath: "/api/children",
-    mountPath: "/api",
+    routePath: "/admin/migrations",
+    mountPath: "/admin",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet2]
   },
   {
-    routePath: "/api/commands",
+    routePath: "/admin/migrations",
+    mountPath: "/admin",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost4]
+  },
+  {
+    routePath: "/api/child-state",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet3]
   },
   {
-    routePath: "/api/commands",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost4]
-  },
-  {
-    routePath: "/api/delete",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost5]
-  },
-  {
-    routePath: "/api/devices",
+    routePath: "/api/children",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet4]
   },
   {
-    routePath: "/api/family",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost6]
-  },
-  {
-    routePath: "/api/pair",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost7]
-  },
-  {
-    routePath: "/api/pairing-code",
-    mountPath: "/api",
-    method: "POST",
-    middlewares: [],
-    modules: [onRequestPost8]
-  },
-  {
-    routePath: "/api/sessions",
+    routePath: "/api/commands",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet5]
   },
   {
-    routePath: "/api/summary",
+    routePath: "/api/commands",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost5]
+  },
+  {
+    routePath: "/api/delete",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost6]
+  },
+  {
+    routePath: "/api/devices",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet6]
   },
   {
-    routePath: "/api/sync",
+    routePath: "/api/family",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost7]
+  },
+  {
+    routePath: "/api/migrations",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet7]
+  },
+  {
+    routePath: "/api/migrations",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost8]
+  },
+  {
+    routePath: "/api/pair",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost9]
+  },
+  {
+    routePath: "/api/pairing-code",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost10]
+  },
+  {
+    routePath: "/api/sessions",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet8]
+  },
+  {
+    routePath: "/api/summary",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet9]
+  },
+  {
+    routePath: "/api/sync",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost11]
   }
 ];
 

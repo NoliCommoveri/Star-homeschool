@@ -2256,9 +2256,15 @@ function syncPush() {
   const acked = new Set(data.sync.ackedIds || []);
   const pending = data.sessions.filter(s => !acked.has(s.id));
   syncApi("/sync", {
-    app: SYNC_APP, childId, childName: data.childName, sessions: pending,
+    app: SYNC_APP, childId, childName: data.childName,
+    // §9.3 — stamped on the way out, so a sitting recorded while the tablet
+    // was offline and plan-less still carries the right calendar day.
+    sessions: withLocalDates(pending),
     state: syncState(),
     applied: data.sync.appliedCommandIds || [],
+    // Not an ack (§6.1) — just what this device is holding, so the parent's
+    // Plan tab can show delivery without any bookkeeping on this side.
+    planRevision: (planRead() || {}).revision,
   })
     .then(res => {
       if (!res) return;
@@ -2270,6 +2276,11 @@ function syncPush() {
       data.sync.lastPushAt = Date.now();
       persist();
       if (Array.isArray(res.commands) && res.commands.length) syncQueueCommands(res.commands);
+      // Stored before anything reads it, and stored whole (§7.1). Nothing in
+      // this app renders another app's items — filtering is a read-time
+      // concern — so a plan naming apps this one has never heard of is
+      // written through untouched.
+      if (res.plan) planStore(res.plan);
     })
     .catch(() => { /* best-effort — the next session or boot retries (§8) */ });
 }
@@ -2289,6 +2300,72 @@ document.addEventListener("visibilitychange", () => {
 function syncDelete(ids) {
   if (!syncReady() || !ids.length) return;
   syncApi("/delete", { app: SYNC_APP, childId: syncChildId(), sessionIds: ids }).catch(() => {});
+}
+
+// ---------- The plan document (docs/assignment-spec.md §7, §9) ----------
+// Byte-identical in all three synced apps (§3 rule 5), like the transport
+// above it. The drift test in tests/ compares these three copies.
+//
+// The document is delivered inside /api/sync's response, beside commands[],
+// and is written here to ONE key shared by all five apps. Not this app's own
+// slice of it — the whole thing, verbatim. That is what lets a plan reach an
+// app that is not itself synced: Reading Star's items land on the device
+// because Spelling Star wrote them, even with Reading Star's sync switched
+// off. The synced apps are the delivery mechanism for a plan they do not own.
+function planKey() { return "starplan-" + childSlug(data.childName); }
+
+function planRead() {
+  try { return JSON.parse(localStorage.getItem(planKey())); } catch(e) { return null; }
+}
+
+// §7.1's writer protocol, in full, because one shared key across five apps
+// breaks the "each app owns its own keys" convention:
+//   1. Highest revision wins — two apps receiving the same plan write once
+//      between them, and two tablets racing is harmless.
+//   2. Stored verbatim — an app that rewrote the document to hold only its own
+//      items would destroy the others' the moment it synced first.
+//   3. A malformed value is overwritten, not repaired — the server is the
+//      authority and this key is a cache.
+// Filtering to this app's own items happens at read time, never here.
+function planStore(plan) {
+  if (!plan || typeof plan !== "object" || typeof plan.revision !== "number") return;
+  const held = planRead();
+  if (held && typeof held.revision === "number" && held.revision >= plan.revision) return;
+  try { localStorage.setItem(planKey(), JSON.stringify(plan)); } catch(e) {}
+}
+
+// The family timezone (§9.3), or null when no plan has ever arrived. Null is a
+// supported state and not a failure: a tablet with no plan has no target to
+// bucket, so it stamps nothing and the phone backfills what it displays (§9.6).
+function planTimezone() {
+  const plan = planRead();
+  return (plan && typeof plan.timezone === "string" && plan.timezone) || null;
+}
+
+// §9.3. 'en-CA' formats as YYYY-MM-DD. This runs on the client for one reason:
+// the conversion needs the full IANA timezone database, which a browser has
+// and D1 does not (§9.2) — so a local calendar day cannot be derived at query
+// time, and has to be stamped at write time instead. Doing it here also gets
+// DST right by construction, including the 23- and 25-hour days.
+function localDate(instant, tz) {
+  try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(instant); }
+  catch(e) { return null; }
+}
+
+// Attaches localDate to each session on its way up, rather than freezing it
+// into the stored session record. localDate() is a pure function of the
+// instant and the zone, so the answer is the same whenever it is computed —
+// which means a sitting recorded before the family timezone ever arrived is
+// still stamped correctly the first time it is actually pushed.
+function withLocalDates(sessions) {
+  const tz = planTimezone();
+  if (!tz) return sessions;
+  return sessions.map(s => {
+    const at = Date.parse(s.date);
+    if (!Number.isFinite(at)) return s;
+    const stamp = localDate(new Date(at), tz);
+    return stamp ? Object.assign({}, s, { localDate: stamp }) : s;
+  });
 }
 
 // ---------- Parent -> child commands (§15) ----------

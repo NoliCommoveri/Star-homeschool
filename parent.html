@@ -216,6 +216,15 @@ const state = {
   // into every child_state row, per §15.4's size argument) and the book
   // currently being added/edited, or null when the list view is showing.
   readingCatalog: null, readingEditor: null,
+  // assignment-spec.md §9.3: the family's time policy, fetched once and reused.
+  // The dashboard buckets a child's week in the FAMILY's zone, not this
+  // phone's — a parent reading it from a different timezone should see their
+  // child's week, not their own (§9.5).
+  family: { timezone: null, weekStart: 0 },
+  // The migration runner (Devices → Database). `null` means "not asked yet",
+  // which is different from "asked, nothing pending" — only the second should
+  // ever silence the banner.
+  migrations: null, migrationsBusy: false, migrationsNote: '',
 };
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
@@ -266,6 +275,79 @@ function fmtDateTime(iso) {
   if (isNaN(d)) return '—';
   return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+// assignment-spec.md §9.3. Byte-identical to the copy in the three child apps;
+// 'en-CA' formats as YYYY-MM-DD. Returns null for an unusable zone rather than
+// throwing, so a bad family setting degrades to "unbucketed" instead of taking
+// the dashboard down.
+function localDate(instant, tz) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(instant); }
+  catch { return null; }
+}
+
+// §9.6: fill in local_date for rows a client stamped before it knew the family
+// zone — every row recorded before Phase 5, and any recorded on a tablet that
+// has not yet received a plan.
+//
+// This runs on the phone because it is the only place it can: applying an IANA
+// zone to an instant needs a timezone database, which JavaScript has and
+// SQLite does not (§9.2). The dashboard already downloads 90 days of sessions,
+// so backfilling the window it displays is free. Rows outside that window stay
+// null, which reads as "before plans" — permanently correct, since no target
+// has ever applied to a session recorded before this shipped.
+function backfillLocalDates(sessions) {
+  const tz = state.family.timezone;
+  if (!tz) return sessions;
+  for (const s of sessions) {
+    if (s.localDate) continue;
+    const at = Date.parse(s.date);
+    if (!Number.isFinite(at)) continue;
+    s.localDate = localDate(new Date(at), tz);
+  }
+  return sessions;
+}
+
+// Cheap and idempotent, so every view that needs it can just call it. A family
+// with no zone set is a supported state, not an error — the Plan tab is where
+// that gets asked about, because a "3 per day" target is the first thing that
+// actually needs an answer (§12).
+async function ensureFamilySettings() {
+  if (state.family.timezone) return state.family;
+  try {
+    const settings = await api('/family/settings');
+    state.family = { timezone: settings.timezone || null, weekStart: settings.weekStart ?? 0 };
+  } catch { /* leave it unset; nothing in this phase is blocked by it */ }
+  return state.family;
+}
+
+// ---------- Database migrations ----------
+// The schema ships as numbered schema-phaseN.sql files and applies itself from
+// a button here, so a deploy never needs a wrangler command or the D1 console.
+// Borrowed wholesale from the Scheduling App's Settings → Database.
+async function loadMigrationStatus() {
+  try {
+    state.migrations = await api('/migrations');
+  } catch {
+    // A failure here is not worth a red screen: the dashboard's real job is
+    // showing a child's work, and it does that fine against an old schema.
+    state.migrations = null;
+  }
+  return state.migrations;
+}
+
+// Checked on boot rather than only when someone opens Devices. A pending
+// migration is invisible until something breaks — /api/sync starts 500-ing on
+// every tablet, and §3 rule 1 makes that silent for the child — so the app has
+// to be the one that remembers to look.
+function migrationBannerHtml() {
+  if (!state.migrations || !state.migrations.pending) return '';
+  const n = state.migrations.pending;
+  return `<div class="card error">
+    <strong>${n} database ${n === 1 ? 'migration is' : 'migrations are'} pending.</strong>
+    Tablets may fail to sync until ${n === 1 ? 'it is' : 'they are'} applied — and they fail quietly.
+    <button onclick="showView('devices')">Open Devices to apply</button>
+  </div>`;
+}
+
 function pct(score, total) {
   if (!total) return null;
   return Math.round((score / total) * 100);
@@ -273,8 +355,13 @@ function pct(score, total) {
 
 // ---------- Boot / auth screens ----------
 function boot() {
-  if (state.sync) { renderShell(); showView('dashboard'); }
-  else renderSetup();
+  if (state.sync) {
+    renderShell();
+    showView('dashboard');
+    // Fire and forget: the dashboard paints immediately and the banner appears
+    // a moment later if there is one. Nothing waits on this.
+    loadMigrationStatus().then(() => { if (state.migrations && state.migrations.pending) showView(state.view); });
+  } else renderSetup();
 }
 
 function renderSetup() {
@@ -315,7 +402,15 @@ function renderSetup() {
       const deviceId = crypto.randomUUID();
       const data = await api('/family', {
         method: 'POST', auth: false,
-        body: { signupSecret: document.getElementById('secretIn').value, deviceId, label: document.getElementById('createLabelIn').value.trim() || undefined },
+        body: {
+          signupSecret: document.getElementById('secretIn').value, deviceId,
+          label: document.getElementById('createLabelIn').value.trim() || undefined,
+          // §9.3: this is the one moment a parent is certain to be holding a
+          // device that knows the family's zone, so it is set here rather than
+          // left for someone to find on a settings screen. Editable afterwards
+          // in Devices.
+          timezone: resolvedTimezone(),
+        },
       });
       saveSync({ token: data.token, familyId: data.familyId, deviceId, role: 'parent' });
       state.sync = loadSync();
@@ -339,6 +434,14 @@ function renderSetup() {
       renderShell(); showView('dashboard');
     } catch (err) { errEl.textContent = err.message; }
   });
+}
+
+// What this phone thinks its zone is. Wrapped because resolvedOptions() has
+// been known to return undefined in older embedded webviews, and a family
+// created without a zone is a supported state (§9.6) — not a reason to fail.
+function resolvedTimezone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; }
+  catch { return undefined; }
 }
 
 function signOut() {
@@ -413,7 +516,7 @@ async function renderDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const { children: synced } = await api('/children');
+    const [{ children: synced }] = await Promise.all([api('/children'), ensureFamilySettings()]);
     const children = mergeChildren(synced);
     state.children = children;
 
@@ -443,7 +546,7 @@ async function renderDashboard() {
           }
         }
         sessions.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
-        state.sessionsByKey[child.id + ':' + a.id] = sessions;
+        state.sessionsByKey[child.id + ':' + a.id] = backfillLocalDates(sessions);
         cells.push({ child, app: a, sessions });
       }
     }
@@ -496,6 +599,7 @@ function paintDashboard() {
     : `<div class="card empty">No ${esc(appDef.label)} sessions for ${esc(child.name || 'this child')} yet.</div>`;
 
   document.getElementById('app').innerHTML = `
+    ${migrationBannerHtml()}
     <div class="card">
       <h2>Last 7 days</h2>
       <table>
@@ -1417,7 +1521,10 @@ async function renderDevices() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const [{ devices }, { children: synced }] = await Promise.all([api('/devices'), api('/children')]);
+    const [{ devices }, { children: synced }] = await Promise.all([
+      api('/devices'), api('/children'), ensureFamilySettings(),
+      state.migrations ? Promise.resolve() : loadMigrationStatus(),
+    ]);
     const children = mergeChildren(synced);
     const rows = devices.map((d) => {
       const isSelf = d.id === state.sync.deviceId;
@@ -1467,10 +1574,153 @@ async function renderDevices() {
           <thead><tr><th>Label</th><th>Role</th><th>Last active</th><th>Status</th><th></th></tr></thead>
           <tbody>${rows || '<tr><td colspan="5" class="muted">No devices yet.</td></tr>'}</tbody>
         </table>
-      </div>`;
+      </div>
+      ${familySettingsCardHtml()}
+      ${migrationsCardHtml()}`;
     onChildSelectChange();
   } catch (err) {
     app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+// The schema ships as numbered schema-phaseN.sql files, applied from here.
+// Nothing to do in the D1 console and no wrangler command — the same move the
+// Scheduling App made, for the same reason: a migration you have to remember
+// to run from a terminal is a migration that gets run late, and this one goes
+// wrong quietly (a tablet's /api/sync 500s, and §3 rule 1 hides that from the
+// child).
+function migrationsCardHtml() {
+  const m = state.migrations;
+  if (!m) {
+    return `<div class="card">
+      <h2>Database</h2>
+      <p class="muted">Could not read the migration status.
+      <button onclick="refreshMigrations()">Try again</button></p>
+    </div>`;
+  }
+  const rows = m.migrations.map((row) => `<tr>
+    <td>${esc(row.name)}</td>
+    <td>${row.applied ? '<span class="badge ok">applied</span>' : '<span class="badge warn">pending</span>'}</td>
+  </tr>`).join('');
+
+  return `<div class="card">
+    <h2>Database</h2>
+    <p class="muted">${m.pending} pending of ${m.migrations.length}.
+    Applying is safe to repeat — anything already in the database is reported as
+    already present and left alone.</p>
+    <table><tbody>${rows}</tbody></table>
+    <button${state.migrationsBusy ? ' disabled' : ''} onclick="applyMigrations()">
+      ${state.migrationsBusy ? 'Applying…' : 'Apply pending migrations'}
+    </button>
+    <div id="migrationsNote">${state.migrationsNote}</div>
+    <p class="muted" style="margin-top:8px">If this page ever will not load, the same
+    thing is at <code>/admin/migrations</code>, which runs no JavaScript and asks for
+    the signup secret instead.</p>
+  </div>`;
+}
+
+async function refreshMigrations() {
+  await loadMigrationStatus();
+  renderDevices();
+}
+
+// The note lives in state rather than being poked into the DOM afterwards:
+// renderDevices() is async and repaints the whole view, so anything written to
+// #migrationsNote before it settles is written to an element that does not
+// exist yet — and anything written after is erased by the next repaint.
+async function applyMigrations() {
+  state.migrationsBusy = true;
+  state.migrationsNote = '';
+  await renderDevices();
+
+  try {
+    const result = await api('/migrations', { method: 'POST', body: {} });
+    state.migrations = { migrations: result.migrations, pending: result.pending };
+    if (result.failed) {
+      // Named, not swallowed: a migration that stopped part-way is the one case
+      // where someone has to look at the SQL, so show which statement it was.
+      state.migrationsNote = `<p class="error">Stopped on ${esc(result.failed.name)}: ${esc(result.failed.error)}</p>
+        <pre>${esc(result.failed.statement)}</pre>`;
+    } else if (!result.ran.length) {
+      state.migrationsNote = '<p class="muted">Nothing was pending.</p>';
+    } else {
+      state.migrationsNote = '<p class="muted">Applied: ' + result.ran.map((r) =>
+        `${esc(r.name)} (${r.changed} run${r.skipped ? `, ${r.skipped} already present` : ''})`
+      ).join('; ') + '</p>';
+    }
+  } catch (err) {
+    state.migrationsNote = `<p class="error">${esc(err.message)}</p>`;
+    await loadMigrationStatus();
+  } finally {
+    state.migrationsBusy = false;
+  }
+  await renderDevices();
+}
+
+// assignment-spec.md §9.3, §9.4. One family, one school day — a family that
+// genuinely spans zones still gets one answer, which is the correct answer for
+// a homeschool plan.
+//
+// A free-text field rather than a picker: the IANA list is ~400 entries, the
+// phone already knows the right one, and "Use this phone's" covers the case
+// that actually happens. A typo is rejected by the server rather than stored,
+// because a zone that does not resolve would silently stop every tablet
+// stamping (§9.3).
+function familySettingsCardHtml() {
+  const tz = state.family.timezone;
+  const here = resolvedTimezone();
+  const mismatch = tz && here && tz !== here;
+  return `
+    <div class="card">
+      <h2>School week</h2>
+      <p class="muted">Which timezone a school day is counted in, and which day a week starts on.
+      Every child's history is bucketed by these, on every device.</p>
+      ${tz ? '' : '<p class="error">No timezone set yet. Until one is, tablets record the exact time of a sitting but not which day it belongs to.</p>'}
+      <div class="row">
+        <div class="col">
+          <label for="tzIn">Timezone</label>
+          <input type="text" id="tzIn" placeholder="e.g. America/Chicago" value="${esc(tz || here || '')}">
+          ${here ? `<button class="link" type="button" onclick="useThisPhonesTimezone()">Use this phone's (${esc(here)})</button>` : ''}
+          ${mismatch ? `<p class="muted">This phone is in ${esc(here)}. The family's week is counted in ${esc(tz)} — leave it unless the family has actually moved.</p>` : ''}
+        </div>
+        <div class="col">
+          <label for="weekStartIn">A week starts on</label>
+          <select id="weekStartIn">
+            <option value="0"${state.family.weekStart === 1 ? '' : ' selected'}>Sunday</option>
+            <option value="1"${state.family.weekStart === 1 ? ' selected' : ''}>Monday</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="saveFamilySettings()">Save</button>
+      <div id="familySettingsNote"></div>
+    </div>`;
+}
+
+// Reads the zone at click time rather than interpolating it into the handler:
+// a value baked into an inline onclick is a value inside a JS string inside an
+// HTML attribute, and getting the two layers of escaping right is not worth
+// doing for something the browser can just hand us again.
+function useThisPhonesTimezone() {
+  const here = resolvedTimezone();
+  if (here) document.getElementById('tzIn').value = here;
+}
+
+async function saveFamilySettings() {
+  const note = document.getElementById('familySettingsNote');
+  note.innerHTML = '';
+  const timezone = document.getElementById('tzIn').value.trim();
+  const weekStart = Number(document.getElementById('weekStartIn').value);
+  if (!timezone) { note.innerHTML = '<p class="error">Enter a timezone.</p>'; return; }
+  try {
+    const saved = await api('/family/settings', { method: 'PUT', body: { timezone, weekStart } });
+    state.family = { timezone: saved.timezone || null, weekStart: saved.weekStart ?? 0 };
+    // Every already-loaded session was bucketed against the old zone, so the
+    // cache is now wrong rather than merely stale. Dropping it is one line;
+    // re-deriving each bucket in place is not.
+    state.sessionsByKey = {};
+    note.innerHTML = '<p class="muted">Saved. Tablets pick this up on their next sync.</p>';
+  } catch (err) {
+    note.innerHTML = `<p class="error">${esc(err.message)}</p>`;
   }
 }
 

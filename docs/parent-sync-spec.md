@@ -459,7 +459,10 @@ two request shapes. They authenticate against different things — a long-lived
 server secret versus a short-lived one-time code — and conflating them means a
 single handler where forgetting one branch of an `if` silently downgrades the
 §5 gate. `/api/family` creates the family, mints the first parent device, and
-is the *only* endpoint that ever reads `env.SIGNUP_SECRET`.
+is the only *API* endpoint that ever reads `env.SIGNUP_SECRET`. The one other
+reader is `/admin/migrations` (§12 Step 4b), which gates applying a migration on
+it because a human has to type that field; both uses are the same kind of thing,
+a deployment-level password for a deployment-level action.
 
 `deviceId` is accepted by those two endpoints only (§6.1) and is ignored
 everywhere else.
@@ -864,25 +867,50 @@ theoretical, not actually active in production. Real enforcement would need
 `PRAGMA foreign_keys = ON` run at the top of the request handler itself, not
 just once during schema setup.
 
-### Step 4b — Apply the Phase 3 migration
+### Step 4b — Apply migrations (no console, no CLI)
 
-Only if your database was created before §15 existed. `schema.sql` above
-already contains the Phase 3 tables, so a **fresh** deployment skips this step
-entirely; an existing one needs:
+**Nothing to run in a terminal.** Every `schema-phaseN.sql` is registered in
+`functions/api/_lib/migrations.js` and applies itself from a button, borrowed
+from the Scheduling App's Settings → Database:
+
+- **Parent app → Devices → Database.** Lists every migration with its state and
+  applies the pending ones. The app also checks on load and raises a banner by
+  itself when something is pending, so you do not have to remember to look.
+- **`/admin/migrations`** on the deployed origin — a plain server-rendered page
+  with a secret field and a confirm box, running no JavaScript. Use this one
+  when the parent app will not start, which is exactly when a schema problem is
+  most likely. It asks for `SIGNUP_SECRET` rather than a device token, because
+  a human has to be able to type it.
+
+Both are safe to press twice, and safe on a database that was migrated by hand
+before this existed: each statement runs on its own, and a table or column
+that is already there is reported as already present rather than treated as a
+failure. A database built by hand from an older `schema.sql` and a fresh one
+built from today's converge on the same schema — there is a test for exactly
+that (`tests/api.test.mjs`, "a live database and a fresh one converge").
+
+**Apply before deploying the code that uses it.** A migration adds its column
+or table on its own; the handler that reads and writes it should land in a
+*later* deploy. Applying early costs nothing — an inert column nothing touches
+yet is harmless. Get it backwards and `/api/sync` 500s on every tablet, and §3
+rule 1 makes that silent for the child: nobody finds out until a parent notices
+the dashboard has stopped filling in.
+
+If you would rather use the CLI anyway, the files are still plain SQL:
 
 ```
-npx wrangler d1 execute star-homeschool --remote --file=./schema-phase3.sql
+npx wrangler d1 execute star-homeschool --remote --file=./schema-phase5.sql
 ```
 
-Same `--remote` caveat as Step 4. Run it **before** deploying the Worker that
-expects those tables, or `/api/sync` starts 500-ing on every tablet — the
-tables are new, so there is no version of the schema where the old code breaks
-and the new code doesn't need them.
+The `--remote` flag matters (same caveat as Step 4): without it you migrate a
+local dev copy and the real database stays on the old schema, with every step
+appearing to succeed.
 
-*Checkpoint:* `SELECT name FROM sqlite_master WHERE type='table';` now also
-lists `commands`, `command_acks`, `child_state`, and
-`PRAGMA table_info(sessions);` shows the `grade`, `scope_id` and `scope_name`
-columns.
+*Checkpoint:* the Database card reads "0 pending". Equivalently,
+`SELECT name FROM sqlite_master WHERE type='table';` lists `commands`,
+`command_acks`, `child_state`, `plans`, `plan_revisions` and `plan_state`, and
+`PRAGMA table_info(sessions);` shows `grade`, `scope_id`, `scope_name` and
+`local_date`.
 
 Those three columns belong to §16 rather than to Phase 3. They ship in the
 same migration deliberately: both land in the same deploy, and a missed second

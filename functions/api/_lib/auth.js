@@ -64,6 +64,40 @@ export const COMMAND_KINDS = [
   'set-reading-support-level', // reading: a parent-set generic tier, hook for future point weighting (§7)
 ];
 
+// assignment-spec.md §9.3, §9.4 — the family's time policy, validated at the
+// door rather than on the way out.
+//
+// A bad zone is worth rejecting here because of how quietly it fails: it would
+// ride down to every tablet in the plan document, every client's localDate()
+// would throw and stamp nothing, and the result is a plan that counts nothing
+// with no error raised anywhere. Intl is the only validator that exists, and
+// the Workers runtime carries the full timezone database, so this is a real
+// check and not a shape test.
+export function normalizeTimezone(value) {
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  // A fixed offset — "+05:00", "UTC+5" — is accepted by Intl in some runtimes
+  // and is exactly what §9.3 rules out: it is wrong for half the year in any
+  // zone that observes DST. Only a named zone carries the transition rules.
+  // (Etc/GMT+5 still passes, and legitimately: it is a named zone that has
+  // declared it has no DST.)
+  if (!name || !/^[A-Za-z][A-Za-z0-9_+\-/]*$/.test(name) || /^UTC[+-]/i.test(name)) return null;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: name });
+    return name;
+  } catch {
+    return null;
+  }
+}
+
+// 0 = Sunday, 1 = Monday, and nothing else (§9.4). Returns null for anything
+// unrecognized so a caller can tell "not supplied" from "supplied as Sunday" —
+// the difference between leaving a family's setting alone and resetting it.
+export function normalizeWeekStart(value) {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return n === 0 || n === 1 ? n : null;
+}
+
 // Payload and snapshot ceilings (§15.6). A word list or focus area is a few
 // KB; anything near these is a bug or an abuse, and D1 rows are not the place
 // to find that out.

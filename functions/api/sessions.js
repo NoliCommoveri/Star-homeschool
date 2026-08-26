@@ -25,7 +25,7 @@ export async function onRequestGet({ request, env }) {
     return json({ error: 'not found' }, { status: 404 });
   }
 
-  let query = `SELECT session_id, device_id, occurred_at, received_at, mode, score, total, payload
+  let query = `SELECT session_id, device_id, occurred_at, received_at, mode, score, total, payload, local_date
                FROM sessions WHERE child_id = ? AND app = ? AND deleted = 0`;
   const params = [childId, app];
   if (since) {
@@ -45,6 +45,12 @@ export async function onRequestGet({ request, env }) {
     score: row.score,
     total: row.total,
     ...JSON.parse(row.payload),
+    // assignment-spec.md §9.3. After the spread, not before: the column is the
+    // record and a payload key of the same name must never shadow it. Null for
+    // anything stamped by a client that did not yet know the family's zone,
+    // which the dashboard backfills from occurred_at on the way in (§9.6) —
+    // JavaScript can apply a timezone and SQL cannot.
+    localDate: row.local_date || null,
   }));
 
   return json({ sessions });

@@ -24,7 +24,7 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const { app, childId, childName, sessions, state, applied } = body || {};
+  const { app, childId, childName, sessions, state, applied, planRevision } = body || {};
   if (!app || !childId || !Array.isArray(sessions)) {
     return json({ error: 'app, childId, and sessions[] are required' }, { status: 400 });
   }
@@ -56,7 +56,7 @@ export async function onRequestPost({ request, env }) {
   for (const session of sessions) {
     if (!session || session.id == null) continue;
     const sessionId = String(session.id);
-    const { id, date, mode, score, total, ...rest } = session;
+    const { id, date, mode, score, total, localDate, ...rest } = session;
     const occurredAt = Date.parse(date);
 
     // §16.3: grade and scope are lifted out of the payload into columns,
@@ -71,8 +71,8 @@ export async function onRequestPost({ request, env }) {
     const scope = sessionScope(app, rest);
 
     await env.DB.prepare(
-      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO sessions (child_id, app, device_id, session_id, occurred_at, received_at, mode, score, total, payload, grade, scope_id, scope_name, local_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(child_id, app, device_id, session_id) DO NOTHING`
     ).bind(
       childId,
@@ -87,7 +87,14 @@ export async function onRequestPost({ request, env }) {
       JSON.stringify(rest),
       scope.grade,
       scope.id,
-      scope.name
+      scope.name,
+      // assignment-spec.md §9.3: the calendar day this sitting belongs to, in
+      // the family's timezone. Stamped by the client and only stored here,
+      // never derived — SQLite has no IANA timezone database, so the Worker
+      // could not compute it even if §3 rule 3 let it (§9.2). A client that
+      // has never received a plan sends nothing and the column stays null,
+      // which reads as "before plans" and is backfilled on the phone (§9.6).
+      isLocalDate(localDate) ? localDate : null
     ).run();
 
     accepted.push(sessionId);
@@ -149,7 +156,63 @@ export async function onRequestPost({ request, env }) {
     createdAt: row.created_at,
   }));
 
-  return json({ accepted, commands });
+  // Which revision of the plan this device is holding (§12, plan_state), for
+  // the delivery status the Plan tab shows. Explicitly *not* an ack: a plan is
+  // idempotent desired-state, so nothing is gated on this row and a device
+  // that never reports self-heals on its next sync anyway (§6.1).
+  if (Number.isInteger(planRevision)) {
+    await env.DB.prepare(
+      `INSERT INTO plan_state (child_id, device_id, revision, seen_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(child_id, device_id) DO UPDATE SET
+         revision = excluded.revision,
+         seen_at = excluded.seen_at`
+    ).bind(childId, device.id, planRevision, now).run();
+  }
+
+  const plan = await currentPlan(env, device.family_id, childId);
+
+  return json({ accepted, commands, ...(plan ? { plan } : {}) });
+}
+
+// The plan document that rides down beside commands[] (§6.2). No new endpoint
+// and no ack: last-write-wins on a monotonic revision, which is what makes two
+// tablets racing harmless and a missed delivery self-healing.
+//
+// Returned only once the family has a timezone, because the document's whole
+// job on the tablet is to carry one (§9.5) — every app writes it to the shared
+// starplan-<slug> key and stamps local dates from it. Until then there is
+// nothing to deliver, and §9.6 makes "stamps nothing" the correct behaviour
+// rather than an outage.
+async function currentPlan(env, familyId, childId) {
+  const family = await env.DB.prepare(
+    'SELECT timezone, week_start FROM families WHERE id = ?'
+  ).bind(familyId).first();
+  if (!family || !family.timezone) return null;
+
+  // Empty until the Plan tab ships (§17 step 2). Revision 0 is deliberately
+  // below every revision /api/plan will ever allocate, so this placeholder can
+  // never overwrite a real plan on a device under §7.1's highest-revision-wins
+  // rule — the ordering holds without the client knowing which is which.
+  const row = await env.DB.prepare(
+    'SELECT revision, items FROM plans WHERE child_id = ?'
+  ).bind(childId).first();
+
+  return {
+    revision: row ? row.revision : 0,
+    timezone: family.timezone,
+    weekStart: family.week_start,
+    items: row ? (safeParse(row.items) || []) : [],
+  };
+}
+
+// A stamp the client computed. Validated for shape only — the server does not
+// know the family's zone well enough to second-guess the value, and a client
+// with a wrong clock is an accepted exposure (§9.7), not something to catch
+// here. What this does stop is a malformed string reaching a column that a
+// future aggregate will GROUP BY and compare as a plain string (§9.4).
+function isLocalDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 // Commands queued against another of this family's children that this same

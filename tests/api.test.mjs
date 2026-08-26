@@ -31,6 +31,9 @@ const DB = {
     return api;
   },
   async batch(stmts) { for (const s of stmts) await s.run(); },
+  // D1 has exec() for one-off DDL and the migration runner uses it. Like D1's,
+  // this takes a single statement.
+  async exec(sql) { db.exec(sql); return { count: 1 }; },
 };
 const env = { DB, SIGNUP_SECRET: 'test-secret' };
 
@@ -44,6 +47,14 @@ const post = (url, body, token) => ({
 });
 const get = (url, token) => ({
   request: new Request(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} }),
+  env,
+});
+const put = (url, body, token) => ({
+  request: new Request(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+    body: JSON.stringify(body),
+  }),
   env,
 });
 
@@ -413,5 +424,288 @@ let [, unboundPair] = await body(await pair.onRequestPost(post('http://x/api/pai
   code: unboundCode.code, deviceId: 'unbound-tablet', role: 'child', label: 'Unbound tablet',
 })));
 check('an unbound code pairs fine and carries no childId', !unboundPair.childId, unboundPair);
+
+
+// ================= Phase 5: timezone and local_date (assignment-spec §9) ====
+
+// The failure this catches is a fresh deployment that silently lacks something
+// the live one has. schema.sql is the only file a new database is built from,
+// and each schema-phaseN.sql is applied to the database that already exists —
+// so anything added to a migration and not folded back into schema.sql works
+// in production and is missing for everyone who deploys later. Nothing raises
+// an error; the two databases just diverge.
+console.log('\n[§12] every migration is folded into schema.sql');
+{
+  const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name));
+  const indexes = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map((r) => r.name));
+  const columnsOf = (t) => new Set(db.prepare(`PRAGMA table_info(${t})`).all().map((r) => r.name));
+
+  for (const phase of ['schema-phase3.sql', 'schema-phase4.sql', 'schema-phase5.sql']) {
+    const sql = readFileSync(REPO + phase, 'utf8').replace(/--[^\n]*/g, '');
+    for (const [, table] of sql.matchAll(/CREATE\s+TABLE\s+(\w+)/gi)) {
+      check(`${phase}: schema.sql also creates ${table}`, tables.has(table));
+    }
+    for (const [, table, column] of sql.matchAll(/ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)/gi)) {
+      check(`${phase}: schema.sql also has ${table}.${column}`, columnsOf(table).has(column));
+    }
+    for (const [, index] of sql.matchAll(/CREATE\s+INDEX\s+(\w+)/gi)) {
+      check(`${phase}: schema.sql also creates ${index}`, indexes.has(index));
+    }
+  }
+}
+
+console.log('\n[§9.3] the family timezone');
+const settings = await mod('family/settings.js');
+
+// A family created before Phase 5, or by a phone that could not resolve its
+// own zone. This is a supported state (§9.6), not an error.
+let [, tz0] = await body(await settings.onRequestGet(get('http://x/api/family/settings', parentToken)));
+check('a family with no zone reads back null, not a guess', tz0.timezone === null, tz0);
+check('week start defaults to Sunday', tz0.weekStart === 0, tz0);
+
+let [tzBad] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'Not/AZone' }, parentToken)));
+check('an unresolvable zone is rejected', tzBad === 400, tzBad);
+
+// §9.3 rules out a fixed offset explicitly: it is wrong for half the year in
+// any zone that observes DST, and stamping the wrong day is the exact failure
+// local_date exists to prevent.
+let [tzOffset] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: '+05:00' }, parentToken)));
+check('a fixed offset is not a timezone', tzOffset === 400, tzOffset);
+let [tzUtcOffset] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'UTC+5' }, parentToken)));
+check('nor is UTC+5', tzUtcOffset === 400, tzUtcOffset);
+
+let [wsBad] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { weekStart: 2 }, parentToken)));
+check('week start is Sunday or Monday and nothing else', wsBad === 400, wsBad);
+
+let [tzst, tzSaved] = await body(await settings.onRequestPut(put('http://x/api/family/settings', {
+  timezone: 'America/Chicago', weekStart: 1,
+}, parentToken)));
+check('a real zone saves', tzst === 200 && tzSaved.timezone === 'America/Chicago', tzSaved);
+check('and the week start with it', tzSaved.weekStart === 1, tzSaved);
+
+// Each field is optional, so the Devices screen can change one without
+// resending the other — and an older client cannot blank what it never showed.
+await settings.onRequestPut(put('http://x/api/family/settings', { weekStart: 0 }, parentToken));
+let [, tzKept] = await body(await settings.onRequestGet(get('http://x/api/family/settings', parentToken)));
+check('changing only the week start leaves the zone alone', tzKept.timezone === 'America/Chicago', tzKept);
+check('and the week start did change', tzKept.weekStart === 0, tzKept);
+
+console.log('\n[§9.3] only a parent token touches the family clock');
+let [tzChildGet] = await body(await settings.onRequestGet(get('http://x/api/family/settings', tabletToken)));
+check('a child token cannot read the settings (403)', tzChildGet === 403, tzChildGet);
+let [tzChildPut] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'UTC' }, tabletToken)));
+check('a child token cannot change them (403)', tzChildPut === 403, tzChildPut);
+
+// §6.5: the family comes from the token, so there is no id here to guess at.
+// The other family's parent changing their own zone must not touch ours.
+await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'Europe/Berlin' }, otherParent));
+let [, tzUnchanged] = await body(await settings.onRequestGet(get('http://x/api/family/settings', parentToken)));
+check("another family's setting does not reach ours", tzUnchanged.timezone === 'America/Chicago', tzUnchanged);
+
+console.log('\n[§6.2] the plan document rides down in the sync response');
+let [, planned] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+}, tabletToken)));
+check('the tablet is handed the family timezone', planned.plan && planned.plan.timezone === 'America/Chicago', planned.plan);
+check('and the week start', planned.plan.weekStart === 0, planned.plan);
+// Revision 0 is below every revision /api/plan will ever allocate, so this
+// placeholder can never overwrite a real plan under §7.1's highest-wins rule.
+check('revision 0 until the Plan tab ships', planned.plan.revision === 0, planned.plan);
+check('with no items yet', Array.isArray(planned.plan.items) && planned.plan.items.length === 0, planned.plan);
+
+console.log('\n[§9.6] a family with no zone is handed no plan at all');
+let [, unplanned] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: 'other-kid', childName: 'Ben', sessions: [], applied: [],
+}, otherTabletToken)));
+// Berlin was set on the other family two checks up, so clear it back out to
+// test the genuinely-unset case rather than a leftover.
+DB.prepare('UPDATE families SET timezone = NULL WHERE id = (SELECT family_id FROM devices WHERE id = ?)').bind('other-tablet').run();
+let [, unplanned2] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: 'other-kid', childName: 'Ben', sessions: [], applied: [],
+}, otherTabletToken)));
+check('a zoned family gets a plan', !!unplanned.plan, unplanned.plan);
+check('an unzoned one gets no plan field to write', unplanned2.plan === undefined, unplanned2);
+
+console.log('\n[§9.3] local_date is stored as the client stamped it');
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada',
+  sessions: [
+    // 02:30 UTC on the 12th is still the 11th in Chicago. The whole point of
+    // stamping on the client: this row must bucket to the day the child
+    // actually worked, and nothing server-side can work that out (§9.2).
+    { id: 7001, date: '2026-03-12T02:30:00.000Z', localDate: '2026-03-11', mode: 'practice', score: 8, total: 10, listName: 'Week 20', results: [] },
+    { id: 7002, date: '2026-03-12T18:00:00.000Z', mode: 'practice', score: 9, total: 10, listName: 'Week 20', results: [] },
+    { id: 7003, date: '2026-03-13T18:00:00.000Z', localDate: 'the 13th', mode: 'practice', score: 9, total: 10, listName: 'Week 20', results: [] },
+  ],
+  applied: [],
+}, tabletToken));
+
+const stamped = DB.prepare("SELECT session_id, local_date FROM sessions WHERE session_id IN ('7001','7002','7003') ORDER BY session_id");
+const stampedRows = Object.fromEntries((await stamped.bind().all()).results.map((r) => [r.session_id, r.local_date]));
+check('a stamped session keeps the day the child worked, not the UTC one', stampedRows['7001'] === '2026-03-11', stampedRows);
+check('a client that stamps nothing leaves null, not today', stampedRows['7002'] === null, stampedRows);
+check('a malformed stamp is stored as null rather than as itself', stampedRows['7003'] === null, stampedRows);
+
+// The column, never a payload key of the same name — the phone reads this to
+// decide which rows still need backfilling (§9.6).
+let [, withDates] = await body(await sessionsMod.onRequestGet(get(`http://x/api/sessions?childId=${CHILD}&app=spelling`, parentToken)));
+const s7001 = withDates.sessions.find((x) => x.id === '7001');
+const s7002 = withDates.sessions.find((x) => x.id === '7002');
+check('/api/sessions hands the stamp to the dashboard', s7001.localDate === '2026-03-11', s7001);
+check('and hands back null for a row that needs backfilling', s7002.localDate === null, s7002);
+
+console.log('\n[§12] plan_state records what a device holds, without acking it');
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [], planRevision: 4,
+}, tabletToken));
+let planStateRow = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-1').first();
+check('the reported revision is recorded', planStateRow && planStateRow.revision === 4, planStateRow);
+
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [], planRevision: 6,
+}, tabletToken));
+planStateRow = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-1').first();
+check('and replaced on the next sync rather than appended', planStateRow.revision === 6, planStateRow);
+
+// A Phase 1 client sends no planRevision at all, and must not be recorded as
+// holding revision 0 — "never reported" and "holds the empty plan" are
+// different rows in the delivery status the Plan tab shows.
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+}, tablet2Token));
+const silent = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-2').first();
+check('a client that reports nothing writes no row', silent === null, silent);
+
+
+// =============== The migration runner (functions/api/_lib/migrations.js) ====
+//
+// This is the surface that replaces "run wrangler from a terminal", so the
+// property that matters is convergence: whatever a database's history is, one
+// press of Apply has to leave it on the current schema. There are exactly two
+// histories in the wild — a live database built from an older schema.sql and
+// migrated by hand, and a fresh one built from today's schema.sql, which
+// already contains every migration's objects. Both start with an empty
+// d1_migrations table while the objects already exist, which is precisely the
+// case a naive runner gets wrong: it would try to CREATE TABLE over a live
+// table and stop.
+console.log('\n[migrations] a live database and a fresh one converge');
+{
+  const { applyPendingMigrations, migrationStatus } = await mod('_lib/migrations.js');
+
+  const current = readFileSync(REPO + 'schema.sql', 'utf8');
+
+  // The pre-Phase-5 database, built by undoing Phase 5 rather than by keeping
+  // a copy of the old schema.sql around. It is the exact inverse of the
+  // migration, in four statements, so it cannot rot as schema.sql moves on —
+  // and if someone adds to Phase 5 without adding the undo here, the
+  // convergence check below stops matching and says so.
+  const UNDO_PHASE_5 = [
+    'DROP TABLE plans',
+    'DROP TABLE plan_revisions',
+    'DROP TABLE plan_state',
+    'DROP INDEX idx_sessions_local_date',
+    'ALTER TABLE sessions DROP COLUMN local_date',
+    'ALTER TABLE families DROP COLUMN timezone',
+    'ALTER TABLE families DROP COLUMN week_start',
+  ];
+
+  // Comments are stripped from the fixture schema before it is created.
+  // SQLite re-parses a table's stored DDL after DROP COLUMN, and the prose
+  // inside these CREATE TABLE statements makes that reparse fail — a quirk of
+  // the undo above, not of anything the migrations themselves do. Reusing the
+  // runner's own splitter keeps the two in step.
+  const { splitStatements } = await mod('_lib/migrations.js');
+
+  function freshEnv(schemaSql, undo = []) {
+    const mem = new DatabaseSync(':memory:');
+    for (const statement of splitStatements(schemaSql)) mem.exec(statement);
+    for (const statement of undo) mem.exec(statement);
+    const shim = {
+      prepare(sql) {
+        const stmt = mem.prepare(sql);
+        let args = [];
+        const api = {
+          bind(...a) { args = normalize(a); return api; },
+          async first() { return stmt.get(...args) ?? null; },
+          async all() { return { results: stmt.all(...args) }; },
+          async run() { const r = stmt.run(...args); return { meta: { changes: Number(r.changes) } }; },
+        };
+        return api;
+      },
+      async batch(stmts) { for (const st of stmts) await st.run(); },
+      async exec(sql) { mem.exec(sql); return { count: 1 }; },
+    };
+    return { env: { DB: shim }, mem };
+  }
+
+  const shapeOf = (mem) => JSON.stringify({
+    tables: mem.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name != 'd1_migrations' ORDER BY name").all().map((r) => r.name),
+    families: mem.prepare('PRAGMA table_info(families)').all().map((r) => r.name).sort(),
+    sessions: mem.prepare('PRAGMA table_info(sessions)').all().map((r) => r.name).sort(),
+    indexes: mem.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name),
+  });
+
+  // 1. The live case: an older database that never had a migrations table.
+  const live = freshEnv(current, UNDO_PHASE_5);
+  check('the older fixture really is missing local_date',
+    !live.mem.prepare('PRAGMA table_info(sessions)').all().some((r) => r.name === 'local_date'));
+
+  let before = await migrationStatus(live.env);
+  check('all three read as pending on a database with no tracking table', before.pending === 3, before);
+
+  let result = await applyPendingMigrations(live.env);
+  check('the run completes without stopping', !result.failed, result.failed);
+  check('phase 5 did real work', result.ran.find((r) => r.name === 'schema-phase5.sql').changed > 0, result.ran);
+  // Phases 3 and 4 are already in this database, applied by hand long ago.
+  // They must be recognised as present rather than attempted and failed.
+  check('phase 3 is recognised as already present',
+    result.ran.find((r) => r.name === 'schema-phase3.sql').skipped > 0, result.ran);
+  check('phase 4 too', result.ran.find((r) => r.name === 'schema-phase4.sql').skipped > 0, result.ran);
+
+  // 2. The fresh case: today's schema.sql already contains everything.
+  const brandNew = freshEnv(current);
+  const freshResult = await applyPendingMigrations(brandNew.env);
+  check('a fresh database also runs clean', !freshResult.failed, freshResult.failed);
+  check('and finds every statement already present',
+    freshResult.ran.every((r) => r.changed === 0), freshResult.ran);
+
+  check('the two databases end on the same schema',
+    shapeOf(live.mem) === shapeOf(brandNew.mem), { live: shapeOf(live.mem), fresh: shapeOf(brandNew.mem) });
+
+  // 3. Pressing Apply twice is the thing a worried person will actually do.
+  const again = await applyPendingMigrations(live.env);
+  check('a second run does nothing at all', again.ran.length === 0, again.ran);
+  const after = await migrationStatus(live.env);
+  check('and everything reads as applied', after.pending === 0, after);
+  check('the schema is unchanged by the second run', shapeOf(live.mem) === shapeOf(brandNew.mem));
+
+  // 4. A genuinely broken migration must stop and say where — the whole point
+  //    of matching "already exists" narrowly rather than swallowing errors.
+  const broken = freshEnv(current);
+  const { MIGRATIONS } = await mod('_lib/migrations.js');
+  const saved = MIGRATIONS[MIGRATIONS.length - 1].sql;
+  MIGRATIONS[MIGRATIONS.length - 1].sql = 'SELECT this_is_not_valid_sql FROM nowhere;';
+  const failure = await applyPendingMigrations(broken.env);
+  check('a broken statement stops the run', !!failure.failed, failure);
+  check('and names the statement it stopped on',
+    failure.failed.statement.includes('this_is_not_valid_sql'), failure.failed);
+  const stuck = await migrationStatus(broken.env);
+  check('a migration that failed is not recorded as applied',
+    stuck.migrations.find((m) => m.name === failure.failed.name).applied === false, stuck);
+  MIGRATIONS[MIGRATIONS.length - 1].sql = saved;
+}
+
+console.log('\n[migrations] only a parent may look or apply');
+{
+  const migrationsApi = await mod('migrations.js');
+  let [mst, mbody] = await body(await migrationsApi.onRequestGet(get('http://x/api/migrations', parentToken)));
+  check('a parent reads the status', mst === 200 && Array.isArray(mbody.migrations), mbody);
+  let [mchild] = await body(await migrationsApi.onRequestGet(get('http://x/api/migrations', tabletToken)));
+  check('a child token cannot read it (403)', mchild === 403, mchild);
+  let [mchildPost] = await body(await migrationsApi.onRequestPost(post('http://x/api/migrations', {}, tabletToken)));
+  check('nor apply (403)', mchildPost === 403, mchildPost);
+  let [mAnon] = await body(await migrationsApi.onRequestGet(get('http://x/api/migrations')));
+  check('and an unauthenticated caller gets 401', mAnon === 401, mAnon);
+}
 
 process.exit(report('api') ? 1 : 0);

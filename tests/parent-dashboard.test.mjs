@@ -11,6 +11,22 @@ const iso = (msAgo) => new Date(now - msAgo).toISOString();
 
 const server = {
   children: [{ id: 'child-ada', name: 'Ada', created_at: now - 86400000 }],
+  // assignment-spec.md §9.3. Unset to begin with, which is the state every
+  // existing family is in the moment Phase 5 ships — the Devices card has to
+  // read correctly there, not only once a zone exists. None of the fixture
+  // sessions below carries a localDate either, for the same reason: they are
+  // exactly the rows the phone has to backfill (§9.6).
+  family: { timezone: null, weekStart: 0 },
+  // Two pending, so the banner and the card both have something to show. A
+  // real deployment is in exactly this state the moment new code lands.
+  migrations: {
+    migrations: [
+      { name: 'schema-phase3.sql', applied: true },
+      { name: 'schema-phase4.sql', applied: true },
+      { name: 'schema-phase5.sql', applied: false },
+    ],
+    pending: 1,
+  },
   sessions: {
     'child-ada:spelling': [
       { id: '1001', date: iso(7200000), deviceId: 'tablet-1', mode: 'pretest', score: 10, total: 10, listName: 'Week 11', results: [{ word: 'because', correct: true, attempts: 1 }] },
@@ -97,14 +113,36 @@ await page.route('**/api/**', async (route) => {
     if (path === '/child-state') return send({ snapshots: server.snapshots[url.searchParams.get('app')] || [] });
     if (path === '/commands') return send({ commands: server.commands[url.searchParams.get('app')] || [] });
     if (path === '/devices') return send({ devices: [] });
+    if (path === '/family/settings') return send(server.family);
+    if (path === '/migrations') return send(server.migrations);
     if (path === '/summary') {
       lastSummaryQuery = url.search;
       return send({ lists: server.summary[url.searchParams.get('app')] || [] });
     }
   }
+  if (req.method() === 'PUT') {
+    const b = JSON.parse(req.postData() || '{}');
+    posted.push({ path, body: b });
+    if (path === '/family/settings') {
+      // The server is the authority on what a valid zone is (§9.3); mirror
+      // just enough of that here for the rejection path to be exercised.
+      if (b.timezone && !b.timezone.includes('/')) {
+        return route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"timezone must be an IANA zone name"}' });
+      }
+      server.family = { timezone: b.timezone ?? server.family.timezone, weekStart: b.weekStart ?? server.family.weekStart };
+      return send(server.family);
+    }
+  }
   if (req.method() === 'POST') {
     const b = JSON.parse(req.postData() || '{}');
     posted.push({ path, body: b });
+    if (path === '/migrations') {
+      server.migrations = {
+        migrations: server.migrations.migrations.map((m) => ({ ...m, applied: true })),
+        pending: 0,
+      };
+      return send({ ran: [{ name: 'schema-phase5.sql', changed: 7, skipped: 0 }], ...server.migrations });
+    }
     if (path === '/commands') {
       const id = 'new-' + posted.length;
       server.commands[b.app].unshift({ id, childId: 'child-ada', kind: b.kind, payload: b.payload, createdAt: Date.now(), canceled: false, ackCount: 0, firstAppliedAt: null });
@@ -342,6 +380,84 @@ await page.click('tr:has-text("A Parent Book") button:has-text("Delete")');
 await page.waitForTimeout(500);
 cmd = posted.filter((p) => p.path === '/commands').pop();
 check('delete-book posted with the overlay key', cmd.body.kind === 'delete-book' && cmd.body.payload.key === 'p-existing1', cmd.body);
+
+// A pending migration is invisible until a tablet fails to sync, and §3 rule 1
+// makes that failure silent for the child. So the app has to be the thing that
+// notices — a parent should never have to think to go and look.
+console.log('\n[migrations] the parent app raises a banner and applies');
+await page.click('#navDashboard');
+await page.waitForTimeout(600);
+let dashText = await page.textContent('#app');
+check('a pending migration raises a banner on the dashboard', dashText.includes('pending'), dashText.slice(0, 300));
+
+await page.click('#navDevices');
+await page.waitForTimeout(500);
+let devText = await page.textContent('#app');
+check('the Database card lists every migration', devText.includes('schema-phase5.sql'));
+check('and says how many are pending', devText.includes('1 pending of 3'), devText.slice(0, 400));
+check('it points at the no-JS fallback for when this page will not load',
+  devText.includes('/admin/migrations'));
+
+await page.click('button:has-text("Apply pending migrations")');
+await page.waitForTimeout(600);
+const applyPost = posted.filter((p) => p.path === '/migrations').pop();
+check('Apply posts to /api/migrations', !!applyPost, posted.map((p) => p.path));
+devText = await page.textContent('#app');
+check('the result says what actually ran', devText.includes('schema-phase5.sql (7 run'), devText.slice(0, 400));
+check('and nothing is pending afterwards', devText.includes('0 pending of 3'), devText.slice(0, 400));
+
+await page.click('#navDashboard');
+await page.waitForTimeout(600);
+dashText = await page.textContent('#app');
+check('the banner is gone once nothing is pending', !dashText.includes('migrations are pending'), dashText.slice(0, 300));
+
+// ---- assignment-spec.md §9.3, §9.4 -----------------------------------------
+console.log('\n[Devices — the family clock]');
+await page.click('#navDevices');
+await page.waitForTimeout(500);
+let devicesText = await page.textContent('#app');
+check('the School week card is on the Devices screen', devicesText.includes('School week'));
+check('a family with no zone is told what it costs', devicesText.includes('No timezone set yet'), devicesText.slice(0, 200));
+check('the field is prefilled with this phone\'s zone rather than left blank',
+  !!(await page.inputValue('#tzIn')), await page.inputValue('#tzIn'));
+
+// A zone that does not resolve must not be stored: every tablet would then
+// stamp nothing, silently, and no target would ever count (§9.3).
+await page.fill('#tzIn', 'Chicago');
+await page.click('button:has-text("Save")');
+await page.waitForTimeout(300);
+check('a rejected zone surfaces the server\'s reason', (await page.textContent('#familySettingsNote')).includes('IANA'),
+  await page.textContent('#familySettingsNote'));
+
+await page.fill('#tzIn', 'America/Chicago');
+await page.selectOption('#weekStartIn', '1');
+await page.click('button:has-text("Save")');
+await page.waitForTimeout(300);
+const tzPut = posted.filter((p) => p.path === '/family/settings').pop();
+check('saving PUTs the zone and the week start together',
+  tzPut.body.timezone === 'America/Chicago' && tzPut.body.weekStart === 1, tzPut.body);
+check('and says so', (await page.textContent('#familySettingsNote')).includes('Saved'));
+
+// §9.6: rows the tablets stamped before they knew the zone are filled in here,
+// because applying an IANA zone to an instant is something the phone can do
+// and D1 cannot (§9.2). A silent failure here would leave every pre-Phase-5
+// session unbucketed and every weekly target undercounting.
+console.log('\n[§9.6] the dashboard backfills a missing local date');
+await page.click('#navDashboard');
+await page.waitForTimeout(700);
+const backfilled = await page.evaluate(() => {
+  const key = Object.keys(state.sessionsByKey).find((k) => state.sessionsByKey[k].length);
+  const rows = state.sessionsByKey[key] || [];
+  return { zone: state.family.timezone, sample: rows.map((r) => ({ date: r.date, localDate: r.localDate })).slice(0, 3) };
+});
+check('the family zone reached the dashboard', backfilled.zone === 'America/Chicago', backfilled);
+check('every loaded session now has a local date',
+  backfilled.sample.length > 0 && backfilled.sample.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.localDate)), backfilled);
+check('and it is the day in the family zone, not the UTC one',
+  backfilled.sample.every((r) => {
+    const inZone = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date(r.date));
+    return r.localDate === inZone;
+  }), backfilled);
 
 console.log('\n[General]');
 check('no page errors anywhere', errors.length === 0, errors);
