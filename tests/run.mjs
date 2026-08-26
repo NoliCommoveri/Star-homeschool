@@ -2,10 +2,10 @@
 //
 //   npm test
 //
-// api.test.mjs needs nothing but Node. The three browser suites need
-// Playwright and a Chromium; if either is missing they are reported as
-// skipped rather than failed, so `npm test` still does something useful on a
-// machine that has not set the browser up.
+// api.test.mjs and shared-code.test.mjs need nothing but Node. The browser
+// suites need Playwright and a Chromium; if either is missing they are
+// reported as skipped rather than failed, so `npm test` still does something
+// useful on a machine that has not set the browser up.
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 
 const SUITES = [
   { file: 'api.test.mjs', browser: false },
+  { file: 'shared-code.test.mjs', browser: false },
   { file: 'child-apps.test.mjs', browser: true },
   { file: 'practice-sets.test.mjs', browser: true },
   { file: 'spot-the-spelling.test.mjs', browser: true },

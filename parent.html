@@ -216,6 +216,11 @@ const state = {
   // into every child_state row, per §15.4's size argument) and the book
   // currently being added/edited, or null when the list view is showing.
   readingCatalog: null, readingEditor: null,
+  // assignment-spec.md §9.3: the family's time policy, fetched once and reused.
+  // The dashboard buckets a child's week in the FAMILY's zone, not this
+  // phone's — a parent reading it from a different timezone should see their
+  // child's week, not their own (§9.5).
+  family: { timezone: null, weekStart: 0 },
 };
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
@@ -266,6 +271,50 @@ function fmtDateTime(iso) {
   if (isNaN(d)) return '—';
   return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+// assignment-spec.md §9.3. Byte-identical to the copy in the three child apps;
+// 'en-CA' formats as YYYY-MM-DD. Returns null for an unusable zone rather than
+// throwing, so a bad family setting degrades to "unbucketed" instead of taking
+// the dashboard down.
+function localDate(instant, tz) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(instant); }
+  catch { return null; }
+}
+
+// §9.6: fill in local_date for rows a client stamped before it knew the family
+// zone — every row recorded before Phase 5, and any recorded on a tablet that
+// has not yet received a plan.
+//
+// This runs on the phone because it is the only place it can: applying an IANA
+// zone to an instant needs a timezone database, which JavaScript has and
+// SQLite does not (§9.2). The dashboard already downloads 90 days of sessions,
+// so backfilling the window it displays is free. Rows outside that window stay
+// null, which reads as "before plans" — permanently correct, since no target
+// has ever applied to a session recorded before this shipped.
+function backfillLocalDates(sessions) {
+  const tz = state.family.timezone;
+  if (!tz) return sessions;
+  for (const s of sessions) {
+    if (s.localDate) continue;
+    const at = Date.parse(s.date);
+    if (!Number.isFinite(at)) continue;
+    s.localDate = localDate(new Date(at), tz);
+  }
+  return sessions;
+}
+
+// Cheap and idempotent, so every view that needs it can just call it. A family
+// with no zone set is a supported state, not an error — the Plan tab is where
+// that gets asked about, because a "3 per day" target is the first thing that
+// actually needs an answer (§12).
+async function ensureFamilySettings() {
+  if (state.family.timezone) return state.family;
+  try {
+    const settings = await api('/family/settings');
+    state.family = { timezone: settings.timezone || null, weekStart: settings.weekStart ?? 0 };
+  } catch { /* leave it unset; nothing in this phase is blocked by it */ }
+  return state.family;
+}
+
 function pct(score, total) {
   if (!total) return null;
   return Math.round((score / total) * 100);
@@ -315,7 +364,15 @@ function renderSetup() {
       const deviceId = crypto.randomUUID();
       const data = await api('/family', {
         method: 'POST', auth: false,
-        body: { signupSecret: document.getElementById('secretIn').value, deviceId, label: document.getElementById('createLabelIn').value.trim() || undefined },
+        body: {
+          signupSecret: document.getElementById('secretIn').value, deviceId,
+          label: document.getElementById('createLabelIn').value.trim() || undefined,
+          // §9.3: this is the one moment a parent is certain to be holding a
+          // device that knows the family's zone, so it is set here rather than
+          // left for someone to find on a settings screen. Editable afterwards
+          // in Devices.
+          timezone: resolvedTimezone(),
+        },
       });
       saveSync({ token: data.token, familyId: data.familyId, deviceId, role: 'parent' });
       state.sync = loadSync();
@@ -339,6 +396,14 @@ function renderSetup() {
       renderShell(); showView('dashboard');
     } catch (err) { errEl.textContent = err.message; }
   });
+}
+
+// What this phone thinks its zone is. Wrapped because resolvedOptions() has
+// been known to return undefined in older embedded webviews, and a family
+// created without a zone is a supported state (§9.6) — not a reason to fail.
+function resolvedTimezone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; }
+  catch { return undefined; }
 }
 
 function signOut() {
@@ -413,7 +478,7 @@ async function renderDashboard() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const { children: synced } = await api('/children');
+    const [{ children: synced }] = await Promise.all([api('/children'), ensureFamilySettings()]);
     const children = mergeChildren(synced);
     state.children = children;
 
@@ -443,7 +508,7 @@ async function renderDashboard() {
           }
         }
         sessions.sort((x, y) => Date.parse(x.date) - Date.parse(y.date));
-        state.sessionsByKey[child.id + ':' + a.id] = sessions;
+        state.sessionsByKey[child.id + ':' + a.id] = backfillLocalDates(sessions);
         cells.push({ child, app: a, sessions });
       }
     }
@@ -1417,7 +1482,9 @@ async function renderDevices() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const [{ devices }, { children: synced }] = await Promise.all([api('/devices'), api('/children')]);
+    const [{ devices }, { children: synced }] = await Promise.all([
+      api('/devices'), api('/children'), ensureFamilySettings(),
+    ]);
     const children = mergeChildren(synced);
     const rows = devices.map((d) => {
       const isSelf = d.id === state.sync.deviceId;
@@ -1467,10 +1534,78 @@ async function renderDevices() {
           <thead><tr><th>Label</th><th>Role</th><th>Last active</th><th>Status</th><th></th></tr></thead>
           <tbody>${rows || '<tr><td colspan="5" class="muted">No devices yet.</td></tr>'}</tbody>
         </table>
-      </div>`;
+      </div>
+      ${familySettingsCardHtml()}`;
     onChildSelectChange();
   } catch (err) {
     app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+// assignment-spec.md §9.3, §9.4. One family, one school day — a family that
+// genuinely spans zones still gets one answer, which is the correct answer for
+// a homeschool plan.
+//
+// A free-text field rather than a picker: the IANA list is ~400 entries, the
+// phone already knows the right one, and "Use this phone's" covers the case
+// that actually happens. A typo is rejected by the server rather than stored,
+// because a zone that does not resolve would silently stop every tablet
+// stamping (§9.3).
+function familySettingsCardHtml() {
+  const tz = state.family.timezone;
+  const here = resolvedTimezone();
+  const mismatch = tz && here && tz !== here;
+  return `
+    <div class="card">
+      <h2>School week</h2>
+      <p class="muted">Which timezone a school day is counted in, and which day a week starts on.
+      Every child's history is bucketed by these, on every device.</p>
+      ${tz ? '' : '<p class="error">No timezone set yet. Until one is, tablets record the exact time of a sitting but not which day it belongs to.</p>'}
+      <div class="row">
+        <div class="col">
+          <label for="tzIn">Timezone</label>
+          <input type="text" id="tzIn" placeholder="e.g. America/Chicago" value="${esc(tz || here || '')}">
+          ${here ? `<button class="link" type="button" onclick="useThisPhonesTimezone()">Use this phone's (${esc(here)})</button>` : ''}
+          ${mismatch ? `<p class="muted">This phone is in ${esc(here)}. The family's week is counted in ${esc(tz)} — leave it unless the family has actually moved.</p>` : ''}
+        </div>
+        <div class="col">
+          <label for="weekStartIn">A week starts on</label>
+          <select id="weekStartIn">
+            <option value="0"${state.family.weekStart === 1 ? '' : ' selected'}>Sunday</option>
+            <option value="1"${state.family.weekStart === 1 ? ' selected' : ''}>Monday</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="saveFamilySettings()">Save</button>
+      <div id="familySettingsNote"></div>
+    </div>`;
+}
+
+// Reads the zone at click time rather than interpolating it into the handler:
+// a value baked into an inline onclick is a value inside a JS string inside an
+// HTML attribute, and getting the two layers of escaping right is not worth
+// doing for something the browser can just hand us again.
+function useThisPhonesTimezone() {
+  const here = resolvedTimezone();
+  if (here) document.getElementById('tzIn').value = here;
+}
+
+async function saveFamilySettings() {
+  const note = document.getElementById('familySettingsNote');
+  note.innerHTML = '';
+  const timezone = document.getElementById('tzIn').value.trim();
+  const weekStart = Number(document.getElementById('weekStartIn').value);
+  if (!timezone) { note.innerHTML = '<p class="error">Enter a timezone.</p>'; return; }
+  try {
+    const saved = await api('/family/settings', { method: 'PUT', body: { timezone, weekStart } });
+    state.family = { timezone: saved.timezone || null, weekStart: saved.weekStart ?? 0 };
+    // Every already-loaded session was bucketed against the old zone, so the
+    // cache is now wrong rather than merely stale. Dropping it is one line;
+    // re-deriving each bucket in place is not.
+    state.sessionsByKey = {};
+    note.innerHTML = '<p class="muted">Saved. Tablets pick this up on their next sync.</p>';
+  } catch (err) {
+    note.innerHTML = `<p class="error">${esc(err.message)}</p>`;
   }
 }
 

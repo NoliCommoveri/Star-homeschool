@@ -17,6 +17,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 | Suite | Needs | Covers |
 |---|---|---|
 | `api.test.mjs` | Node only | Every `functions/api/*` handler against a real SQLite database |
+| `shared-code.test.mjs` | Node only | The functions that exist in more than one copy, checked for drift |
 | `child-apps.test.mjs` | Chromium | Spelling Star and Math Star in a browser |
 | `practice-sets.test.mjs` | Chromium | Spelling Star practice sets, per-list tests, list order |
 | `spot-the-spelling.test.mjs` | Chromium | Spelling Star's distractors: plausibility, the child's own errors, curation, and every curated column in `wordlists/` |
@@ -67,6 +68,13 @@ the app keeps working and quietly does the wrong thing:
 - **Old profiles keep opening.** Every app's `load()` migrates tolerantly;
   there are checks that a pre-grade profile opens, is not silently graded, and
   is not rewritten just by being read.
+- **A hand-duplicated function drifting between its copies.** §3 rule 5 lets a
+  few functions be pasted across the app files rather than factored into a
+  module, because the apps are standalone HTML with no build step. The cost is
+  that fixing one copy and not the others is completely invisible: nothing
+  throws, no screen breaks, and the apps simply start disagreeing — one tablet
+  stamping a session's day differently from the next. `shared-code.test.mjs`
+  compares the copies byte for byte and names the line that diverged.
 - **Missing Letters blanks the letters this child gets wrong.** That is the
   only thing the game does that Spot the Spelling cannot, and it is invisible
   when it stops: if `pickBlanks()` quietly stops diffing the child's recorded

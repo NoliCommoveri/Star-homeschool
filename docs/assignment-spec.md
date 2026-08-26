@@ -1,14 +1,19 @@
 # Assignment and Targets — Specification
 
-Status: **Design only. Not built.** This is the plan for making "assigned"
-mean something with a quantity and a deadline attached, and for spanning the
-apps rather than living inside one.
+Status: **Step 1 of §17 is built. Steps 2–6 are still design.** This is the
+plan for making "assigned" mean something with a quantity and a deadline
+attached, and for spanning the apps rather than living inside one.
 
-Target files (when built): a new `today.html` (the kid-facing hub), a new
-`schema-phase5.sql`, additive changes inside `functions/api/*`, `parent.html`,
-and the three synced apps. Nothing changes in `geography-star.html` or
-`logic-star.html` in this phase, and no existing behavior changes when a
-family has no plan.
+What has landed: `schema-phase5.sql`, `families.timezone` / `week_start`,
+`sessions.local_date`, `GET`/`PUT /api/family/settings`, the plan document
+riding down in `/api/sync`'s response, the shared `starplan-<slug>` key in the
+three synced apps, the local-date stamp, and the phone-side backfill. Nothing a
+parent or child sees has changed except one new card on the Devices screen.
+
+Still to build: a new `today.html` (the kid-facing hub), `functions/api/plan.js`,
+the Plan tab in `parent.html`, and the evaluator. Nothing changes in
+`geography-star.html` or `logic-star.html` in this phase, and no existing
+behavior changes when a family has no plan.
 
 Read `docs/parent-sync-spec.md` first. Section references of the form §15.2
 are to that document unless they say otherwise.
@@ -667,18 +672,21 @@ invariant: both handlers resolve `family_id` from the bearer token, and a
 
 ## 13. What each file changes
 
-| File | Change |
-|---|---|
-| `schema-phase5.sql`, `schema.sql` | §12 |
-| `functions/api/plan.js` | New. `GET` / `PUT` |
-| `functions/api/sync.js` | Store `local_date`; upsert `plan_state`; return `plan` |
-| `functions/api/family.js` | Accept `timezone` and `weekStart` at creation |
-| `parent.html` | Plan tab; `MODES` gains `countsAsWork`; the evaluator; family timezone setting |
-| `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7); stamp `localDate` on new sessions; show their own items on the home screen; report `planRevision` |
-| `today.html` | New (§8) |
-| `index.html` | A link to it |
-| `sw.js` | `CACHE_VERSION` bump; cache `today.html` |
-| `tests/` | Plan API in `api.test.mjs`; a `today.html` suite; the §10.3 drift test |
+| File | Change | |
+|---|---|---|
+| `schema-phase5.sql`, `schema.sql` | §12 | ✅ |
+| `functions/api/family/settings.js` | New. `GET` / `PUT` — the family clock | ✅ |
+| `functions/api/sync.js` | Store `local_date`; upsert `plan_state`; return `plan` | ✅ |
+| `functions/api/sessions.js` | Return `local_date`, so the phone knows what to backfill | ✅ |
+| `functions/api/family.js` | Accept `timezone` and `weekStart` at creation | ✅ |
+| `sw.js` | `CACHE_VERSION` bump | ✅ |
+| `functions/api/plan.js` | New. `GET` / `PUT` | |
+| `parent.html` | Family timezone setting ✅; Plan tab, `MODES` gains `countsAsWork`, the evaluator | partly |
+| `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7) ✅; stamp `localDate` ✅; report `planRevision` ✅; show their own items on the home screen | partly |
+| `today.html` | New (§8) | |
+| `index.html` | A link to it | |
+| `sw.js` | Cache `today.html` | |
+| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API; a `today.html` suite | partly |
 
 Untouched: `geography-star.html`, `logic-star.html`.
 
@@ -769,9 +777,29 @@ encryption work that has not landed yet.
 
 Each step is useful on its own and shippable without the next.
 
-1. **Timezone and `local_date`** (§9, §12). The migration, the family
-   timezone setting, the stamp in three apps, the client-side backfill.
+1. **Timezone and `local_date`** (§9, §12). ✅ **Built.** The migration, the
+   family timezone setting, the stamp in three apps, the client-side backfill.
    Nothing visible changes; everything after this depends on it.
+
+   One thing moved forward from step 4 while building it, because the order
+   above could not be followed as written: §9.5 makes the tablet's timezone
+   come *from the plan document*, so "the stamp in three apps" cannot work
+   until the document is being delivered. Step 1 therefore ships the delivery
+   pipe — `/api/sync` returns `plan`, and the three apps write it verbatim to
+   the shared key under §7.1 — with `items` always empty and `revision` always
+   `0`. Step 3 needs the same thing anyway (§9.5 gives `today.html` the same
+   source), so the pipe was going to precede step 4 regardless.
+
+   Revision `0` is deliberately below every revision `PUT /api/plan` will
+   allocate, so the placeholder can never overwrite a real plan under §7.1's
+   highest-revision-wins rule. What is left for step 4 is rendering items and
+   nothing else.
+
+   Two smaller things also landed here rather than later, because they are
+   edits to handlers this step already touches: `plan_state` is written from
+   the client's reported `planRevision` (§12 assigns it to `sync.js`), and
+   `/api/sessions` returns `local_date` so the phone can tell which rows still
+   need backfilling.
 2. **Plan model and the Plan tab** (§4, §6, §11), parent-side only. Progress
    computed from sessions already downloaded. No tablet changes at all — which
    is the point: you find out whether these are the right targets before a

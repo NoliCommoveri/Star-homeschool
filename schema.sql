@@ -5,7 +5,13 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE families (
   id          TEXT PRIMARY KEY,      -- 128-bit random hex; never derived (§6.5)
-  created_at  INTEGER NOT NULL
+  created_at  INTEGER NOT NULL,
+  -- assignment-spec.md §9.3, §9.4. One family, one school day: the IANA zone
+  -- every local date is stamped in, and which weekday a week bucket starts on
+  -- (0 = Sunday, matching data.schedule's indexing). Nullable because a family
+  -- created before Phase 5 has no zone until a parent phone sets one.
+  timezone    TEXT,
+  week_start  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE devices (
@@ -58,9 +64,15 @@ CREATE TABLE sessions (
   grade       TEXT,                  -- school grade when the session happened
   scope_id    TEXT,                  -- list id (spelling) / focus area id (math) / book id (reading)
   scope_name  TEXT,                  -- its label, frozen at write time
+  -- The calendar day this sitting belongs to, YYYY-MM-DD in the family
+  -- timezone, stamped by the client (assignment-spec.md §9.3). Same reasoning
+  -- as the columns above, only stronger: a Worker cannot derive a local day at
+  -- all, because SQLite has no IANA timezone database (§9.2).
+  local_date  TEXT,
   PRIMARY KEY (child_id, app, device_id, session_id)
 );
 CREATE INDEX idx_sessions_child_app ON sessions(child_id, app, occurred_at);
+CREATE INDEX idx_sessions_local_date ON sessions(child_id, app, local_date);
 
 -- ---------------------------------------------------------------------------
 -- Phase 3 (§15): parent -> child. Also in schema-phase3.sql as a standalone
@@ -102,4 +114,48 @@ CREATE TABLE child_state (
   updated_at  INTEGER NOT NULL,
   state       TEXT NOT NULL,         -- JSON
   PRIMARY KEY (child_id, app, device_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- Phase 5 (docs/assignment-spec.md §12): the plan document. Also in
+-- schema-phase5.sql as a standalone migration, for a database that was already
+-- created from the tables above. The timezone and local_date columns folded
+-- into families and sessions above belong to this phase too.
+-- ---------------------------------------------------------------------------
+
+-- The current plan for one child, as a document. Parent-owned state: an
+-- instruction, not a record, which is why it may live server-side without
+-- inverting the one-way rule (§3).
+CREATE TABLE plans (
+  child_id    TEXT PRIMARY KEY REFERENCES children(id),
+  family_id   TEXT NOT NULL REFERENCES families(id),
+  revision    INTEGER NOT NULL,
+  items       TEXT NOT NULL,        -- JSON, §4
+  updated_at  INTEGER NOT NULL,
+  updated_by  TEXT NOT NULL REFERENCES devices(id)
+);
+
+-- Every version, so a past period evaluates against the plan that was in force
+-- (§6.3). Progress is recomputed from history rather than stored, so without
+-- this, editing the plan on Thursday would silently rewrite what Monday's
+-- targets were.
+CREATE TABLE plan_revisions (
+  child_id       TEXT NOT NULL REFERENCES children(id),
+  revision       INTEGER NOT NULL,
+  items          TEXT NOT NULL,
+  effective_from TEXT NOT NULL,     -- local date, YYYY-MM-DD (§9)
+  created_at     INTEGER NOT NULL,
+  created_by     TEXT NOT NULL REFERENCES devices(id),
+  PRIMARY KEY (child_id, revision)
+);
+
+-- Which revision each device holds, for the delivery status in §11. Not an
+-- ack: a plan is idempotent desired-state (§6.1), so a device that misses a
+-- delivery self-heals on its next sync with no bookkeeping.
+CREATE TABLE plan_state (
+  child_id    TEXT NOT NULL REFERENCES children(id),
+  device_id   TEXT NOT NULL REFERENCES devices(id),
+  revision    INTEGER NOT NULL,
+  seen_at     INTEGER NOT NULL,
+  PRIMARY KEY (child_id, device_id)
 );

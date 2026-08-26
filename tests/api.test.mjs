@@ -46,6 +46,14 @@ const get = (url, token) => ({
   request: new Request(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} }),
   env,
 });
+const put = (url, body, token) => ({
+  request: new Request(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+    body: JSON.stringify(body),
+  }),
+  env,
+});
 
 const mod = (p) => import(REPO + 'functions/api/' + p);
 const body = async (res) => [res.status, await res.json()];
@@ -413,5 +421,156 @@ let [, unboundPair] = await body(await pair.onRequestPost(post('http://x/api/pai
   code: unboundCode.code, deviceId: 'unbound-tablet', role: 'child', label: 'Unbound tablet',
 })));
 check('an unbound code pairs fine and carries no childId', !unboundPair.childId, unboundPair);
+
+
+// ================= Phase 5: timezone and local_date (assignment-spec §9) ====
+
+// The failure this catches is a fresh deployment that silently lacks something
+// the live one has. schema.sql is the only file a new database is built from,
+// and each schema-phaseN.sql is applied to the database that already exists —
+// so anything added to a migration and not folded back into schema.sql works
+// in production and is missing for everyone who deploys later. Nothing raises
+// an error; the two databases just diverge.
+console.log('\n[§12] every migration is folded into schema.sql');
+{
+  const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name));
+  const indexes = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map((r) => r.name));
+  const columnsOf = (t) => new Set(db.prepare(`PRAGMA table_info(${t})`).all().map((r) => r.name));
+
+  for (const phase of ['schema-phase3.sql', 'schema-phase4.sql', 'schema-phase5.sql']) {
+    const sql = readFileSync(REPO + phase, 'utf8').replace(/--[^\n]*/g, '');
+    for (const [, table] of sql.matchAll(/CREATE\s+TABLE\s+(\w+)/gi)) {
+      check(`${phase}: schema.sql also creates ${table}`, tables.has(table));
+    }
+    for (const [, table, column] of sql.matchAll(/ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)/gi)) {
+      check(`${phase}: schema.sql also has ${table}.${column}`, columnsOf(table).has(column));
+    }
+    for (const [, index] of sql.matchAll(/CREATE\s+INDEX\s+(\w+)/gi)) {
+      check(`${phase}: schema.sql also creates ${index}`, indexes.has(index));
+    }
+  }
+}
+
+console.log('\n[§9.3] the family timezone');
+const settings = await mod('family/settings.js');
+
+// A family created before Phase 5, or by a phone that could not resolve its
+// own zone. This is a supported state (§9.6), not an error.
+let [, tz0] = await body(await settings.onRequestGet(get('http://x/api/family/settings', parentToken)));
+check('a family with no zone reads back null, not a guess', tz0.timezone === null, tz0);
+check('week start defaults to Sunday', tz0.weekStart === 0, tz0);
+
+let [tzBad] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'Not/AZone' }, parentToken)));
+check('an unresolvable zone is rejected', tzBad === 400, tzBad);
+
+// §9.3 rules out a fixed offset explicitly: it is wrong for half the year in
+// any zone that observes DST, and stamping the wrong day is the exact failure
+// local_date exists to prevent.
+let [tzOffset] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: '+05:00' }, parentToken)));
+check('a fixed offset is not a timezone', tzOffset === 400, tzOffset);
+let [tzUtcOffset] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'UTC+5' }, parentToken)));
+check('nor is UTC+5', tzUtcOffset === 400, tzUtcOffset);
+
+let [wsBad] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { weekStart: 2 }, parentToken)));
+check('week start is Sunday or Monday and nothing else', wsBad === 400, wsBad);
+
+let [tzst, tzSaved] = await body(await settings.onRequestPut(put('http://x/api/family/settings', {
+  timezone: 'America/Chicago', weekStart: 1,
+}, parentToken)));
+check('a real zone saves', tzst === 200 && tzSaved.timezone === 'America/Chicago', tzSaved);
+check('and the week start with it', tzSaved.weekStart === 1, tzSaved);
+
+// Each field is optional, so the Devices screen can change one without
+// resending the other — and an older client cannot blank what it never showed.
+await settings.onRequestPut(put('http://x/api/family/settings', { weekStart: 0 }, parentToken));
+let [, tzKept] = await body(await settings.onRequestGet(get('http://x/api/family/settings', parentToken)));
+check('changing only the week start leaves the zone alone', tzKept.timezone === 'America/Chicago', tzKept);
+check('and the week start did change', tzKept.weekStart === 0, tzKept);
+
+console.log('\n[§9.3] only a parent token touches the family clock');
+let [tzChildGet] = await body(await settings.onRequestGet(get('http://x/api/family/settings', tabletToken)));
+check('a child token cannot read the settings (403)', tzChildGet === 403, tzChildGet);
+let [tzChildPut] = await body(await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'UTC' }, tabletToken)));
+check('a child token cannot change them (403)', tzChildPut === 403, tzChildPut);
+
+// §6.5: the family comes from the token, so there is no id here to guess at.
+// The other family's parent changing their own zone must not touch ours.
+await settings.onRequestPut(put('http://x/api/family/settings', { timezone: 'Europe/Berlin' }, otherParent));
+let [, tzUnchanged] = await body(await settings.onRequestGet(get('http://x/api/family/settings', parentToken)));
+check("another family's setting does not reach ours", tzUnchanged.timezone === 'America/Chicago', tzUnchanged);
+
+console.log('\n[§6.2] the plan document rides down in the sync response');
+let [, planned] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+}, tabletToken)));
+check('the tablet is handed the family timezone', planned.plan && planned.plan.timezone === 'America/Chicago', planned.plan);
+check('and the week start', planned.plan.weekStart === 0, planned.plan);
+// Revision 0 is below every revision /api/plan will ever allocate, so this
+// placeholder can never overwrite a real plan under §7.1's highest-wins rule.
+check('revision 0 until the Plan tab ships', planned.plan.revision === 0, planned.plan);
+check('with no items yet', Array.isArray(planned.plan.items) && planned.plan.items.length === 0, planned.plan);
+
+console.log('\n[§9.6] a family with no zone is handed no plan at all');
+let [, unplanned] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: 'other-kid', childName: 'Ben', sessions: [], applied: [],
+}, otherTabletToken)));
+// Berlin was set on the other family two checks up, so clear it back out to
+// test the genuinely-unset case rather than a leftover.
+DB.prepare('UPDATE families SET timezone = NULL WHERE id = (SELECT family_id FROM devices WHERE id = ?)').bind('other-tablet').run();
+let [, unplanned2] = await body(await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: 'other-kid', childName: 'Ben', sessions: [], applied: [],
+}, otherTabletToken)));
+check('a zoned family gets a plan', !!unplanned.plan, unplanned.plan);
+check('an unzoned one gets no plan field to write', unplanned2.plan === undefined, unplanned2);
+
+console.log('\n[§9.3] local_date is stored as the client stamped it');
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada',
+  sessions: [
+    // 02:30 UTC on the 12th is still the 11th in Chicago. The whole point of
+    // stamping on the client: this row must bucket to the day the child
+    // actually worked, and nothing server-side can work that out (§9.2).
+    { id: 7001, date: '2026-03-12T02:30:00.000Z', localDate: '2026-03-11', mode: 'practice', score: 8, total: 10, listName: 'Week 20', results: [] },
+    { id: 7002, date: '2026-03-12T18:00:00.000Z', mode: 'practice', score: 9, total: 10, listName: 'Week 20', results: [] },
+    { id: 7003, date: '2026-03-13T18:00:00.000Z', localDate: 'the 13th', mode: 'practice', score: 9, total: 10, listName: 'Week 20', results: [] },
+  ],
+  applied: [],
+}, tabletToken));
+
+const stamped = DB.prepare("SELECT session_id, local_date FROM sessions WHERE session_id IN ('7001','7002','7003') ORDER BY session_id");
+const stampedRows = Object.fromEntries((await stamped.bind().all()).results.map((r) => [r.session_id, r.local_date]));
+check('a stamped session keeps the day the child worked, not the UTC one', stampedRows['7001'] === '2026-03-11', stampedRows);
+check('a client that stamps nothing leaves null, not today', stampedRows['7002'] === null, stampedRows);
+check('a malformed stamp is stored as null rather than as itself', stampedRows['7003'] === null, stampedRows);
+
+// The column, never a payload key of the same name — the phone reads this to
+// decide which rows still need backfilling (§9.6).
+let [, withDates] = await body(await sessionsMod.onRequestGet(get(`http://x/api/sessions?childId=${CHILD}&app=spelling`, parentToken)));
+const s7001 = withDates.sessions.find((x) => x.id === '7001');
+const s7002 = withDates.sessions.find((x) => x.id === '7002');
+check('/api/sessions hands the stamp to the dashboard', s7001.localDate === '2026-03-11', s7001);
+check('and hands back null for a row that needs backfilling', s7002.localDate === null, s7002);
+
+console.log('\n[§12] plan_state records what a device holds, without acking it');
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [], planRevision: 4,
+}, tabletToken));
+let planStateRow = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-1').first();
+check('the reported revision is recorded', planStateRow && planStateRow.revision === 4, planStateRow);
+
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [], planRevision: 6,
+}, tabletToken));
+planStateRow = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-1').first();
+check('and replaced on the next sync rather than appended', planStateRow.revision === 6, planStateRow);
+
+// A Phase 1 client sends no planRevision at all, and must not be recorded as
+// holding revision 0 — "never reported" and "holds the empty plan" are
+// different rows in the delivery status the Plan tab shows.
+await sync.onRequestPost(post('http://x/api/sync', {
+  app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+}, tablet2Token));
+const silent = await DB.prepare('SELECT revision FROM plan_state WHERE child_id = ? AND device_id = ?').bind(CHILD, 'tablet-2').first();
+check('a client that reports nothing writes no row', silent === null, silent);
 
 process.exit(report('api') ? 1 : 0);

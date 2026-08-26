@@ -531,6 +531,127 @@ function readingSyncProfile() {
   await t.close();
 }
 
+// ---- The plan document and local dates (assignment-spec.md §7, §9) ---------
+//
+// The tablet half of Phase 5. Two things break silently if this regresses:
+// an app that writes only its own slice of the plan destroys the other apps'
+// items (§7.1 rule 3), and an app that stops stamping leaves every session
+// unbucketed — in both cases nothing throws, no screen changes, and the child
+// never sees a thing.
+{
+  // A profile with one session the server has never acked, so there is
+  // something for the stamp to ride up on.
+  const profile = spellingProfile();
+  profile.sync.ackedIds = [1001, 1002];
+  profile.sessions[2].date = '2026-03-12T02:30:00.000Z'; // still the 11th in Chicago
+
+  const t = await run({
+    file: 'spelling-star-v6_3.html', key: 'spellingstar-ada', profile, label: 'Spelling Star — the plan document',
+    responses: [{
+      accepted: [], commands: [],
+      plan: {
+        revision: 3, timezone: 'America/Chicago', weekStart: 0,
+        items: [
+          { id: 'wk-spell-practice', label: 'Spelling practice', match: { app: 'spelling', modes: ['practice'] }, count: 3, period: 'week' },
+          { id: 'wk-read-quiz', label: 'Reading quiz', match: { app: 'reading', modes: ['quiz'] }, count: 1, period: 'week' },
+        ],
+      },
+    }, { accepted: [], commands: [] }],
+  });
+
+  const planOnDevice = async () => JSON.parse(await t.page.evaluate(() => localStorage.getItem('starplan-ada')));
+  let stored = await planOnDevice();
+  check('the plan is written to the shared key, not a per-app one', !!stored, stored);
+  check('the family timezone came with it', stored.timezone === 'America/Chicago', stored);
+
+  // §7.1 rule 3, and the reason the key is shared at all: Spelling Star is the
+  // delivery mechanism for Reading Star's items. An app that filtered the
+  // document to its own would destroy them the moment it synced first — and
+  // Reading Star, which may have sync switched off entirely, would never know.
+  check('another app\'s items are stored verbatim, not filtered out',
+    stored.items.length === 2 && stored.items.some((i) => i.match.app === 'reading'), stored.items);
+
+  // The whole point of §9.3: 02:30 UTC on the 12th is the 11th in Chicago, and
+  // only a client can work that out.
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  const pushed = t.syncBodies[t.syncBodies.length - 1];
+  const stamped = pushed.sessions.find((x) => x.id === 1003);
+  check('the unacked session goes up stamped', !!stamped && stamped.localDate === '2026-03-11', stamped);
+  check('and the device reports which revision it holds', pushed.planRevision === 3, pushed.planRevision);
+
+  // §7.1 rule 1. Two apps receiving the same plan write once between them, and
+  // a stale response arriving late never rolls a device backwards.
+  await t.page.evaluate(() => planStore({ revision: 2, timezone: 'Europe/Berlin', weekStart: 1, items: [] }));
+  stored = await planOnDevice();
+  check('a lower revision does not overwrite a higher one', stored.timezone === 'America/Chicago', stored);
+  await t.page.evaluate(() => planStore({ revision: 4, timezone: 'America/Denver', weekStart: 1, items: [] }));
+  stored = await planOnDevice();
+  check('a higher revision does', stored.timezone === 'America/Denver' && stored.revision === 4, stored);
+
+  // §7.1 rule 4: the server is the authority and this key is only a cache, so
+  // a corrupted value is replaced rather than repaired — and reading it must
+  // not throw on the way past.
+  await t.page.evaluate(() => localStorage.setItem('starplan-ada', 'not json at all'));
+  check('a malformed plan reads as nothing rather than throwing',
+    await t.page.evaluate(() => planRead()) === null);
+  await t.page.evaluate(() => planStore({ revision: 1, timezone: 'America/Chicago', weekStart: 0, items: [] }));
+  stored = await planOnDevice();
+  check('and is overwritten, not repaired', stored.revision === 1, stored);
+
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
+// §9.6: a tablet that has never received a plan does not know the family zone,
+// so it stamps nothing. That is the correct behaviour and not an outage — the
+// phone backfills what it displays. A client that guessed the device's own
+// zone here would write a wrong day that no later backfill could detect.
+{
+  const t = await run({
+    file: 'math-star-v6_1.html', key: 'mathstar-ada', profile: (() => {
+      const p = mathProfile(); p.sync.ackedIds = []; return p;
+    })(), label: 'Math Star — no plan, no stamp',
+    responses: [{ accepted: [], commands: [] }],
+  });
+  const first = t.syncBodies[0];
+  check('sessions still go up', first.sessions.length === 1, first.sessions.length);
+  check('but carry no local date', first.sessions[0].localDate === undefined, first.sessions[0]);
+  check('and no plan revision is claimed', first.planRevision === undefined, first.planRevision);
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
+// Reading Star shares the key with the other two (§7). Its history is
+// data.events rather than data.sessions, which is exactly the kind of
+// difference that makes a pasted-in block drift.
+{
+  const readingPlan = {
+    revision: 5, timezone: 'America/Chicago', weekStart: 0,
+    items: [{ id: 'wk-read', label: 'Reading', match: { app: 'reading', modes: ['log-session'] }, count: 4, period: 'week' }],
+  };
+  const t = await run({
+    file: 'reading-star-v1.html', key: 'readingstar-ada', label: 'Reading Star — the plan document',
+    profile: (() => {
+      const p = readingSyncProfile();
+      // One unacked event, so the stamp has something to ride up on.
+      p.events = [{ id: 'e1', date: '2026-03-12T02:30:00.000Z', mode: 'log-session', bookId: 'book-1', bookTitle: 'A Horse Called Wonder', childGrade: '4', genre: [], score: null, total: null }];
+      return p;
+    })(),
+    responses: [{ accepted: [], commands: [], plan: readingPlan }, { accepted: [], commands: [] }],
+  });
+  const stored = JSON.parse(await t.page.evaluate(() => localStorage.getItem('starplan-ada')));
+  check('Reading Star writes the same shared key', !!stored && stored.revision === 5, stored);
+  await t.page.evaluate(() => syncPush());
+  await t.page.waitForTimeout(400);
+  const pushed = t.syncBodies[t.syncBodies.length - 1];
+  const anyEvent = (pushed.sessions || [])[0];
+  check('its events are stamped like the other apps\' sessions are',
+    !!anyEvent && anyEvent.localDate === '2026-03-11', anyEvent);
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
 await browser.close();
 await server.close();
 process.exit(report('child-apps') ? 1 : 0);
