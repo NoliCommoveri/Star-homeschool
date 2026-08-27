@@ -1,7 +1,7 @@
 # Assignment and Targets — Specification
 
-Status: **Steps 1 and 2 of §17 are built. Steps 3–6 are still design.** This is
-the plan for making "assigned" mean something with a quantity and a deadline
+Status: **Steps 1, 2 and 3 of §17 are built. Steps 4–6 are still design.** This
+is the plan for making "assigned" mean something with a quantity and a deadline
 attached, and for spanning the apps rather than living inside one.
 
 What has landed in step 1: `schema-phase5.sql`, `families.timezone` /
@@ -15,10 +15,14 @@ across all of them, and watch them fill in. No tablet changes at all — which i
 the point of the ordering: you find out whether these are the right targets
 before a child ever sees one.
 
-Still to build: a new `today.html` (the kid-facing hub), the apps showing their
-own items on their home screens, and dated assignments in the editor. Nothing
-changes in `geography-star.html` or `logic-star.html` in this phase, and no
-existing behavior changes when a family has no plan.
+What has landed in step 3: `today.html`, the kid-facing hub — a pure reader
+over the five apps' localStorage, with the five adapters, the shared evaluator
+in its second copy, and the launcher link.
+
+Still to build: the apps showing their own items on their home screens, and
+dated assignments in the editor. Nothing changes in `geography-star.html` or
+`logic-star.html` in this phase, and no existing behavior changes when a family
+has no plan.
 
 Read `docs/parent-sync-spec.md` first. Section references of the form §15.2
 are to that document unless they say otherwise.
@@ -554,7 +558,8 @@ device — so it deduplicates on session id alone.
 
 The evaluator will be the fourth, fifth and sixth copy of a hand-duplicated
 function, after the sync module. Add a suite that extracts the function body
-from each file and asserts they are byte-identical. Drift between copies of an
+from each file and asserts they are byte-identical. `parent.html` and
+`today.html` are compared today; the three apps join at step 4. Drift between copies of an
 evaluator is exactly the silent-wrongness the existing suites were written to
 catch (`tests/README.md`, "Why these tests exist") — the app keeps working and
 quietly counts differently.
@@ -688,10 +693,10 @@ invariant: both handlers resolve `family_id` from the bearer token, and a
 | `functions/api/plan.js` | New. `GET` / `PUT` | ✅ |
 | `parent.html` | Family timezone setting ✅; Plan tab ✅; the evaluator ✅; `MODES` promoted to the registry, with tone deciding what counts ✅ | ✅ |
 | `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7) ✅; stamp `localDate` ✅; report `planRevision` ✅; show their own items on the home screen | partly |
-| `today.html` | New (§8) | |
-| `index.html` | A link to it | |
-| `sw.js` | Cache `today.html` | |
-| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API ✅; Plan tab ✅; a `today.html` suite | partly |
+| `today.html` | New (§8) | ✅ |
+| `index.html` | A link to it | ✅ |
+| `sw.js` | Cache `today.html` | ✅ |
+| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API ✅; Plan tab ✅; the `today.html` suite ✅ (`today-hub.test.mjs`) | ✅ |
 
 Untouched: `geography-star.html`, `logic-star.html`.
 
@@ -739,6 +744,16 @@ the editor, §8.7's context line gains a denominator, and nothing else moves.
 - **The hub sees one device.** A child working on two tablets sees a low count
   on each; the dashboard shows the true total. Worth a line of copy on the
   hub rather than a mechanism.
+- **A cross-app target counts differently on the hub than on the phone**, until
+  §14 lands. An item with no `app` sweeps up whatever the surface can see, and
+  the hub can see Geography and Logic sittings that never reach the server. So
+  "20 sittings a week" reads higher on the tablet than on the dashboard for a
+  child who does geography. Both numbers are honestly computed by the same
+  evaluator from the same rules — §3's guarantee is about the rules, not about
+  the two surfaces holding the same rows, which §8.7 and the risk above already
+  say they do not. Left as it is rather than teaching the hub to ignore work a
+  child really did: §14 closes it by making those rows reach the phone, which is
+  the right direction to close it from.
 - **Reading Star backdating.** A kid can log a session with a past `dateISO`,
   so a closed week's target can be satisfied after the fact. Probably correct
   behavior — the reading did happen — but it means a period is never truly
@@ -856,8 +871,41 @@ Each step is useful on its own and shippable without the next.
    in `parent.html`, marked as shared source and depending on nothing outside
    itself but `localDate`. It joins the §10.3 drift test when step 3 lands its
    second copy; there is only one copy to guard today.
-3. **`today.html`** (§8). Reader-only, five adapters. Works against local
-   history before any plan exists, so it is useful the day it ships.
+3. **`today.html`** (§8). ✅ **Built.** Reader-only, five adapters. Works
+   against local history before any plan exists, so it is useful the day it
+   ships.
+
+   Four things are worth recording, because each departs from what §8 says on
+   the page.
+
+   **§8.7's context line generalized to every app without a target.** §8 asks
+   for it for Geography and Logic, which cannot be targeted yet (§14). But this
+   step also has to be useful before any plan exists at all, and those are the
+   same line: "also this week: 3 Geography rounds, 2 Logic puzzles" and "this
+   week so far: 3 Spelling sittings, 2 Math sittings" differ only in which apps
+   have a denominator. One rule — an app with no target on this child's plan is
+   tallied plainly — covers both, and covers the no-plan case, where it is the
+   whole page. An app with a target does not appear in it twice.
+
+   **Cross-app items render last, not first.** `parent.html` puts them first,
+   where they read as the frame the per-app ones sit inside. Here each per-app
+   card is a door into that app, and the frame is not something a child can act
+   on, so it goes underneath.
+
+   **The adapters namespace the session id with the app id.** The evaluator
+   dedupes on `(deviceId, id)` and the hub has no `deviceId` (§10.2), so the key
+   collapses to the id alone — and Spelling, Math, Geography and Logic all mint
+   ids from `Date.now()`. Two apps *can* therefore land on one id, rarely, and
+   the failure is that a cross-app target quietly undercounts. The namespace
+   goes in the adapter rather than as a branch inside shared source, which is
+   the only way the evaluator stays byte-identical.
+
+   **The drift test's extractor changed to start brace-counting at the marker's
+   own brace**, rather than searching forward for the next `{`. `evaluateItem`
+   destructures its third parameter, and searching forward finds
+   `{ timezone, weekStart, now }` and ends the region three lines in — silently,
+   because a short region still compares equal to itself. The `through` marker
+   already ends with the real opening brace, so it is used directly.
 4. **Delivery** (§6.2, §7). The sync response carries `plan`; the three apps
    write the shared key and show their own items. The hub gains denominators.
 5. **Dated assignments** (§4.3) and delivery status (§11), reusing the queue

@@ -24,6 +24,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 | `missing-letters.test.mjs` | Chromium | Spelling Star's Missing Letters game and the slot board under it: where the blanks land, and that a game stays ungraded |
 | `parent-dashboard.test.mjs` | Chromium | `parent.html` against a mocked API |
 | `setup-wizard.test.mjs` | Chromium | First launch, and opening a profile saved by an older version |
+| `today-hub.test.mjs` | Chromium | `today.html`: that it stays a pure reader, and that the five adapters count what the phone counts |
 
 **`api.test.mjs` has no dependencies at all.** It loads `schema.sql` into an
 in-memory `node:sqlite` database, wraps it in a D1-shaped shim, and imports

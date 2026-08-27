@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Today — Star Apps</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="theme-color" content="#2A5D9F">
+<style>
+  :root {
+    --bg: #FDF6EC; --text: #2A3A50; --card: #FFFFFF; --card-shadow: rgba(42,58,80,.10);
+    --accent: #2A5D9F; --accent-soft: #E3EDF9; --green: #2E8B57; --green-soft: #DCEBDD;
+    --gold: #E8A013; --gold-soft: #FBEBC8; --muted: #6B7686; --eyebrow: #B0763A;
+    --body-text: #4A5568; --line: #EDE4D3; --soft: #EFE7DA;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: 'Lexend', 'Trebuchet MS', 'Comic Sans MS', sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 40px 20px 60px; }
+  .eyebrow {
+    font-size: 13px; font-weight: 600; color: var(--eyebrow); letter-spacing: .12em;
+    text-transform: uppercase; text-align: center; margin-bottom: 10px;
+  }
+  h1 { margin: 0 0 8px; font-size: 34px; font-weight: 800; text-align: center; }
+  .sub {
+    text-align: center; color: var(--body-text); font-size: 16px; max-width: 480px;
+    margin: 0 auto 32px; line-height: 1.5;
+  }
+  .card {
+    background: var(--card); border-radius: 20px; padding: 20px 22px; margin-bottom: 18px;
+    box-shadow: 0 2px 10px var(--card-shadow); border: 1px solid var(--line);
+  }
+  .card-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+  .icon {
+    flex: none; width: 44px; height: 44px; border-radius: 12px; display: flex;
+    align-items: center; justify-content: center; font-size: 22px; background: var(--accent-soft);
+  }
+  .icon.spelling, .icon.reading { background: var(--gold-soft); }
+  .icon.geography { background: var(--green-soft); }
+  .card-head h2 { margin: 0; font-size: 19px; font-weight: 800; }
+  .card-head a {
+    margin-left: auto; color: var(--accent); font-weight: 600; text-decoration: none;
+    font-size: 14px; white-space: nowrap;
+  }
+  .card-head a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .item { padding: 14px 0; border-top: 1px solid var(--line); }
+  .item:first-of-type { border-top: 0; }
+  .item-head { display: flex; align-items: baseline; gap: 10px; }
+  .item-head strong { font-size: 16px; }
+  .count { margin-left: auto; font-size: 15px; font-weight: 700; white-space: nowrap; }
+  .bar { height: 10px; border-radius: 6px; background: var(--soft); overflow: hidden; margin: 10px 0 6px; }
+  .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+  .bar.met > span { background: var(--green); }
+  .foot { display: flex; gap: 10px; font-size: 13px; color: var(--muted); }
+  .foot .right { margin-left: auto; }
+  .done { color: var(--green); font-weight: 700; }
+  .muted { color: var(--muted); }
+  .picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .picker label { font-weight: 600; }
+  select, button.link {
+    font: inherit; font-size: 15px; padding: 8px 10px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: inherit;
+  }
+  button.link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 8px 0; }
+  footer { text-align: center; margin-top: 36px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="wrap" id="app"></div>
+<script>
+// today.html — the kid's hub. docs/assignment-spec.md §8.
+//
+// It answers one question, "what do I owe today?", across every app, and it
+// answers it as a PURE READER (§8.1): no network request, no device token, no
+// write to any app's data. Everything it needs is already in localStorage on
+// this device, because all five apps are static files on one origin and every
+// profile key is <prefix>-<childSlug> (§2.2).
+//
+// That invariant is the whole safety argument for a page with no PIN on it. It
+// cannot corrupt a profile, cannot double-count a session, cannot leak a token,
+// and cannot fail in a way a child would notice. It writes exactly one key of
+// its own — starhub-lastchild, the remembered profile choice — and nothing else.
+//
+// It also never blocks (§8.2). Every button in every app stays exactly as live
+// as it is today: the hub shows what is done and what is left, and a child who
+// wants a fourth practice is not stopped. data.schedule remains the only thing
+// that gates, and it stays a tablet-side parent setting — schedule is what is
+// available today, the plan is what is owed this week.
+
+// ---------- The five apps (§2.2) ----------
+// One row per app: where its profiles live, where its history lives, and where
+// to send a child who wants to go and do the work.
+const APPS = [
+  { id: 'spelling',  label: 'Spelling Star',  prefix: 'spellingstar-', href: './spelling-star-v6_3.html', icon: '⭐' },
+  { id: 'math',      label: 'Math Star',      prefix: 'mathstar-',     href: './math-star-v6_1.html',     icon: '🔢' },
+  { id: 'reading',   label: 'Reading Star',   prefix: 'readingstar-',  href: './reading-star-v1.html',    icon: '📖' },
+  { id: 'geography', label: 'Geography Star', prefix: 'geostar-',      href: './geography-star.html',     icon: '🌍' },
+  { id: 'logic',     label: 'Logic Star',     prefix: 'logicstar-',    href: './logic-star.html',         icon: '🧩' },
+];
+
+const LAST_CHILD_KEY = 'starhub-lastchild';
+
+// Byte-identical to the copy in all five apps (§2.2). The slug is what makes
+// one child one child across five separate profile records, so it cannot be
+// re-derived a slightly different way here.
+function childSlug(name) {
+  const s = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return s || 'child';
+}
+
+function readJson(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
+}
+
+// §8.4: the union of profile names across all five prefixes, deduplicated by
+// slug. A child who exists in Spelling and Geography is one entry, and the
+// display name comes from whichever app has one — they are the same name in
+// practice, and the slug already proved it.
+//
+// A corrupted or half-written profile is skipped rather than surfaced. The apps
+// themselves report damage, with a PIN and a repair path; a page that can only
+// read has nothing to offer a child about it but alarm.
+function listChildren() {
+  const bySlug = new Map();
+  for (const app of APPS) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(app.prefix)) continue;
+      const profile = readJson(key);
+      // §8.5: named fields only, never a spread — a profile object holds `pin`.
+      const name = profile && typeof profile.childName === 'string' ? profile.childName : null;
+      if (!name) continue;
+      const slug = childSlug(name);
+      if (!bySlug.has(slug)) bySlug.set(slug, { slug, name, apps: {} });
+      bySlug.get(slug).apps[app.id] = key;
+    }
+  }
+  return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// §7: the whole plan document for this child, written by whichever synced app
+// last received it. The hub never writes this key — rule 2 of §7.1 — and it
+// reads the whole document rather than any app's slice of it, because filtering
+// happens at read time and only at read time.
+function readPlan(child) {
+  const plan = readJson('starplan-' + child.slug);
+  if (!plan || typeof plan !== 'object') return null;
+  return plan;
+}
+
+// §9.5: the hub's timezone comes from the plan document, and falls back to the
+// device's own zone. The fallback is what makes the page useful before any plan
+// exists — a tablet that has never synced still knows what day it is, and every
+// count on this page is of sessions from this one device anyway.
+function planContext(plan) {
+  const fromPlan = plan && typeof plan.timezone === 'string' && plan.timezone;
+  let device = null;
+  try { device = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { device = null; }
+  return {
+    timezone: fromPlan || device || 'UTC',
+    weekStart: plan && plan.weekStart === 1 ? 1 : 0,
+    now: Date.now(),
+  };
+}
+
+// §9.3. 'en-CA' formats as YYYY-MM-DD. Hand-duplicated from parent.html and the
+// three synced apps under §3 rule 5, and pinned by tests/shared-code.test.mjs:
+// 'en-US' here would silently produce "3/11/2026", which no bucket would match.
+function localDate(instant, tz) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(instant); }
+  catch { return null; }
+}
+
+// ---------- The five adapters (§8.6) ----------
+// Each normalizes one app's history into { id, at, localDate, app, mode,
+// scopeId } — the shape evaluateItem() expects. Two rules hold across all five:
+//
+// §8.5, and it is very easy to violate by accident: pull named fields. A
+// profile object holds `pin`, and one object spread in here would put it in
+// reach of a template.
+//
+// The `id` is namespaced with the app id. Spelling, Math, Geography and Logic
+// all mint an id from Date.now(), so two apps CAN collide on one — vanishingly
+// rarely, but the failure is that a cross-app target quietly undercounts, which
+// is exactly the silent kind. The evaluator dedupes on (deviceId, id) and the
+// hub has no deviceId (§10.2), so the namespace goes here, in the adapter,
+// rather than as a branch inside shared source.
+function adaptSessions(appId, profile, tz) {
+  const rows = [];
+  const push = (rawId, dateValue, mode, scopeId) => {
+    const at = typeof dateValue === 'number' ? dateValue : Date.parse(dateValue);
+    if (!Number.isFinite(at)) return;
+    rows.push({
+      id: appId + ':' + rawId,
+      at,
+      localDate: localDate(new Date(at), tz),
+      app: appId,
+      mode,
+      scopeId: scopeId || null,
+    });
+  };
+
+  if (appId === 'spelling' || appId === 'math') {
+    for (const s of (profile && profile.sessions) || []) {
+      if (!s) continue;
+      push(s.id, s.date, s.mode, appId === 'spelling' ? s.listId : s.focusId);
+    }
+  } else if (appId === 'reading') {
+    // §8.6: the flat events array, never the nested copies in books[]. A nested
+    // copy shares its event's id, so reading both would double-count every
+    // sitting — or, with the dedupe, silently depend on it.
+    for (const e of (profile && profile.events) || []) {
+      if (!e) continue;
+      push(e.id, e.date, e.mode, e.bookId);
+    }
+  } else if (appId === 'geography' || appId === 'logic') {
+    // Nine Geography modes and four Logic ones collapse to one countable unit
+    // each (§5). Their entries carry no id at all, so `date` — epoch ms — is
+    // the only identity they have, which is enough to count on one device and
+    // is one of the gaps §14 has to close before those apps can sync.
+    const mode = appId === 'geography' ? 'round' : 'puzzle';
+    for (const s of (profile && profile.sessionLog) || []) {
+      if (!s) continue;
+      push(s.date, s.date, mode, null);
+    }
+  }
+  return rows;
+}
+
+// Every session this child has on this device, across all five apps, in the one
+// shape the evaluator reads. A cross-app target counts sittings from all of
+// them at once (§4), so they arrive as one flat list.
+function sessionsFor(child, tz) {
+  const out = [];
+  for (const app of APPS) {
+    const key = child.apps[app.id];
+    if (!key) continue;
+    out.push(...adaptSessions(app.id, readJson(key), tz));
+  }
+  return out;
+}
+
+// ---------- The mode registry and evaluator (docs/assignment-spec.md §5, §10) ----------
+// Everything from here to the end of evaluateItem() is shared source, copied
+// byte-for-byte into today.html, and into the three synced apps when §17 step 4
+// lands. tests/shared-code.test.mjs compares the copies, the way it already
+// compares the plan document block.
+//
+// Drift here is the silent-wrongness the suites exist to catch: nothing throws
+// and no screen breaks, the phone and the tablet simply start counting the
+// same week differently and neither can be shown to be the wrong one.
+//
+// It depends on exactly one thing outside itself — localDate(instant, tz),
+// which is already hand-duplicated across parent.html and the three apps under
+// the same rule. Nothing else from any host file may be referenced here, or the
+// block stops being copyable, which is the only property that makes it safe.
+//
+// What kind of sitting a session was. A pretest, a test and a practice all
+// arrive as a row with a score, and "2 sessions, averaging 100%" flattened
+// them into something a parent can't read: the diagnostic before the list and
+// the test after it look identical to two practice runs. Labels and ordering
+// follow the child apps' own screens (Spelling Star's Pretest / Test /
+// Practice, Math Star's Drill / Practice) so the dashboard names a session the
+// same way the child saw it.
+//
+// §5 promotes this from a badge-labelling table to the registry both sides
+// evaluate against, which is why `tone` now decides what counts as work and
+// not just what colour a badge is.
+const MODES = {
+  spelling: {
+    pretest:  { label: 'Pretest',  tone: 'diagnostic' },
+    test:     { label: 'Test',     tone: 'graded' },
+    practice: { label: 'Practice', tone: 'practice' },
+    repeat:   { label: 'Repeat',   tone: 'practice' },
+    spotit:   { label: 'Spot it',  tone: 'play' },
+    missing:  { label: 'Missing Letters', tone: 'play' },
+  },
+  math: {
+    drill:    { label: 'Drill',    tone: 'graded' },
+    practice: { label: 'Practice', tone: 'practice' },
+  },
+  // reading-star-spec.md §6: quiz is the graded sitting, the same way Test is
+  // for Spelling and Drill is for Math. `log-session` is the sitting that
+  // actually is reading, so it reads as practice.
+  //
+  // The other three are `lifecycle` (assignment-spec.md §5): Reading Star
+  // writes a session row when a book is *started*, and again when it is
+  // finished or abandoned. Those are transitions of a book, not sittings at
+  // one — counting them would make "5 reading sessions a week" satisfiable by
+  // opening five books and reading none of them.
+  reading: {
+    start:        { label: 'Started',        tone: 'lifecycle' },
+    'log-session':{ label: 'Reading session', tone: 'practice' },
+    finish:       { label: 'Finished',       tone: 'lifecycle' },
+    abandon:      { label: 'Quit',           tone: 'lifecycle' },
+    quiz:         { label: 'Quiz',           tone: 'graded' },
+  },
+  // §5, §14. Neither app syncs yet, so nothing here is reachable from the
+  // dashboard or the Plan tab's editor — the phone cannot verify a session it
+  // never receives, which is why §11 keeps them out of the editor. They are
+  // written down now so that the model that ships is already the model those
+  // apps slot into, rather than one that has to be reshaped to admit them:
+  // when §14 lands, an app id becomes selectable and nothing else moves.
+  //
+  // Nine Geography modes and four Logic ones collapse to one countable unit
+  // each. A round is a round; whether it was capitals or rivers is a question
+  // the dashboard answers, not one a target should have to.
+  geography: {
+    round:  { label: 'Round',  tone: 'practice' },
+  },
+  logic: {
+    puzzle: { label: 'Puzzle', tone: 'practice' },
+  },
+};
+
+// Unknown modes still render — a future app screen shows its raw mode rather
+// than vanishing from the dashboard.
+function modeInfo(appId, mode) {
+  return (MODES[appId] || {})[mode] || { label: mode || 'Session', tone: 'play' };
+}
+
+// assignment-spec.md §5. Two rules rather than an enumeration, because an
+// enumeration goes stale: Spelling Star shipped `spotit`, then `missing`, and
+// docs/spelling-star-games.md is a backlog of more. Each arrives as a mode with
+// tone 'play' and should land in the plan already knowing it is not homework,
+// without anyone remembering to come back here.
+//
+// A parent who wants to encourage games can still target one by naming its
+// mode explicitly — this governs only what a broad match sweeps up.
+const UNCOUNTED_TONES = ['play', 'lifecycle'];
+
+// An unrecognized mode falls to modeInfo's 'play' default and therefore does
+// not count, which is the direction worth failing in: a target that undercounts
+// shows "2 of 3" for a child who did three, and a parent goes and looks. One
+// that overcounts shows "3 of 3" for a child who did two, and nobody does.
+function countsAsWork(appId, mode) {
+  return !UNCOUNTED_TONES.includes(modeInfo(appId, mode).tone);
+}
+
+// Date arithmetic on a YYYY-MM-DD string, with no timezone involved anywhere.
+// That is the whole payoff of §9.3 stamping local_date at write time: once a
+// session carries the calendar day it belongs to, every bucket downstream is
+// string comparison and day counting, and the IANA database is needed exactly
+// once — to ask what today is.
+//
+// The arithmetic goes through UTC deliberately. A local Date would put these
+// on a clock that has 23- and 25-hour days, and "seven days after" would
+// occasionally land on the wrong one.
+function shiftDate(date, days) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  return new Date(at + days * 86400000).toISOString().slice(0, 10);
+}
+function daysBetween(from, to) {
+  const a = Date.parse(from + 'T00:00:00Z');
+  const b = Date.parse(to + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
+
+// §9.4: the most recent weekStart weekday on or before this date. 0 = Sunday,
+// matching data.schedule's existing indexing, so a family that has set its week
+// to start on Monday gets the same answer from both.
+function weekBucketStart(date, weekStart) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  const shift = (new Date(at).getUTCDay() - (weekStart === 1 ? 1 : 0) + 7) % 7;
+  return shiftDate(date, -shift);
+}
+
+// The local-date window an item is being counted over right now, plus whether
+// that window has closed. §4.3's three period kinds, and nothing else: there is
+// deliberately no Mon–Fri "schoolweek", because whether a week includes
+// Saturday is a question about the family's week and weekStart answers it.
+//
+// `closed` can only ever be true for a dated period. A day or a week bucket is
+// derived from today and therefore always contains it — which is what §10.4
+// needs: mid-period neither surface renders a judgment, so a target that has
+// not closed has no verdict to show, only a count and the days left.
+function periodWindow(item, { timezone, weekStart, now }) {
+  const today = localDate(new Date(now), timezone);
+  if (!today) return null;
+
+  const period = item && item.period;
+  if (period === 'day') return { from: today, to: today, closed: false };
+  if (period === 'week') {
+    const from = weekBucketStart(today, weekStart);
+    return { from, to: shiftDate(from, 6), closed: false };
+  }
+  if (period && typeof period === 'object' && period.from && period.to) {
+    return { from: period.from, to: period.to, closed: today > period.to };
+  }
+  return null;
+}
+
+// §10.2. One pure function, evaluated identically on the phone, on the hub and
+// in the apps, so no client ever has to report "I have done 2 of 3" — both
+// sides count the same sessions with the same rules and arrive at the same
+// number on their own. There is no progress field to get out of sync.
+//
+// `sessions` are normalized to { at, localDate, app, mode, scopeId, deviceId,
+// id }. `now` is a parameter rather than Date.now() so a past period is
+// answerable retroactively (§10.1) — which is the point of plan revisions
+// carrying an effective date.
+function evaluateItem(item, sessions, { timezone, weekStart, now }) {
+  const window = periodWindow(item, { timezone, weekStart, now });
+  const count = (item && item.count) || 0;
+  if (!window) return { done: 0, count, met: false, from: null, to: null, closed: false, daysLeft: 0 };
+
+  const match = (item && item.match) || {};
+
+  // Deduplicated on (deviceId, sessionId) before counting, which is not
+  // optional: a merged child holds the same sitting under more than one childId
+  // (§6.2), and an app re-pushes its history when it adopts the shared one.
+  // /api/summary carries an inner DISTINCT for exactly this reason. Without it
+  // a re-push inflates every count and a child appears to have met a target
+  // they did not.
+  //
+  // today.html has no deviceId — everything it reads is by definition from the
+  // one device — so the key collapses to the session id there, on its own. That
+  // is the same line of code doing the right thing in both places rather than a
+  // branch, which is what lets this stay byte-identical.
+  const seen = new Set();
+  let done = 0;
+
+  for (const s of sessions || []) {
+    // A session with no local_date cannot be placed in a calendar day at all
+    // (§9.6): it was recorded before plans existed, or on a tablet that has
+    // never received one. Excluded rather than guessed at — the phone
+    // backfills what it can before this ever runs.
+    if (!s || !s.localDate) continue;
+    if (s.localDate < window.from || s.localDate > window.to) continue;
+
+    if (match.app && s.app !== match.app) continue;
+    if (match.scopeId && s.scopeId !== match.scopeId) continue;
+
+    if (match.modes && match.modes.length) {
+      // Naming a mode explicitly targets it whatever its tone, so a parent who
+      // wants to encourage a game can. Only a broad match defers to §5's rule.
+      if (!match.modes.includes(s.mode)) continue;
+    } else if (!countsAsWork(s.app, s.mode)) {
+      continue;
+    }
+
+    const key = (s.deviceId || '') + ':' + (s.id || '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    done += 1;
+  }
+
+  const today = localDate(new Date(now), timezone);
+  return {
+    done,
+    count,
+    met: done >= count,
+    from: window.from,
+    to: window.to,
+    closed: window.closed,
+    // Inclusive of today: on the last day of a week this reads 0, which the
+    // surfaces render as "last day" rather than "0 days left".
+    daysLeft: today && today <= window.to ? daysBetween(today, window.to) : 0,
+  };
+}
+// ---------- end of the shared registry and evaluator ----------
+
+// ---------- Rendering ----------
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// A YYYY-MM-DD local date read back as "Sep 4". Parsed as UTC on purpose: the
+// string is already a calendar day and re-interpreting it in a local zone is
+// how a date becomes the day before.
+function readableDate(date) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function plural(n, unit) { return n + ' ' + unit + (n === 1 ? '' : 's'); }
+
+// What a child's own week looks like when nobody has set a target for it: the
+// countable sittings in each app, said plainly. §8.7 asks for exactly this for
+// Geography and Logic, which cannot be targeted yet (§14) — but the same line
+// is what makes the hub useful on the day it ships, before any plan exists at
+// all. When §14 lands those two gain a denominator and nothing else changes.
+const WEEK_UNIT = {
+  spelling: 'Spelling sitting', math: 'Math sitting', reading: 'Reading session',
+  geography: 'Geography round', logic: 'Logic puzzle',
+};
+
+function weekTally(child, sessions, ctx, skipApps) {
+  const today = localDate(new Date(ctx.now), ctx.timezone);
+  const from = weekBucketStart(today, ctx.weekStart);
+  const to = shiftDate(from, 6);
+  const counts = new Map();
+  for (const s of sessions) {
+    if (!s.localDate || s.localDate < from || s.localDate > to) continue;
+    if (skipApps.has(s.app)) continue;
+    if (!countsAsWork(s.app, s.mode)) continue;
+    counts.set(s.app, (counts.get(s.app) || 0) + 1);
+  }
+  return APPS.filter((a) => counts.get(a.id)).map((a) => plural(counts.get(a.id), WEEK_UNIT[a.id]));
+}
+
+// §4.3: a dated item disappears from the child's view once its `to` has passed.
+// It stays in the parent's history, where "not done, and the window closed" is
+// the whole point — but a child does not need yesterday's deadline on today's
+// list. An item with a period this version does not understand is dropped the
+// same way: periodWindow() cannot place it, so there is nothing honest to show.
+function visibleItems(plan, ctx) {
+  const today = localDate(new Date(ctx.now), ctx.timezone);
+  return ((plan && plan.items) || []).filter((item) => {
+    if (!item || !item.id) return false;
+    const window = periodWindow(item, ctx);
+    return !!window && !(window.closed && today > window.to);
+  });
+}
+
+// §8.3, and it is the same resolution math-star-spec.md §1 and
+// reading-star-spec.md §4.2 already reached independently: a kid-facing view
+// never shows a percentage or a grade. "2 of 3" and a bar. The bar's width is
+// a percentage internally, which is fine — nothing reads it out.
+function renderItem(item, sessions, ctx) {
+  const result = evaluateItem(item, sessions, ctx);
+  const pct = result.count ? Math.min(100, Math.round((result.done / result.count) * 100)) : 0;
+
+  // §10.4: no judgment mid-period. The window is still open on every item that
+  // renders here — a closed one has already been filtered out — so the right
+  // half of this line is either the good news or the time left, never a verdict.
+  //
+  // "Done ✓" replaces the time left rather than sitting beside it: a child who
+  // has finished does not need to know how long they had.
+  let right;
+  if (result.met) right = '<span class="done">Done ✓</span>';
+  else if (item.period === 'day') right = 'today';
+  else right = result.daysLeft === 0 ? 'last day' : plural(result.daysLeft, 'day') + ' left';
+
+  return `<div class="item">
+    <div class="item-head">
+      <strong>${esc(item.label || 'Work')}</strong>
+      <span class="count">${result.done} of ${result.count}</span>
+    </div>
+    <div class="bar${result.met ? ' met' : ''}"><span style="width:${pct}%"></span></div>
+    <div class="foot"><span>${esc(itemPeriodLabel(item, result))}</span><span class="right">${right}</span></div>
+  </div>`;
+}
+
+// The deadline goes here, in the label, and not in the status slot on the
+// right: a dated assignment that has been finished still has a due date, and a
+// child looking at a row that says only "Done ✓" cannot tell which piece of
+// work it was for.
+function itemPeriodLabel(item, result) {
+  if (item.period === 'day') return 'every day';
+  if (item.period === 'week') return 'this week';
+  return 'by ' + readableDate(result.to);
+}
+
+function renderChild(child) {
+  const plan = readPlan(child);
+  const ctx = planContext(plan);
+  const sessions = sessionsFor(child, ctx.timezone);
+  const items = visibleItems(plan, ctx);
+
+  // Grouped by app, in the launcher's own order, with cross-app items last.
+  // parent.html puts them first, where they read as the frame the per-app ones
+  // sit inside; here the per-app cards are the ones a child can act on — each
+  // is a door into the app — so the frame goes underneath rather than in front.
+  const byApp = new Map();
+  for (const item of items) {
+    const key = (item.match && item.match.app) || '';
+    if (!byApp.has(key)) byApp.set(key, []);
+    byApp.get(key).push(item);
+  }
+
+  const cards = [];
+  for (const app of APPS) {
+    const own = byApp.get(app.id);
+    if (!own) continue;
+    cards.push(`<div class="card">
+      <div class="card-head">
+        <div class="icon ${esc(app.id)}">${app.icon}</div>
+        <h2>${esc(app.label)}</h2>
+        <a href="${esc(app.href)}">Open →</a>
+      </div>
+      ${own.map((item) => renderItem(item, sessions, ctx)).join('')}
+    </div>`);
+  }
+  if (byApp.has('')) {
+    cards.push(`<div class="card">
+      <div class="card-head"><div class="icon">🌟</div><h2>Across every app</h2></div>
+      ${byApp.get('').map((item) => renderItem(item, sessions, ctx)).join('')}
+    </div>`);
+  }
+
+  const tally = weekTally(child, sessions, ctx, new Set(byApp.keys()));
+  const alsoLine = tally.length
+    ? `<div class="card"><strong>${cards.length ? 'Also this week' : 'This week so far'}</strong>
+        <div class="muted" style="margin-top:6px">${esc(tally.join(' · '))}</div></div>`
+    : '';
+
+  const nothing = !cards.length
+    ? `<div class="card"><strong>No targets set yet.</strong>
+        <div class="muted" style="margin-top:6px">When a grown-up sets one, it shows up here with a bar to fill in.
+        Until then, every app works exactly as it always has.</div></div>`
+    : '';
+
+  const done = items.length && items.every((item) => evaluateItem(item, sessions, ctx).met);
+
+  return `
+    <div class="eyebrow">${esc(readableDate(localDate(new Date(ctx.now), ctx.timezone)) || '')}</div>
+    <h1>${esc(child.name)}'s day</h1>
+    <p class="sub">${done ? 'Everything on the list is done. Anything else today is because you felt like it.'
+      : cards.length ? 'Here is what is owed. Nothing here locks an app — you can always do more.'
+        : 'Nothing is owed right now.'}</p>
+    ${renderPicker(child)}
+    ${cards.join('')}
+    ${nothing}
+    ${alsoLine}`;
+}
+
+// §8.4: one profile, no prompt. More than one, a picker — remembered, because a
+// child on a shared tablet answers this question every single day.
+function renderPicker(child) {
+  const children = listChildren();
+  if (children.length < 2) return '';
+  const options = children
+    .map((c) => `<option value="${esc(c.slug)}"${c.slug === child.slug ? ' selected' : ''}>${esc(c.name)}</option>`)
+    .join('');
+  return `<div class="card picker">
+    <label for="childSel">Showing:</label>
+    <select id="childSel" onchange="chooseChild(this.value)">${options}</select>
+  </div>`;
+}
+
+// The one key this page writes (§8.1).
+function chooseChild(slug) {
+  try { localStorage.setItem(LAST_CHILD_KEY, slug); } catch (e) {}
+  paint();
+}
+
+function paint() {
+  const children = listChildren();
+  const app = document.getElementById('app');
+
+  if (!children.length) {
+    // §8.4: not an error. A hub with nothing in it is a hub that has not been
+    // used yet, and the fix is one tap away.
+    app.innerHTML = `
+      <div class="eyebrow">Star Apps</div>
+      <h1>Nothing here yet</h1>
+      <p class="sub">This page shows what you owe today, once one of the apps knows who you are.
+        Open any app and set up a profile first.</p>
+      <div class="card" style="text-align:center"><a href="./index.html" style="color:var(--accent);font-weight:700;text-decoration:none">Pick an app →</a></div>`;
+    return;
+  }
+
+  let remembered = null;
+  try { remembered = localStorage.getItem(LAST_CHILD_KEY); } catch (e) {}
+  const child = children.find((c) => c.slug === remembered) || children[0];
+
+  app.innerHTML = renderChild(child) + `
+    <footer>
+      Counts what was done on this device.<br>
+      <a href="./index.html">All the apps →</a>
+    </footer>`;
+}
+
+paint();
+
+// Repaint when another tab writes — a child finishing a Test in Spelling Star
+// in one tab should not have to reload this one. `storage` only fires for
+// OTHER documents, so this cannot loop on the one key the hub writes itself.
+window.addEventListener('storage', paint);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}
+</script>
+</body>
+</html>
