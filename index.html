@@ -43,6 +43,7 @@
     flex: none; width: 52px; height: 52px; border-radius: 14px; display: flex;
     align-items: center; justify-content: center; font-size: 26px;
   }
+  .icon.today { background: var(--green-soft); }
   .icon.math { background: var(--accent-soft); }
   .icon.spelling { background: var(--gold-soft); }
   .icon.geography { background: var(--green-soft); }
@@ -62,6 +63,15 @@
     <p class="sub">Quick, focused practice — bookmark this page once and every app is always one tap away.</p>
 
     <div class="cards">
+      <a class="card" href="./today.html">
+        <div class="icon today">📋</div>
+        <div class="card-body">
+          <h2>Today</h2>
+          <p>What is owed today, across every app</p>
+        </div>
+        <div class="arrow">→</div>
+      </a>
+
       <a class="card" href="./math-star-v6_1.html">
         <div class="icon math">🔢</div>
         <div class="card-body">

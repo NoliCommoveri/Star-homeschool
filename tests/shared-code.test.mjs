@@ -8,8 +8,7 @@
 // throws, no screen breaks — the apps simply start disagreeing.
 //
 // assignment-spec.md §10.3 asks for exactly this test, for the evaluator that
-// lands with the Plan tab. The plan document block is the first triple to
-// arrive, so the suite starts here and the evaluator joins it.
+// landed with the Plan tab and now has a second copy in today.html.
 //
 // Node only — no browser, no server, no database.
 import { readdirSync, readFileSync } from 'node:fs';
@@ -28,6 +27,16 @@ const SHARED = [
     files: SYNCED_APPS,
     from: '// ---------- The plan document (docs/assignment-spec.md §7, §9) ----------',
     through: 'function withLocalDates(sessions) {',
+  },
+  // assignment-spec.md §10.3. Both sides count the same sessions with the same
+  // rules and arrive at the same number on their own — that is the whole reason
+  // no client ever reports "I have done 2 of 3" (§3). It only holds while the
+  // rules are the same rules. The three synced apps join this list at §17 step 4.
+  {
+    what: 'the mode registry and evaluator (assignment-spec §5, §10)',
+    files: ['parent.html', 'today.html'],
+    from: '// ---------- The mode registry and evaluator (docs/assignment-spec.md §5, §10) ----------',
+    through: 'function evaluateItem(item, sessions, { timezone, weekStart, now }) {',
   },
 ];
 
@@ -59,9 +68,14 @@ for (const file of SYNCED_APPS) {
   const src = readFileSync(REPO + file, 'utf8');
   check(`${file} formats with en-CA`, /new Intl\.DateTimeFormat\("en-CA", \{ timeZone: tz \}\)/.test(src));
 }
-// parent.html carries its own copy, in its own quote style, and must agree.
-check('parent.html formats with en-CA too',
-  /new Intl\.DateTimeFormat\('en-CA', \{ timeZone: tz \}\)/.test(readFileSync(REPO + 'parent.html', 'utf8')));
+// parent.html and today.html carry their own copies, in their own quote style,
+// and must agree. today.html's matters as much as any: it is the surface that
+// falls back to the DEVICE's zone when no plan has arrived (§9.5), so it is the
+// one most likely to be formatting a date nothing else in the system computed.
+for (const file of ['parent.html', 'today.html']) {
+  check(`${file} formats with en-CA too`,
+    /new Intl\.DateTimeFormat\('en-CA', \{ timeZone: tz \}\)/.test(readFileSync(REPO + file, 'utf8')));
+}
 
 // The migration runner cannot import the .sql files — `wrangler pages
 // functions build` does not resolve a Text import (see the note at the top of
@@ -155,9 +169,13 @@ function extract(file, { from, through }) {
   const lastFn = src.indexOf(through, start);
   if (lastFn === -1) return null;
 
+  // Counting starts at the brace the `through` marker itself ends with, not at
+  // the next brace in the file. evaluateItem's parameter list destructures —
+  // `{ timezone, weekStart, now }` — so searching forward for '{' would find
+  // that one and stop the region at its closing brace, three lines in.
   let depth = 0;
-  let i = src.indexOf('{', lastFn);
-  if (i === -1) return null;
+  let i = lastFn + through.length - 1;
+  if (src[i] !== '{') return null;
   for (; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}') {
