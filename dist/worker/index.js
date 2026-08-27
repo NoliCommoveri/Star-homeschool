@@ -989,6 +989,7 @@ async function onRequestGet8({ request, env }) {
   if (!childIds.length) return json({ error: "not found" }, { status: 404 });
   const family = await familySettings(env, device.family_id);
   const current = await highestPlan(env, childIds);
+  const delivery = await deliveryStatus(env, device.family_id, childIds);
   return json({
     // Revision 0 with no items is the same document /api/sync hands a tablet
     // before any plan exists (§17 step 1), so "never planned" and "planned,
@@ -996,7 +997,8 @@ async function onRequestGet8({ request, env }) {
     revision: current ? current.revision : 0,
     items: current ? current.items : [],
     timezone: family.timezone,
-    weekStart: family.weekStart
+    weekStart: family.weekStart,
+    delivery
   });
 }
 __name(onRequestGet8, "onRequestGet");
@@ -1176,6 +1178,42 @@ async function familySettings(env, familyId) {
   };
 }
 __name(familySettings, "familySettings");
+async function deliveryStatus(env, familyId, childIds) {
+  const placeholders = childIds.map(() => "?").join(",");
+  const { results: held } = await env.DB.prepare(
+    `SELECT device_id, MAX(revision) AS revision, MAX(seen_at) AS seen_at
+       FROM plan_state WHERE child_id IN (${placeholders})
+      GROUP BY device_id`
+  ).bind(...childIds).all();
+  const { results: synced } = await env.DB.prepare(
+    `SELECT DISTINCT device_id FROM child_state WHERE child_id IN (${placeholders})`
+  ).bind(...childIds).all();
+  const { results: devices } = await env.DB.prepare(
+    `SELECT id, label, last_seen FROM devices
+      WHERE family_id = ? AND role = 'child' AND revoked = 0`
+  ).bind(familyId).all();
+  const byId = new Map(held.map((row) => [row.device_id, row]));
+  const known = /* @__PURE__ */ new Set([...byId.keys(), ...synced.map((row) => row.device_id)]);
+  return devices.filter((d) => known.has(d.id)).map((d) => {
+    const row = byId.get(d.id);
+    return {
+      id: d.id,
+      label: d.label || null,
+      lastSeen: d.last_seen || null,
+      // Null is "has never reported one", which is a different state from
+      // holding revision 0 — the empty document every zoned family's tablet
+      // receives before a single target exists — and reads differently on
+      // the card.
+      revision: row ? row.revision : null,
+      seenAt: row ? row.seen_at : null
+    };
+  }).sort((a, b) => {
+    const ar = a.revision === null ? -1 : a.revision;
+    const br = b.revision === null ? -1 : b.revision;
+    return ar - br || String(a.label || "").localeCompare(String(b.label || ""));
+  });
+}
+__name(deliveryStatus, "deliveryStatus");
 async function highestPlan(env, childIds) {
   const placeholders = childIds.map(() => "?").join(",");
   const row = await env.DB.prepare(
@@ -1481,7 +1519,7 @@ function safeParse4(text) {
 }
 __name(safeParse4, "safeParse");
 
-// ../.wrangler/tmp/pages-JEUKvj/functionsRoutes-0.4932123346142654.mjs
+// ../.wrangler/tmp/pages-EPCOwm/functionsRoutes-0.8810921796852991.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",

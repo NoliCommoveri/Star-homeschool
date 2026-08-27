@@ -1843,11 +1843,31 @@ function planMatchLabel(item) {
   return appLabel + ' · ' + modeLabel + scope;
 }
 
+// §4.3's three period kinds. A dated one is named by its deadline alone — the
+// same words today.html puts in front of the child — because "by Fri, Sep 4" is
+// what a parent is checking against, and the start date is a detail of how the
+// window was drawn rather than something they read a row for. The editor shows
+// both.
 function planPeriodLabel(period) {
   if (period === 'day') return 'every day';
   if (period === 'week') return 'a week';
-  if (period && period.from) return 'between ' + period.from + ' and ' + period.to;
+  if (isDatedPeriod(period)) return 'by ' + planDate(period.to);
   return '';
+}
+
+function isDatedPeriod(period) {
+  return !!(period && typeof period === 'object' && period.from !== undefined);
+}
+
+// A local date is a calendar day, not an instant (§9.4), so it is parsed and
+// formatted in UTC — anywhere else and "2026-09-04" renders as the 3rd for a
+// parent whose phone is west of Greenwich.
+function planDate(date) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return String(date || '');
+  return new Date(at).toLocaleDateString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+  });
 }
 
 // Every session the evaluator needs, normalized to the shape it expects and
@@ -1947,7 +1967,8 @@ function paintPlan() {
     <div class="card">
       <button class="big" onclick="startPlanItem()">Add a target</button>
       ${renderPlanCopy(child)}
-    </div>`;
+    </div>
+    ${renderPlanDelivery()}`;
 }
 
 function renderPlanItem(item, sessions, ctx) {
@@ -1998,6 +2019,51 @@ function renderPlanCopy(child) {
     </div>`;
 }
 
+// §11's delivery status, in the queue card's shape: which tablet is holding
+// which revision, from the plan_state rows /api/sync writes (§12).
+//
+// It answers the one question a parent has that the protocol deliberately does
+// not: a plan needs no ack (§6.1), so nothing here is a delivery guarantee and
+// nothing retries — a tablet that is behind catches up on its next sync on its
+// own. What the card buys is the difference between "she has not done it" and
+// "her tablet has not been opened since Tuesday", which are the same empty bar
+// and different conversations.
+function renderPlanDelivery() {
+  const rows = (state.plan && state.plan.delivery) || [];
+  const revision = (state.plan && state.plan.revision) || 0;
+  // Before a plan has ever been saved there is nothing to have delivered, and
+  // a card reporting on it would be answering a question nobody asked.
+  if (!revision || !rows.length) return '';
+
+  const body = rows.map((d) => {
+    // A device may report a revision ahead of the one this screen is holding —
+    // another phone saved after this one loaded. Ahead is not behind, so the
+    // comparison is >=.
+    const status = d.revision === null
+      ? '<span class="badge warn">No plan reported</span>'
+      : d.revision >= revision
+        ? '<span class="badge ok">Up to date</span>'
+        : '<span class="badge warn">Behind</span>';
+    const detail = d.revision === null
+      ? 'Syncs its sittings, but has never reported a plan — it may still be on an older app version.'
+      : d.revision >= revision
+        ? 'Reported ' + fmtRelative(d.seenAt)
+        : 'Holding an older version — it updates on its next sync, whenever the app is next opened.';
+    return `<tr>
+      <td>${esc(d.label || '(unnamed tablet)')}<br><span class="muted">${esc(detail)}</span></td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h2>On the tablets</h2>
+      <p class="muted">Nothing has to be sent: each tablet picks the plan up the next time it syncs.
+        <button class="link" onclick="renderPlan()">Check again</button></p>
+      <table><tbody>${body}</tbody></table>
+    </div>`;
+}
+
 // ---------- The item editor ----------
 
 function startPlanItem(itemId) {
@@ -2012,10 +2078,6 @@ function startPlanItem(itemId) {
       modes: (existing.match && existing.match.modes) || [],
       scopeId: (existing.match && existing.match.scopeId) || '',
       count: existing.count,
-      // A dated period is composed in §17 step 5. One that already exists is
-      // carried through an edit untouched rather than silently flattened to a
-      // week — this editor can change an item's label and count without being
-      // able to author its period kind.
       period: existing.period,
     }
     : { id: newPlanItemId(), isNew: true, label: '', app: 'spelling', modes: [], scopeId: '', count: 3, period: 'week' };
@@ -2036,7 +2098,47 @@ function cancelPlanItem() { state.planEditor = null; state.planErr = ''; paintPl
 // is already finished.
 function setPlanLabel(value) { if (state.planEditor) state.planEditor.label = value; }
 function setPlanScope(value) { if (state.planEditor) state.planEditor.scopeId = value; }
-function setPlanPeriod(value) { if (state.planEditor) state.planEditor.period = value; }
+
+// The period picker is a <select>, so it repaints under the same rule the app
+// picker does — and it has to, because choosing a deadline reveals two date
+// fields that are not on the screen otherwise.
+function setPlanPeriod(value) {
+  const ed = state.planEditor;
+  if (!ed) return;
+  // Composed once, when the parent switches to it, and then left alone:
+  // re-deriving the default on every repaint would throw away dates they had
+  // already typed.
+  if (value === 'dates') {
+    if (!isDatedPeriod(ed.period)) ed.period = defaultDatedPeriod();
+  } else {
+    ed.period = value;
+  }
+  paintPlan();
+}
+
+// Today, to the end of the family's current week (§9.4). "By the end of the
+// week" is the deadline most assignments actually carry, and taking it from
+// weekStart rather than from a fixed seven days means a family whose week
+// starts on Monday gets Sunday and one whose week starts on Sunday gets
+// Saturday, without either being asked.
+function defaultDatedPeriod() {
+  const today = localDate(new Date(), state.family.timezone);
+  // Unreachable while the tab refuses to open without a zone, but a period
+  // this function could not compute must not be half-composed.
+  if (!today) return 'week';
+  return { from: today, to: shiftDate(weekBucketStart(today, state.family.weekStart), 6) };
+}
+
+// Unlike the period picker, these two must NOT repaint: a date <input> fires
+// `change` on blur, and the blur is the tap on Save. See the note above.
+function setPlanFrom(value) {
+  const ed = state.planEditor;
+  if (ed && isDatedPeriod(ed.period)) ed.period = { ...ed.period, from: value };
+}
+function setPlanTo(value) {
+  const ed = state.planEditor;
+  if (ed && isDatedPeriod(ed.period)) ed.period = { ...ed.period, to: value };
+}
 
 // Clamped, then written back to the field, because the alternative is a box
 // reading 0 while the target it saves is 1.
@@ -2102,7 +2204,25 @@ function renderPlanEditor(child) {
       ? `<p class="muted">${esc(child.name || 'This child')}'s tablet hasn't reported its ${esc(scopeColumnLabel(ed.app, true).toLowerCase())}s yet, so this target counts any of them.</p>`
       : '';
 
-  const dated = ed.period && typeof ed.period === 'object';
+  // §4.3, and §4's whole argument in one control: an assignment and a target
+  // are the same object at different settings, so a deadline is a third option
+  // on the period picker rather than a second kind of thing to compose. Count 1
+  // and a narrow match make it "the Test on list 5.12, by Friday"; count 3 and
+  // a broad one make it a week's practice.
+  const dated = isDatedPeriod(ed.period);
+  const datedFields = dated ? `
+    <div class="row">
+      <div class="col">
+        <label for="planFromIn">From</label>
+        <input type="date" id="planFromIn" value="${esc(ed.period.from || '')}" onchange="setPlanFrom(this.value)">
+      </div>
+      <div class="col">
+        <label for="planToIn">Due by</label>
+        <input type="date" id="planToIn" value="${esc(ed.period.to || '')}" onchange="setPlanTo(this.value)">
+      </div>
+    </div>
+    <p class="muted" style="margin:-4px 0 0">Sittings count from the start date to the due date, inclusive.
+      It leaves the tablet once the due date has passed, and stays on this screen — done or not.</p>` : '';
 
   return `
     <div class="card">
@@ -2128,14 +2248,14 @@ function renderPlanEditor(child) {
         </div>
         <div class="col">
           <label for="planPeriodSel">Per</label>
-          ${dated
-            ? `<p style="margin:0 0 10px">${esc(planPeriodLabel(ed.period))}</p>`
-            : `<select id="planPeriodSel" onchange="setPlanPeriod(this.value)">
-                <option value="week"${ed.period === 'week' ? ' selected' : ''}>Week</option>
-                <option value="day"${ed.period === 'day' ? ' selected' : ''}>Day</option>
-              </select>`}
+          <select id="planPeriodSel" onchange="setPlanPeriod(this.value)">
+            <option value="week"${ed.period === 'week' ? ' selected' : ''}>Week</option>
+            <option value="day"${ed.period === 'day' ? ' selected' : ''}>Day</option>
+            <option value="dates"${dated ? ' selected' : ''}>By a date</option>
+          </select>
         </div>
       </div>
+      ${datedFields}
 
       <p class="muted">A target never blocks anything. ${esc(child.name || 'They')} can always do more, and
         is never locked out for having done less.</p>
@@ -2167,6 +2287,20 @@ async function savePlanItem() {
   const ed = state.planEditor;
   if (!ed) return;
   if (!ed.label.trim()) { state.planErr = 'Give the target a name.'; paintPlan(); return; }
+
+  // The server checks all of this again and is the authority (§4.1's argument:
+  // a constraint the UI alone enforces is a comment). What it cannot do is say
+  // it in front of the two fields the parent is looking at — a date input left
+  // empty comes back as '', and "period must be day, week, or { from, to }" is
+  // the wrong sentence for a parent who simply has not filled one in.
+  if (isDatedPeriod(ed.period)) {
+    const { from, to } = ed.period;
+    const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+    if (!isDate(from) || !isDate(to)) {
+      state.planErr = 'Give the assignment a start date and a due date.'; paintPlan(); return;
+    }
+    if (from > to) { state.planErr = 'The due date is before the start date.'; paintPlan(); return; }
+  }
 
   const items = [...((state.plan && state.plan.items) || [])];
   const item = planItemFromEditor(ed);

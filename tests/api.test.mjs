@@ -779,6 +779,63 @@ console.log('\n[§6.2] a merged child is planned under every id it synced with')
   check('which is above every revision either id had used', merged.revision > 2, merged.revision);
 }
 
+// ================== Phase 5 step 5: delivery status (assignment-spec §11) ===
+//
+// The card that separates "she has not done it" from "her tablet has not been
+// opened since Tuesday" — the same empty bar, and two different conversations.
+// A plan needs no ack (§6.1), so none of this gates or retries anything; it is
+// a read of the plan_state rows /api/sync already writes.
+console.log('\n[§11] delivery status says which tablet holds which revision');
+{
+  // The old iPad is Ada's too. It has synced — so the phone knows it exists —
+  // and has never reported a plan revision, which is exactly the tablet this
+  // card has to be able to show: it uploads its sittings perfectly, and an app
+  // old enough not to send planRevision is invisible any other way.
+  await sync.onRequestPost(post('http://x/api/sync', {
+    app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+    state: spellingState,
+  }, tablet2Token));
+
+  const [, before] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+  const row = (id) => before.delivery.find((d) => d.id === id);
+  check('both of the child\'s tablets are listed', before.delivery.length === 2, before.delivery);
+  check('and the parent phone is not — it edits plans, it never holds one',
+    !before.delivery.some((d) => d.id === 'parent-device'), before.delivery);
+  check('the tablet that has reported carries its revision', row('tablet-1').revision === 6, row('tablet-1'));
+  check('and is behind the plan just written', row('tablet-1').revision < before.revision, before.revision);
+  // Null, not 0: "has never reported one" and "holds the empty document every
+  // zoned family's tablet receives" are different states and read differently.
+  check('the one that never reported reads as null, not revision 0',
+    row('tablet-2').revision === null, row('tablet-2'));
+  check('the device label comes with it', row('tablet-2').label === 'The old iPad', row('tablet-2'));
+  // The card exists to surface the tablet that has not caught up; a family
+  // with four of them should not have to hunt for it.
+  check('furthest behind sorts first', before.delivery[0].id === 'tablet-2', before.delivery.map((d) => d.id));
+
+  await sync.onRequestPost(post('http://x/api/sync', {
+    app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+    planRevision: before.revision,
+  }, tabletToken));
+  const [, after] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+  check('a sync brings that tablet up to date',
+    after.delivery.find((d) => d.id === 'tablet-1').revision === after.revision, after.delivery);
+  check('and stamps when it reported',
+    after.delivery.find((d) => d.id === 'tablet-1').seenAt > 0, after.delivery);
+
+  // A revoked tablet is not a delivery running late; it is a tablet that is
+  // gone. Listing it as behind forever would train a parent to ignore the card.
+  const goneToken = await pairChild('tablet-3', 'The one that broke');
+  await sync.onRequestPost(post('http://x/api/sync', {
+    app: 'spelling', childId: CHILD, childName: 'Ada', sessions: [], applied: [],
+    state: spellingState, planRevision: 1,
+  }, goneToken));
+  const [, withGone] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+  check('a third tablet shows up while it is live', withGone.delivery.some((d) => d.id === 'tablet-3'), withGone.delivery);
+  await DB.prepare('UPDATE devices SET revoked = 1 WHERE id = ?').bind('tablet-3').run();
+  const [, revoked] = await body(await plan.onRequestGet(get(`http://x/api/plan?childId=${CHILD}`, parentToken)));
+  check('and drops out once it is revoked', !revoked.delivery.some((d) => d.id === 'tablet-3'), revoked.delivery);
+}
+
 
 // =============== The migration runner (functions/api/_lib/migrations.js) ====
 //

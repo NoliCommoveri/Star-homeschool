@@ -78,6 +78,17 @@ const server = {
   // here rather than accepted from the page, because that is the property the
   // real handler has and the one the page must not be written to depend on.
   plans: {},
+  // §11's delivery status, as the server derives it from plan_state (§12), with
+  // one tablet in each of the three states the card can show: one that has
+  // never reported a revision, one holding an older one, and one holding a
+  // revision no edit on this screen will reach — a plan another phone saved
+  // after this one loaded, where ahead has to read as up to date rather than
+  // as behind.
+  delivery: [
+    { id: 'tablet-2', label: 'The old iPad', revision: null, seenAt: null, lastSeen: now - 3600000 },
+    { id: 'tablet-3', label: "Bo's tablet", revision: 1, seenAt: now - 7200000, lastSeen: now - 7200000 },
+    { id: 'tablet-1', label: "Ada's tablet", revision: 99, seenAt: now - 600000, lastSeen: now - 600000 },
+  ],
 };
 
 const posted = [];
@@ -125,6 +136,7 @@ await page.route('**/api/**', async (route) => {
         items: held ? held.items : [],
         timezone: server.family.timezone,
         weekStart: server.family.weekStart,
+        delivery: server.delivery,
       });
     }
     if (path === '/migrations') return send(server.migrations);
@@ -619,6 +631,90 @@ console.log('\n[§4.2] editing an item keeps its id');
   check('and every id survived the edit',
     after.map((i) => i.id).sort().join() === before.sort().join(), { before, after });
   check('the revision advanced', await page.evaluate(() => state.plan.revision) > 1);
+}
+
+console.log('\n[§4.3] an assignment is a target with a deadline');
+{
+  // §4's whole argument, exercised as a control: an assignment and a target are
+  // the same object at different settings, so this is the period picker's third
+  // option and not a second editor.
+  await page.click('button:has-text("Add a target")');
+  await page.waitForTimeout(200);
+  await page.selectOption('#planAppSel', 'spelling');
+  await page.waitForTimeout(200);
+  await page.fill('#planLabelIn', 'Test on Week 11');
+  await page.fill('#planCountIn', '1');
+  await page.selectOption('#planPeriodSel', 'dates');
+  await page.waitForTimeout(200);
+  check('choosing a deadline reveals the dates', await page.isVisible('#planToIn'));
+
+  const composed = await page.evaluate(() => state.planEditor.period);
+  // Today to the end of the family's own week (§9.4) — the deadline most
+  // assignments actually carry, and one the parent can then change.
+  const today = await page.evaluate(() => localDate(new Date(), state.family.timezone));
+  check('it opens on a window, not on two empty boxes',
+    composed && composed.from === today && composed.to >= composed.from, composed);
+
+  // A window that ends before it starts is refused in front of the two fields
+  // it is about. The server refuses it too, and is the authority — but "period
+  // must be day, week, or { from, to }" is the wrong sentence for a parent.
+  await page.fill('#planToIn', '2020-01-01');
+  await page.click('button:has-text("Save")');
+  await page.waitForTimeout(400);
+  check('a due date before the start date is refused', (await page.textContent('#app')).includes('before the start date'));
+  check('and nothing was written', !posted.some((p) => p.path === '/plan' && (p.body.items || []).some((i) => i.label === 'Test on Week 11')));
+
+  await page.fill('#planFromIn', '2026-05-04');
+  await page.fill('#planToIn', '2026-05-08');
+  await page.click('button:has-text("Save")');
+  await page.waitForTimeout(600);
+  const saved = await page.evaluate(() => state.plan.items.find((i) => i.label === 'Test on Week 11'));
+  check('a dated period is what reaches the server',
+    saved && saved.period.from === '2026-05-04' && saved.period.to === '2026-05-08', saved);
+  check('and the row reads as a deadline rather than a bucket',
+    (await page.textContent('#app')).includes('by '), saved);
+  // §4.3: the window has closed and no sitting fell inside it. This is the row
+  // the parent keeps — "not done, and the window closed" is the whole point of
+  // a dated item staying here after it leaves the child's screen.
+  check('a closed window gets a verdict, unlike an open one',
+    (await page.textContent('.plan-item:has-text("Test on Week 11")')).includes('Not met'));
+
+  // Before this the editor could carry a dated period through an edit but not
+  // author or change one, which made a wrong deadline a delete-and-retype.
+  await page.click('.plan-item:has-text("Test on Week 11") button:has-text("Edit")');
+  await page.waitForTimeout(200);
+  check('re-editing lands back on the dates', await page.inputValue('#planFromIn') === '2026-05-04');
+  await page.fill('#planToIn', '2026-05-11');
+  await page.click('button:has-text("Save")');
+  await page.waitForTimeout(600);
+  const moved = await page.evaluate(() => state.plan.items.find((i) => i.label === 'Test on Week 11'));
+  check('and the deadline can be moved', moved.period.to === '2026-05-11', moved);
+  check('without starting a second history for it', moved.id === saved.id, { saved: saved.id, moved: moved.id });
+
+  // A dated item that is finished with is removed like any other, so the
+  // screen does not silt up with last term's assignments.
+  await page.click('.plan-item:has-text("Test on Week 11") button:has-text("Remove")');
+  await page.waitForTimeout(600);
+  // The row, not the page: the note confirming the removal names the item too.
+  check('and it can be taken off again',
+    await page.locator('.plan-item:has-text("Test on Week 11")').count() === 0);
+}
+
+console.log('\n[§11] delivery status: which tablet holds which revision');
+{
+  const text = await page.textContent('#app');
+  check('the card names the tablets', text.includes('On the tablets') && text.includes("Ada's tablet"), text.slice(-600));
+  // A tablet ahead of this screen — another phone saved after this one loaded —
+  // is up to date, not behind.
+  check('one holding a newer revision reads as up to date', text.includes('Up to date'));
+  check('one holding an older revision reads as behind', text.includes('Behind'));
+  // The failure the card exists for: an app old enough not to report a
+  // revision syncs its sittings perfectly and is invisible any other way.
+  check('and one that has never reported says so', text.includes('No plan reported'));
+  // §6.1: a plan needs no ack, so nothing here is a send button and nothing
+  // retries. The card says what is true, and the tablet catches up on its own.
+  check('nothing on it sends anything', text.includes('picks the plan up the next time it syncs'));
+  check('the Plan tab still queued no commands', !posted.some((p) => p.path === '/commands' && p.body.app === undefined));
 }
 
 console.log('\n[§10.2] one sitting under two childIds is counted once');
