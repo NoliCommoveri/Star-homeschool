@@ -23,6 +23,7 @@ const SUITES = [
   { file: 'parent-dashboard.test.mjs', browser: true },
   { file: 'setup-wizard.test.mjs', browser: true },
   { file: 'today-hub.test.mjs', browser: true },
+  { file: 'plan-panel.test.mjs', browser: true },
 ];
 
 const haveBrowser = await canLaunchBrowser();

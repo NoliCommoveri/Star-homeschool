@@ -145,9 +145,9 @@ const APPS = [
 
 // ---------- The mode registry and evaluator (docs/assignment-spec.md §5, §10) ----------
 // Everything from here to the end of evaluateItem() is shared source, copied
-// byte-for-byte into today.html, and into the three synced apps when §17 step 4
-// lands. tests/shared-code.test.mjs compares the copies, the way it already
-// compares the plan document block.
+// byte-for-byte into today.html and into the three synced apps, which is what
+// §17 step 4 asked for. tests/shared-code.test.mjs compares all five copies,
+// the way it already compares the plan document block.
 //
 // Drift here is the silent-wrongness the suites exist to catch: nothing throws
 // and no screen breaks, the phone and the tablet simply start counting the
