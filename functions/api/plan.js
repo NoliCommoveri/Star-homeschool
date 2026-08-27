@@ -55,6 +55,7 @@ export async function onRequestGet({ request, env }) {
 
   const family = await familySettings(env, device.family_id);
   const current = await highestPlan(env, childIds);
+  const delivery = await deliveryStatus(env, device.family_id, childIds);
 
   return json({
     // Revision 0 with no items is the same document /api/sync hands a tablet
@@ -64,6 +65,7 @@ export async function onRequestGet({ request, env }) {
     items: current ? current.items : [],
     timezone: family.timezone,
     weekStart: family.weekStart,
+    delivery,
   });
 }
 
@@ -350,6 +352,82 @@ async function familySettings(env, familyId) {
     timezone: (row && normalizeTimezone(row.timezone)) || null,
     weekStart: row ? row.week_start : 0,
   };
+}
+
+// §11's delivery status: which of this child's tablets is holding which
+// revision, from the plan_state rows /api/sync writes (§12).
+//
+// A field on GET rather than the third endpoint §12.1 might suggest, for the
+// same reason §11 gives for progress — "no new endpoint, no new request". The
+// card is only ever read beside the plan it describes, so a request of its own
+// would be a second round trip for one line of the same screen.
+//
+// Still not an ack (§6.1). Nothing is gated on these rows, nothing retries on
+// them, and a device that never reports one self-heals on its next sync
+// anyway. They answer a question a parent asks — "has it got there yet?" —
+// that the protocol itself has no need of.
+async function deliveryStatus(env, familyId, childIds) {
+  const placeholders = childIds.map(() => '?').join(',');
+
+  // Highest across the merged child's ids (§6.2). A tablet holds exactly one
+  // document — the shared starplan-<slug> key is per child, not per id (§7) —
+  // so rows under several ids are that one document reported under whichever
+  // id the app happened to sync with, and the highest is what it is holding.
+  const { results: held } = await env.DB.prepare(
+    `SELECT device_id, MAX(revision) AS revision, MAX(seen_at) AS seen_at
+       FROM plan_state WHERE child_id IN (${placeholders})
+      GROUP BY device_id`
+  ).bind(...childIds).all();
+
+  // Every tablet that has ever synced for this child, so that one which has
+  // never reported a revision at all still gets a row. That absence is the
+  // failure this card exists to make visible: an app old enough not to send
+  // planRevision syncs its sessions perfectly, receives the plan, and reports
+  // nothing — and without a row the parent sees a shorter list rather than a
+  // problem.
+  //
+  // Read from child_state rather than from sessions: three rows per device
+  // rather than one per sitting, written by the same request (§15.4).
+  const { results: synced } = await env.DB.prepare(
+    `SELECT DISTINCT device_id FROM child_state WHERE child_id IN (${placeholders})`
+  ).bind(...childIds).all();
+
+  // Child devices only — a parent phone edits a plan, it never holds one — and
+  // not revoked ones: a revoked tablet is not a delivery running late, it is a
+  // tablet that is gone, and listing it as behind forever would train a parent
+  // to ignore the card.
+  const { results: devices } = await env.DB.prepare(
+    `SELECT id, label, last_seen FROM devices
+      WHERE family_id = ? AND role = 'child' AND revoked = 0`
+  ).bind(familyId).all();
+
+  const byId = new Map(held.map((row) => [row.device_id, row]));
+  const known = new Set([...byId.keys(), ...synced.map((row) => row.device_id)]);
+
+  return devices
+    .filter((d) => known.has(d.id))
+    .map((d) => {
+      const row = byId.get(d.id);
+      return {
+        id: d.id,
+        label: d.label || null,
+        lastSeen: d.last_seen || null,
+        // Null is "has never reported one", which is a different state from
+        // holding revision 0 — the empty document every zoned family's tablet
+        // receives before a single target exists — and reads differently on
+        // the card.
+        revision: row ? row.revision : null,
+        seenAt: row ? row.seen_at : null,
+      };
+    })
+    // Furthest behind first. The card exists to surface the tablet that has
+    // not caught up, and a family with four of them should not have to hunt
+    // for it. Null sorts below revision 0, which is where it belongs.
+    .sort((a, b) => {
+      const ar = a.revision === null ? -1 : a.revision;
+      const br = b.revision === null ? -1 : b.revision;
+      return ar - br || String(a.label || '').localeCompare(String(b.label || ''));
+    });
 }
 
 // The plan carrying the highest revision across a merged child's ids. They are

@@ -1,7 +1,7 @@
 # Assignment and Targets — Specification
 
-Status: **Steps 1, 2 and 3 of §17 are built. Steps 4–6 are still design.** This
-is the plan for making "assigned" mean something with a quantity and a deadline
+Status: **Steps 1–5 of §17 are built. Step 6 is still design.** This is the
+plan for making "assigned" mean something with a quantity and a deadline
 attached, and for spanning the apps rather than living inside one.
 
 What has landed in step 1: `schema-phase5.sql`, `families.timezone` /
@@ -19,10 +19,18 @@ What has landed in step 3: `today.html`, the kid-facing hub — a pure reader
 over the five apps' localStorage, with the five adapters, the shared evaluator
 in its second copy, and the launcher link.
 
-Still to build: the apps showing their own items on their home screens, and
-dated assignments in the editor. Nothing changes in `geography-star.html` or
-`logic-star.html` in this phase, and no existing behavior changes when a family
-has no plan.
+What has landed in step 4: the panel on each synced app's own home screen,
+showing what this child owes *in that app*, evaluated on the tablet from the
+document the last sync delivered.
+
+What has landed in step 5: the period picker's third option, so the editor
+composes a dated assignment rather than only carrying one through; and the
+delivery status, so a parent can tell an unfinished target from a tablet that
+has not been opened.
+
+Still to build: Geography and Logic (§14), if and when their counts are wanted
+on the phone. Nothing changes in `geography-star.html` or `logic-star.html` in
+this phase, and no existing behavior changes when a family has no plan.
 
 Read `docs/parent-sync-spec.md` first. Section references of the form §15.2
 are to that document unless they say otherwise.
@@ -658,12 +666,21 @@ Two new endpoints, both parent-role, plus additive fields on `/api/sync`.
 
 | Endpoint | Auth | Body / query | Role |
 |---|---|---|---|
-| `GET /api/plan` | token | `?childId=` → `{ revision, items, timezone, weekStart }` | parent |
+| `GET /api/plan` | token | `?childId=` → `{ revision, items, timezone, weekStart, delivery }` | parent |
 | `PUT /api/plan` | token | `{ childId, items, effectiveFrom }` → `{ revision }` | parent |
 
 `PUT` allocates the next `revision` server-side rather than accepting one from
 the client, which makes two phones editing concurrently resolve to
 last-write-wins instead of to a silently lost edit.
+
+`delivery` is §11's delivery status: one row per live child device that has
+either reported a revision for this child or ever synced for them, as
+`{ id, label, revision, seenAt, lastSeen }`, furthest behind first. A `revision`
+of `null` means the device has never reported one, which is a different state
+from holding revision `0` — the empty document every zoned family's tablet
+receives before a target exists. It rides on `GET` rather than on a third
+endpoint for the reason §11 gives for progress: no new request for a card that
+is only ever read beside the plan it describes.
 
 Family timezone and week start are set through `PUT /api/family/settings` or
 folded into the existing devices screen — either is fine; the requirement is
@@ -690,8 +707,8 @@ invariant: both handlers resolve `family_id` from the bearer token, and a
 | `functions/api/sessions.js` | Return `local_date`, so the phone knows what to backfill | ✅ |
 | `functions/api/family.js` | Accept `timezone` and `weekStart` at creation | ✅ |
 | `sw.js` | `CACHE_VERSION` bump | ✅ |
-| `functions/api/plan.js` | New. `GET` / `PUT` | ✅ |
-| `parent.html` | Family timezone setting ✅; Plan tab ✅; the evaluator ✅; `MODES` promoted to the registry, with tone deciding what counts ✅ | ✅ |
+| `functions/api/plan.js` | New. `GET` / `PUT` ✅; `delivery` on `GET` (§11) ✅ | ✅ |
+| `parent.html` | Family timezone setting ✅; Plan tab ✅; the evaluator ✅; `MODES` promoted to the registry, with tone deciding what counts ✅; dated assignments in the editor ✅; the delivery card ✅ | ✅ |
 | `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7) ✅; stamp `localDate` ✅; report `planRevision` ✅; show their own items on the home screen ✅ | ✅ |
 | `today.html` | New (§8) | ✅ |
 | `index.html` | A link to it | ✅ |
@@ -945,6 +962,65 @@ Each step is useful on its own and shippable without the next.
    for different readers. The evaluator's region now has five copies rather
    than two, which is what §10.3 was written for.
 5. **Dated assignments** (§4.3) and delivery status (§11), reusing the queue
-   card.
+   card. ✅ **Built.** The period picker's third option, and an "On the tablets"
+   card under the plan.
+
+   Both halves are parent-side only. Every other surface was already ready:
+   `validatePeriod` has taken `{ from, to }` since step 2, and the evaluator,
+   the hub and the three app panels have all placed a dated window and dropped
+   a closed one since steps 3 and 4 — which is what step 5 being UI was
+   supposed to mean, and was. Nothing in a shared-source region moved, so the
+   evaluator still has its five byte-identical copies.
+
+   Five things are worth recording.
+
+   **A deadline is a third option on the period picker, not a second editor.**
+   That is §4's argument made into a control: an assignment and a target are
+   the same object at different settings, so "By a date" sits beside Week and
+   Day, and count 1 with a narrow match is what makes the same screen compose
+   "the Test on list 5.12, by Friday". Choosing it fills a window in — today to
+   the end of the family's own week (§9.4) — rather than presenting two empty
+   boxes, and then leaves those dates alone on every later repaint, because
+   re-deriving the default would throw away dates the parent had typed.
+
+   **The date fields must not repaint, and the picker above them must.** The
+   editor's existing rule is that only the app picker repaints, because a
+   `<select>` fires `change` on choosing while an `<input>` fires it on blur —
+   and the blur is the tap on Save, which a repaint destroys mid-tap. The
+   period picker is a `<select>`, so it repaints safely and has to, to reveal
+   the two fields. The fields themselves only mutate state; the window is
+   checked when Save is pressed. The server checks it again and is the
+   authority (§4.1's argument: a constraint the UI alone enforces is a
+   comment), but "period must be day, week, or { from, to }" is the wrong
+   sentence for a parent who left a box empty.
+
+   **Delivery status is a field on `GET /api/plan`, not the third endpoint
+   §12.1 might imply.** §11 asks for progress with "no new endpoint, no new
+   request", and the same argument covers this: the card is only ever read
+   beside the plan it describes. The rows are read from `plan_state` (§12),
+   widened with every device that has ever synced for this child — from
+   `child_state`, which is three rows per device rather than one per sitting.
+   That widening is the point of the card: an app old enough not to send
+   `planRevision` uploads its sittings perfectly and reports no revision at
+   all, and without a row for it a parent sees a shorter list rather than a
+   problem. Revoked devices are dropped — a revoked tablet is not a delivery
+   running late — and a device *ahead* of the revision the phone is holding
+   reads as up to date, because another phone may have saved since this one
+   loaded.
+
+   **A window that has not opened yet shows on the child's screen anyway.**
+   `periodWindow()` only ever asks whether a dated window has *closed*, so an
+   assignment starting next Monday appears the moment it is saved, with its
+   real deadline and a count that stays at zero until Monday. That is advance
+   notice rather than a wrong number, and hiding it would mean editing the one
+   function that exists in five byte-identical copies (§10.3) to buy it — so
+   the editor defaults the start date to today instead, and a parent who dates
+   one forward gets what they asked for.
+
+   **It reports; it does not send.** A plan needs no ack (§6.1), so the card
+   has no send button, no retry and no pending state — the queue card's shape
+   without the queue card's verbs. What it buys is the difference between "she
+   has not done it" and "her tablet has not been opened since Tuesday": the
+   same empty bar, and two different conversations.
 6. **Geography and Logic** (§14), if and when their counts are wanted on the
    phone.
