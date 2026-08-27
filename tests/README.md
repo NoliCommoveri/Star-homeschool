@@ -25,6 +25,7 @@ Individual suites are plain scripts — `node tests/api.test.mjs`.
 | `parent-dashboard.test.mjs` | Chromium | `parent.html` against a mocked API |
 | `setup-wizard.test.mjs` | Chromium | First launch, and opening a profile saved by an older version |
 | `today-hub.test.mjs` | Chromium | `today.html`: that it stays a pure reader, and that the five adapters count what the phone counts |
+| `plan-panel.test.mjs` | Chromium | The plan panel on each app's own home screen: that an app shows its own items and no others, counts them the way the hub does, and never gates a button |
 
 **`api.test.mjs` has no dependencies at all.** It loads `schema.sql` into an
 in-memory `node:sqlite` database, wraps it in a D1-shaped shim, and imports
@@ -100,6 +101,22 @@ the app keeps working and quietly does the wrong thing:
   blanked (it would signal a contraction the way the always-present keypad key
   is designed not to), and that a game miss is never written back into the
   history that picks the blanks — which would be a loop rather than evidence.
+- **An app rendering another app's homework.** Every synced app stores the
+  whole plan document, because that is how a target for an app with sync
+  switched off reaches the device at all (assignment-spec §7) — so every app is
+  holding items it must not show. Filter at write time instead of read time and
+  the next app to sync destroys the others' items; filter too loosely at read
+  time and Spelling Star shows a reading target it cannot count, with a bar
+  that is wrong in the direction §5 calls the bad one. `plan-panel.test.mjs`
+  checks both ends: what renders, and what is still in the stored document
+  afterwards.
+- **A target that quietly undercounts.** The phone, the hub and the three apps
+  each evaluate the same plan against the same sittings and nobody reports a
+  number to anyone (§10.2), so a disagreement between them is invisible —
+  every screen looks right on its own. `shared-code.test.mjs` pins the
+  evaluator's five copies as byte-identical; `plan-panel.test.mjs` and
+  `today-hub.test.mjs` pin the per-app adapters that feed it, which are the
+  half that is not shared, and check one seed against both surfaces at once.
 - **A game is never a grade.** The gradebook holds one row per graded sitting
   per list (§16), so a game writing a non-zero `score`/`total` would compete
   with a Test for it. Checked on the session the game actually writes.

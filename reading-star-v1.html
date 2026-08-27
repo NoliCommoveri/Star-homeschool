@@ -687,6 +687,7 @@ function shelfHtml(books, opts) {
 function renderHome() {
   const reading = currentlyReading();
   app.innerHTML = `
+    ${planPanelHtml()}
     <div class="card">
       <h2>Currently reading</h2>
       ${reading.length === 0 ? `<div class="muted" style="margin-bottom:12px">Nothing yet — start a book below.</div>` : reading.map(bookCardHtml).join("")}
@@ -1229,7 +1230,12 @@ function syncPush() {
       // this app renders another app's items — filtering is a read-time
       // concern — so a plan naming apps this one has never heard of is
       // written through untouched.
-      if (res.plan) planStore(res.plan);
+      //
+      // A plan that arrives while the child is sitting on the home screen
+      // shows up there without a reload, the same way an assigned list
+      // already does — and nowhere else: no other screen is worth yanking
+      // out from under them mid-sitting.
+      if (res.plan && planStore(res.plan) && !parentUnlocked && currentView === "home") renderHome();
     })
     .catch(() => { /* best-effort — the next event or boot retries */ });
 }
@@ -1270,11 +1276,16 @@ function planRead() {
 //   3. A malformed value is overwritten, not repaired — the server is the
 //      authority and this key is a cache.
 // Filtering to this app's own items happens at read time, never here.
+//
+// Returns whether the stored document actually changed, so a caller can
+// repaint a screen that is showing it without repainting on every sync that
+// re-delivers the revision this device already holds — which is most of them.
 function planStore(plan) {
-  if (!plan || typeof plan !== "object" || typeof plan.revision !== "number") return;
+  if (!plan || typeof plan !== "object" || typeof plan.revision !== "number") return false;
   const held = planRead();
-  if (held && typeof held.revision === "number" && held.revision >= plan.revision) return;
-  try { localStorage.setItem(planKey(), JSON.stringify(plan)); } catch(e) {}
+  if (held && typeof held.revision === "number" && held.revision >= plan.revision) return false;
+  try { localStorage.setItem(planKey(), JSON.stringify(plan)); } catch(e) { return false; }
+  return true;
 }
 
 // The family timezone (§9.3), or null when no plan has ever arrived. Null is a
@@ -1310,6 +1321,374 @@ function withLocalDates(sessions) {
     return stamp ? Object.assign({}, s, { localDate: stamp }) : s;
   });
 }
+
+// ---------- The mode registry and evaluator (docs/assignment-spec.md §5, §10) ----------
+// Everything from here to the end of evaluateItem() is shared source, copied
+// byte-for-byte into today.html and into the three synced apps, which is what
+// §17 step 4 asked for. tests/shared-code.test.mjs compares all five copies,
+// the way it already compares the plan document block.
+//
+// Drift here is the silent-wrongness the suites exist to catch: nothing throws
+// and no screen breaks, the phone and the tablet simply start counting the
+// same week differently and neither can be shown to be the wrong one.
+//
+// It depends on exactly one thing outside itself — localDate(instant, tz),
+// which is already hand-duplicated across parent.html and the three apps under
+// the same rule. Nothing else from any host file may be referenced here, or the
+// block stops being copyable, which is the only property that makes it safe.
+//
+// What kind of sitting a session was. A pretest, a test and a practice all
+// arrive as a row with a score, and "2 sessions, averaging 100%" flattened
+// them into something a parent can't read: the diagnostic before the list and
+// the test after it look identical to two practice runs. Labels and ordering
+// follow the child apps' own screens (Spelling Star's Pretest / Test /
+// Practice, Math Star's Drill / Practice) so the dashboard names a session the
+// same way the child saw it.
+//
+// §5 promotes this from a badge-labelling table to the registry both sides
+// evaluate against, which is why `tone` now decides what counts as work and
+// not just what colour a badge is.
+const MODES = {
+  spelling: {
+    pretest:  { label: 'Pretest',  tone: 'diagnostic' },
+    test:     { label: 'Test',     tone: 'graded' },
+    practice: { label: 'Practice', tone: 'practice' },
+    repeat:   { label: 'Repeat',   tone: 'practice' },
+    spotit:   { label: 'Spot it',  tone: 'play' },
+    missing:  { label: 'Missing Letters', tone: 'play' },
+  },
+  math: {
+    drill:    { label: 'Drill',    tone: 'graded' },
+    practice: { label: 'Practice', tone: 'practice' },
+  },
+  // reading-star-spec.md §6: quiz is the graded sitting, the same way Test is
+  // for Spelling and Drill is for Math. `log-session` is the sitting that
+  // actually is reading, so it reads as practice.
+  //
+  // The other three are `lifecycle` (assignment-spec.md §5): Reading Star
+  // writes a session row when a book is *started*, and again when it is
+  // finished or abandoned. Those are transitions of a book, not sittings at
+  // one — counting them would make "5 reading sessions a week" satisfiable by
+  // opening five books and reading none of them.
+  reading: {
+    start:        { label: 'Started',        tone: 'lifecycle' },
+    'log-session':{ label: 'Reading session', tone: 'practice' },
+    finish:       { label: 'Finished',       tone: 'lifecycle' },
+    abandon:      { label: 'Quit',           tone: 'lifecycle' },
+    quiz:         { label: 'Quiz',           tone: 'graded' },
+  },
+  // §5, §14. Neither app syncs yet, so nothing here is reachable from the
+  // dashboard or the Plan tab's editor — the phone cannot verify a session it
+  // never receives, which is why §11 keeps them out of the editor. They are
+  // written down now so that the model that ships is already the model those
+  // apps slot into, rather than one that has to be reshaped to admit them:
+  // when §14 lands, an app id becomes selectable and nothing else moves.
+  //
+  // Nine Geography modes and four Logic ones collapse to one countable unit
+  // each. A round is a round; whether it was capitals or rivers is a question
+  // the dashboard answers, not one a target should have to.
+  geography: {
+    round:  { label: 'Round',  tone: 'practice' },
+  },
+  logic: {
+    puzzle: { label: 'Puzzle', tone: 'practice' },
+  },
+};
+
+// Unknown modes still render — a future app screen shows its raw mode rather
+// than vanishing from the dashboard.
+function modeInfo(appId, mode) {
+  return (MODES[appId] || {})[mode] || { label: mode || 'Session', tone: 'play' };
+}
+
+// assignment-spec.md §5. Two rules rather than an enumeration, because an
+// enumeration goes stale: Spelling Star shipped `spotit`, then `missing`, and
+// docs/spelling-star-games.md is a backlog of more. Each arrives as a mode with
+// tone 'play' and should land in the plan already knowing it is not homework,
+// without anyone remembering to come back here.
+//
+// A parent who wants to encourage games can still target one by naming its
+// mode explicitly — this governs only what a broad match sweeps up.
+const UNCOUNTED_TONES = ['play', 'lifecycle'];
+
+// An unrecognized mode falls to modeInfo's 'play' default and therefore does
+// not count, which is the direction worth failing in: a target that undercounts
+// shows "2 of 3" for a child who did three, and a parent goes and looks. One
+// that overcounts shows "3 of 3" for a child who did two, and nobody does.
+function countsAsWork(appId, mode) {
+  return !UNCOUNTED_TONES.includes(modeInfo(appId, mode).tone);
+}
+
+// Date arithmetic on a YYYY-MM-DD string, with no timezone involved anywhere.
+// That is the whole payoff of §9.3 stamping local_date at write time: once a
+// session carries the calendar day it belongs to, every bucket downstream is
+// string comparison and day counting, and the IANA database is needed exactly
+// once — to ask what today is.
+//
+// The arithmetic goes through UTC deliberately. A local Date would put these
+// on a clock that has 23- and 25-hour days, and "seven days after" would
+// occasionally land on the wrong one.
+function shiftDate(date, days) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  return new Date(at + days * 86400000).toISOString().slice(0, 10);
+}
+function daysBetween(from, to) {
+  const a = Date.parse(from + 'T00:00:00Z');
+  const b = Date.parse(to + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
+
+// §9.4: the most recent weekStart weekday on or before this date. 0 = Sunday,
+// matching data.schedule's existing indexing, so a family that has set its week
+// to start on Monday gets the same answer from both.
+function weekBucketStart(date, weekStart) {
+  const at = Date.parse(date + 'T00:00:00Z');
+  if (!Number.isFinite(at)) return date;
+  const shift = (new Date(at).getUTCDay() - (weekStart === 1 ? 1 : 0) + 7) % 7;
+  return shiftDate(date, -shift);
+}
+
+// The local-date window an item is being counted over right now, plus whether
+// that window has closed. §4.3's three period kinds, and nothing else: there is
+// deliberately no Mon–Fri "schoolweek", because whether a week includes
+// Saturday is a question about the family's week and weekStart answers it.
+//
+// `closed` can only ever be true for a dated period. A day or a week bucket is
+// derived from today and therefore always contains it — which is what §10.4
+// needs: mid-period neither surface renders a judgment, so a target that has
+// not closed has no verdict to show, only a count and the days left.
+function periodWindow(item, { timezone, weekStart, now }) {
+  const today = localDate(new Date(now), timezone);
+  if (!today) return null;
+
+  const period = item && item.period;
+  if (period === 'day') return { from: today, to: today, closed: false };
+  if (period === 'week') {
+    const from = weekBucketStart(today, weekStart);
+    return { from, to: shiftDate(from, 6), closed: false };
+  }
+  if (period && typeof period === 'object' && period.from && period.to) {
+    return { from: period.from, to: period.to, closed: today > period.to };
+  }
+  return null;
+}
+
+// §10.2. One pure function, evaluated identically on the phone, on the hub and
+// in the apps, so no client ever has to report "I have done 2 of 3" — both
+// sides count the same sessions with the same rules and arrive at the same
+// number on their own. There is no progress field to get out of sync.
+//
+// `sessions` are normalized to { at, localDate, app, mode, scopeId, deviceId,
+// id }. `now` is a parameter rather than Date.now() so a past period is
+// answerable retroactively (§10.1) — which is the point of plan revisions
+// carrying an effective date.
+function evaluateItem(item, sessions, { timezone, weekStart, now }) {
+  const window = periodWindow(item, { timezone, weekStart, now });
+  const count = (item && item.count) || 0;
+  if (!window) return { done: 0, count, met: false, from: null, to: null, closed: false, daysLeft: 0 };
+
+  const match = (item && item.match) || {};
+
+  // Deduplicated on (deviceId, sessionId) before counting, which is not
+  // optional: a merged child holds the same sitting under more than one childId
+  // (§6.2), and an app re-pushes its history when it adopts the shared one.
+  // /api/summary carries an inner DISTINCT for exactly this reason. Without it
+  // a re-push inflates every count and a child appears to have met a target
+  // they did not.
+  //
+  // today.html has no deviceId — everything it reads is by definition from the
+  // one device — so the key collapses to the session id there, on its own. That
+  // is the same line of code doing the right thing in both places rather than a
+  // branch, which is what lets this stay byte-identical.
+  const seen = new Set();
+  let done = 0;
+
+  for (const s of sessions || []) {
+    // A session with no local_date cannot be placed in a calendar day at all
+    // (§9.6): it was recorded before plans existed, or on a tablet that has
+    // never received one. Excluded rather than guessed at — the phone
+    // backfills what it can before this ever runs.
+    if (!s || !s.localDate) continue;
+    if (s.localDate < window.from || s.localDate > window.to) continue;
+
+    if (match.app && s.app !== match.app) continue;
+    if (match.scopeId && s.scopeId !== match.scopeId) continue;
+
+    if (match.modes && match.modes.length) {
+      // Naming a mode explicitly targets it whatever its tone, so a parent who
+      // wants to encourage a game can. Only a broad match defers to §5's rule.
+      if (!match.modes.includes(s.mode)) continue;
+    } else if (!countsAsWork(s.app, s.mode)) {
+      continue;
+    }
+
+    const key = (s.deviceId || '') + ':' + (s.id || '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    done += 1;
+  }
+
+  const today = localDate(new Date(now), timezone);
+  return {
+    done,
+    count,
+    met: done >= count,
+    from: window.from,
+    to: window.to,
+    closed: window.closed,
+    // Inclusive of today: on the last day of a week this reads 0, which the
+    // surfaces render as "last day" rather than "0 days left".
+    daysLeft: today && today <= window.to ? daysBetween(today, window.to) : 0,
+  };
+}
+// ---------- end of the shared registry and evaluator ----------
+
+// ---------- The plan panel (docs/assignment-spec.md §8, §17 step 4) ----------
+// What this child owes in THIS app, read from the plan document the last sync
+// delivered (§6.2) and evaluated right here (§10.2) — no client ever reports
+// "2 of 3" upward or downward. Both sides count the same sittings with the
+// same rules and arrive at the same number on their own, which is the whole
+// reason the evaluator above is copied rather than called.
+//
+// Shared source, byte-identical in all three synced apps and compared by
+// tests/shared-code.test.mjs, like the plan document block. It depends on the
+// evaluator above it, on planRead() / planTimezone() / localDate() from that
+// block, on esc(), on SYNC_APP — the app id these sittings are already pushed
+// under — and on planSessions(), the one per-app hook, defined immediately
+// below it. Nothing else from any host file may be referenced here, or the
+// block stops being copyable, which is the only property that makes it safe.
+
+// §9.5: the tablet's clock for plan purposes comes from the plan document and
+// nowhere else — deliberately no fallback to the device's own zone, unlike
+// today.html. A tablet holding no plan has no item to place in a calendar day
+// anyway, so periodWindow() returning null on a null zone is what hides this
+// panel entirely (§9.6), rather than showing a bar that reads 0 of 3 forever
+// with nothing visibly wrong.
+function planContext(plan) {
+  return { timezone: planTimezone(), weekStart: plan && plan.weekStart === 1 ? 1 : 0, now: Date.now() };
+}
+
+// §7.1: an app filters the plan to its own items at read time, and only at
+// read time — the document itself is stored whole, because it is also how the
+// other apps' items reach this device.
+//
+// A cross-app item — a match with no `app` (§4) — is deliberately NOT shown
+// here. Counting one needs sittings from apps whose keys this app does not
+// read, so the only number it could print is too low, and §5 is explicit about
+// which direction of wrong is the bad one: a bar that undercounts sends a
+// child back to work they have already done. today.html holds all five apps'
+// history and is the surface that can count it, so the panel points there.
+function planOwnItems(plan, ctx) {
+  return ((plan && plan.items) || []).filter(item => {
+    if (!item || !item.id || !item.match || item.match.app !== SYNC_APP) return false;
+    // §4.3: a dated item leaves the child's view once its window has closed.
+    // It stays in the parent's history, where "not done, and the window
+    // closed" is the whole point — but a child does not need yesterday's
+    // deadline on today's list. An item whose period this version cannot place
+    // drops out the same way: there is nothing honest to show for it.
+    const window = periodWindow(item, ctx);
+    return !!window && !window.closed;
+  });
+}
+
+// §8.2, and it is the reason this is a panel and not a gate: it displays, it
+// never blocks. Every button under it stays exactly as live as it was, a child
+// who wants a fourth practice is not stopped, and a child who has finished is
+// not locked out. data.schedule remains the only thing that gates, because
+// schedule is what is available today and the plan is what is owed this week.
+function planPanelHtml() {
+  const plan = planRead();
+  const ctx = planContext(plan);
+  const items = planOwnItems(plan, ctx);
+  if (!items.length) return "";
+  const sessions = planSessions(ctx.timezone);
+  const met = items.every(item => evaluateItem(item, sessions, ctx).met);
+  // Only ever true when the parent has targeted an app this one is not, so the
+  // line is silent on a plan that is entirely this app's — which is most of
+  // them.
+  const elsewhere = ((plan && plan.items) || []).length > items.length;
+  return `<div class="card" style="padding:20px">
+    <div style="font-weight:700;font-size:18px;margin-bottom:4px">${met ? "&#11088; All done here!" : "&#128203; What I owe"}</div>
+    <div class="muted" style="margin-bottom:10px">${met ? "Anything else today is because you felt like it." : "Nothing here locks anything &mdash; you can always do more."}</div>
+    ${items.map(item => planRowHtml(item, sessions, ctx)).join("")}
+    ${elsewhere ? `<div class="muted" style="margin-top:12px;font-size:14px">Other work is on the <a href="./today.html" style="color:var(--accent);font-weight:700;text-decoration:none">Today page &rarr;</a></div>` : ""}
+  </div>`;
+}
+
+// §8.3: a count and a bar, never a percentage and never a grade — the same
+// resolution math-star-spec.md §1 and reading-star-spec.md §4.2 reached
+// independently. The bar's width is a percentage internally, which is fine:
+// nothing reads it out.
+function planRowHtml(item, sessions, ctx) {
+  const r = evaluateItem(item, sessions, ctx);
+  const pct = r.count ? Math.min(100, Math.round((r.done / r.count) * 100)) : 0;
+  // §10.4: no judgment mid-period. Every item rendering here has an open
+  // window — a closed one was filtered out — so the right-hand side is either
+  // the good news or the time left, never a verdict. "Done" replaces the time
+  // left rather than sitting beside it: a child who has finished does not need
+  // to know how long they had.
+  const right = r.met
+    ? `<span style="color:var(--green-dark);font-weight:700">Done &#10003;</span>`
+    : item.period === "day" ? "today"
+    : r.daysLeft === 0 ? "last day"
+    : r.daysLeft + (r.daysLeft === 1 ? " day left" : " days left");
+  // The deadline goes in the label line rather than in the status slot on the
+  // right: a dated assignment that has been finished still has a due date, and
+  // a row reading only "Done" does not say which piece of work it was for.
+  const when = item.period === "day" ? "every day"
+    : item.period === "week" ? "this week"
+    : "by " + planReadableDate(r.to);
+  return `<div style="padding:10px 0;border-top:1px solid var(--line)">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <strong style="font-size:16px">${esc(item.label || "Work")}</strong>
+      <span class="muted" style="margin-left:auto">${r.done} of ${r.count}</span>
+    </div>
+    <div style="height:10px;border-radius:6px;background:var(--chip);overflow:hidden;margin:8px 0 6px">
+      <span style="display:block;height:100%;width:${pct}%;background:${r.met ? "var(--green)" : "var(--accent)"}"></span>
+    </div>
+    <div class="muted" style="display:flex;gap:10px;font-size:14px"><span>${esc(when)}</span><span style="margin-left:auto">${right}</span></div>
+  </div>`;
+}
+
+// A YYYY-MM-DD local date read back as "Sep 4". Parsed as UTC on purpose: the
+// string is already a calendar day, and re-reading it in the device's own zone
+// is how a date becomes the day before.
+function planReadableDate(date) {
+  const at = Date.parse(date + "T00:00:00Z");
+  if (!Number.isFinite(at)) return date;
+  return new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+// ---------- end of the shared plan panel ----------
+// The one hook it needs, and the only part of any of this that is not shared:
+// how to read this app's own history into the shape evaluateItem() expects.
+// The app id it filters on is SYNC_APP, already declared above — the same
+// identifier these sittings are pushed under, which is what §4.1 means by a
+// match referencing envelope columns and nothing else.
+
+// Named fields, never a spread. today.html states that rule for a stronger
+// reason — the object it reads holds a PIN — but it holds here too: the shape
+// the evaluator reads is a contract, and a field that leaks into it by
+// accident becomes load-bearing without anyone deciding it should be.
+//
+// The flat event log, never the nested copies in books[] (§8.6): a nested copy
+// carries its event's own id, so reading both would count every sitting twice
+// — or, with the evaluator's dedupe, silently depend on it. `deviceId` is
+// absent for the reason it is absent on the hub: everything here was recorded
+// on this device.
+function planSessions(tz) {
+  const rows = [];
+  for (const e of data.events || []) {
+    if (!e) continue;
+    const at = Date.parse(e.date);
+    if (!Number.isFinite(at)) continue;
+    rows.push({ id: e.id, at, localDate: localDate(new Date(at), tz), app: SYNC_APP, mode: e.mode, scopeId: e.bookId || null });
+  }
+  return rows;
+}
+
 
 // ---------- Parent -> child commands (§15) ----------
 // syncState()/applyCommand() are the declared per-app seam (§3 rule 5);

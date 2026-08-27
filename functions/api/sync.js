@@ -190,10 +190,13 @@ async function currentPlan(env, familyId, childId) {
   ).bind(familyId).first();
   if (!family || !family.timezone) return null;
 
-  // Empty until the Plan tab ships (§17 step 2). Revision 0 is deliberately
-  // below every revision /api/plan will ever allocate, so this placeholder can
-  // never overwrite a real plan on a device under §7.1's highest-revision-wins
-  // rule — the ordering holds without the client knowing which is which.
+  // A child with no plan row still gets a document, carrying the family's zone
+  // and an empty item list — that is what makes a tablet stamp local dates
+  // before a parent has set a single target (§9.5). Revision 0 is deliberately
+  // below every revision /api/plan will ever allocate, so that empty document
+  // can never overwrite a real plan already on a device under §7.1's
+  // highest-revision-wins rule — the ordering holds without the client knowing
+  // which is which.
   const row = await env.DB.prepare(
     'SELECT revision, items FROM plans WHERE child_id = ?'
   ).bind(childId).first();

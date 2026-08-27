@@ -8,7 +8,8 @@
 // throws, no screen breaks — the apps simply start disagreeing.
 //
 // assignment-spec.md §10.3 asks for exactly this test, for the evaluator that
-// landed with the Plan tab and now has a second copy in today.html.
+// landed with the Plan tab and now has five copies: the phone, the hub, and
+// each of the three synced apps.
 //
 // Node only — no browser, no server, no database.
 import { readdirSync, readFileSync } from 'node:fs';
@@ -28,15 +29,27 @@ const SHARED = [
     from: '// ---------- The plan document (docs/assignment-spec.md §7, §9) ----------',
     through: 'function withLocalDates(sessions) {',
   },
-  // assignment-spec.md §10.3. Both sides count the same sessions with the same
-  // rules and arrive at the same number on their own — that is the whole reason
-  // no client ever reports "I have done 2 of 3" (§3). It only holds while the
-  // rules are the same rules. The three synced apps join this list at §17 step 4.
+  // assignment-spec.md §10.3. Every surface counts the same sessions with the
+  // same rules and arrives at the same number on its own — that is the whole
+  // reason no client ever reports "I have done 2 of 3" (§3). It only holds
+  // while the rules are the same rules, and with §17 step 4 there are five
+  // copies of them: the phone, the hub, and each of the three tablets' apps.
   {
     what: 'the mode registry and evaluator (assignment-spec §5, §10)',
-    files: ['parent.html', 'today.html'],
+    files: ['parent.html', 'today.html', ...SYNCED_APPS],
     from: '// ---------- The mode registry and evaluator (docs/assignment-spec.md §5, §10) ----------',
     through: 'function evaluateItem(item, sessions, { timezone, weekStart, now }) {',
+  },
+  // The panel each app shows on its own home screen (§17 step 4). Not shared
+  // with parent.html or today.html — those render the same numbers for
+  // different readers — but shared across the three apps, and it is the piece
+  // most likely to be "improved" in one file only, because it is the visible
+  // one.
+  {
+    what: 'the plan panel (assignment-spec §8, §17 step 4)',
+    files: SYNCED_APPS,
+    from: '// ---------- The plan panel (docs/assignment-spec.md §8, §17 step 4) ----------',
+    through: 'function planReadableDate(date) {',
   },
 ];
 

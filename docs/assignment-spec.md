@@ -692,11 +692,11 @@ invariant: both handlers resolve `family_id` from the bearer token, and a
 | `sw.js` | `CACHE_VERSION` bump | ✅ |
 | `functions/api/plan.js` | New. `GET` / `PUT` | ✅ |
 | `parent.html` | Family timezone setting ✅; Plan tab ✅; the evaluator ✅; `MODES` promoted to the registry, with tone deciding what counts ✅ | ✅ |
-| `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7) ✅; stamp `localDate` ✅; report `planRevision` ✅; show their own items on the home screen | partly |
+| `spelling-star-v6_3.html`, `math-star-v6_1.html`, `reading-star-v1.html` | Store the plan to the shared key (§7) ✅; stamp `localDate` ✅; report `planRevision` ✅; show their own items on the home screen ✅ | ✅ |
 | `today.html` | New (§8) | ✅ |
 | `index.html` | A link to it | ✅ |
 | `sw.js` | Cache `today.html` | ✅ |
-| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API ✅; Plan tab ✅; the `today.html` suite ✅ (`today-hub.test.mjs`) | ✅ |
+| `tests/` | The §10.3 drift test ✅ (`shared-code.test.mjs`); Phase 5 API + tablet coverage ✅; plan API ✅; Plan tab ✅; the `today.html` suite ✅ (`today-hub.test.mjs`); the panel suite ✅ (`plan-panel.test.mjs`) | ✅ |
 
 Untouched: `geography-star.html`, `logic-star.html`.
 
@@ -906,8 +906,44 @@ Each step is useful on its own and shippable without the next.
    `{ timezone, weekStart, now }` and ends the region three lines in — silently,
    because a short region still compares equal to itself. The `through` marker
    already ends with the real opening brace, so it is used directly.
-4. **Delivery** (§6.2, §7). The sync response carries `plan`; the three apps
-   write the shared key and show their own items. The hub gains denominators.
+4. **Delivery** (§6.2, §7). ✅ **Built.** The sync response carries `plan`; the
+   three apps write the shared key and show their own items.
+
+   Most of what this step described had already landed: step 1 shipped the
+   delivery pipe and the shared-key writer, and step 3 gave the hub its
+   denominators the day it shipped, because it reads the same document. What
+   was left was the panel on each app's own home screen, and three things about
+   it are worth recording.
+
+   **An app does not show a cross-app item.** §7.1 says an app filters to its
+   own items when rendering, and leaves open what "its own" means for an item
+   with no `app` in its match (§4). It means: not this app's. Counting one
+   needs sittings from apps whose localStorage keys this app does not read, so
+   the only number it could put on the bar is too low — and §5 is explicit
+   about which direction of wrong is the bad one, because an undercount sends
+   a child back to work they have already done. `today.html` holds all five
+   apps' history and is the surface that can count it, so the panel says so
+   and links there. The line only appears when the plan actually holds an item
+   this app is not showing.
+
+   **The panel filters on `SYNC_APP`, not on a new constant.** Every app
+   already declares the id it pushes its sessions under, and §4.1 restricts a
+   match to envelope columns — so the id in `match.app` and the id in the
+   envelope are the same id by construction. A second constant would have been
+   a second place for them to disagree.
+
+   **No fallback to the device's timezone, unlike the hub.** §9.5 gives
+   `today.html` the device zone when no plan has arrived, which is what makes
+   it useful on a tablet that has never synced. An app has no such need: with
+   no zone there is no plan document, and therefore no item to place in a
+   calendar day. `periodWindow()` returning null on a null zone hides the
+   panel entirely, which is §9.6's posture — no plan, nothing shown — rather
+   than a bar reading 0 of 3 forever with nothing visibly wrong.
+
+   The panel is a third shared-source region (`shared-code.test.mjs`), across
+   the three apps but not the phone or the hub: those render the same numbers
+   for different readers. The evaluator's region now has five copies rather
+   than two, which is what §10.3 was written for.
 5. **Dated assignments** (§4.3) and delivery status (§11), reusing the queue
    card.
 6. **Geography and Logic** (§14), if and when their counts are wanted on the
