@@ -224,7 +224,7 @@ const GRID_CATS = {
   "addition-facts": { min: 0, max: 9 },
   "subtraction-facts": { min: 0, max: 9 },
   "multiplication-facts": { min: 0, max: 10 },
-  "division-facts": { min: 2, max: 12 },
+  "division-facts": { min: 2, max: 10 },
 };
 function gridRowCol(category, r) {
   if (category === "addition-facts") { const [a,b] = r.key.split("+").map(Number); return [a,b]; }
@@ -614,7 +614,7 @@ function genSubtractionMultidigit(){
 }
 function genMultiplicationFacts(){ const a=randInt(0,10), b=randInt(0,10); return { key:`${a}x${b}`, prompt:`${a} &times; ${b} = ?`, promptText:`${a} × ${b} = ?`, answer:a*b }; }
 function genDivisionFacts(){
-  const divisor=randInt(2,12), quotient=randInt(2,12);
+  const divisor=randInt(2,10), quotient=randInt(2,10);
   const remainder = Math.random()<0.4 ? randInt(1,divisor-1) : 0;
   const dividend = divisor*quotient+remainder;
   return { key:`${dividend}/${divisor}`, prompt:`${dividend} &divide; ${divisor} = ?`, promptText:`${dividend} ÷ ${divisor} = ?`, answer:{ q:quotient, r:remainder } };
