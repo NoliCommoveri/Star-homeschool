@@ -223,7 +223,7 @@ function formatDuration(ms) {
 const GRID_CATS = {
   "addition-facts": { min: 0, max: 9 },
   "subtraction-facts": { min: 0, max: 9 },
-  "multiplication-facts": { min: 0, max: 12 },
+  "multiplication-facts": { min: 0, max: 10 },
   "division-facts": { min: 2, max: 12 },
 };
 function gridRowCol(category, r) {
@@ -237,6 +237,19 @@ function gridRowCol(category, r) {
     return [divisor, quotient];
   }
   return null;
+}
+// A fact can fall outside its category's grid range if that range later
+// narrows (multiplication dropped the 11s and 12s). Nothing generates those
+// facts any more, but a saved profile can still be holding them in the review
+// pool, the graduated list, or the mastery grid, where they'd resurface in
+// drills and take up squares on the map forever. This is the single in-range
+// check used to prune them on load.
+function inGridRange(category, r) {
+  const cfg = GRID_CATS[category];
+  if (!cfg) return true;
+  const rc = gridRowCol(category, r);
+  if (!rc) return true;
+  return rc.every(n => n >= cfg.min && n <= cfg.max);
 }
 
 // ---------- Subgroup mastery config (prototype: rounding only) ----------
@@ -524,6 +537,20 @@ function load(key) {
     // future reviewable-but-not-heatmap category isn't pruned by accident.
     d.reviewFacts = (d.reviewFacts || []).filter(r => catMeta(r.category).reviewable).map(migrateProblemDescriptor).filter(Boolean);
     d.graduated   = (d.graduated || []).filter(g => catMeta(g.category).reviewable).map(migrateProblemDescriptor).filter(Boolean);
+    // Drop facts left over from a wider grid range than the category now uses
+    // (the 11s and 12s, for profiles practiced before multiplication was
+    // capped at 10). They can't be re-earned, so leaving them would mean
+    // permanent review-pool entries and stuck squares on the mastery map.
+    d.reviewFacts = d.reviewFacts.filter(r => inGridRange(r.category, r));
+    d.graduated   = d.graduated.filter(g => inGridRange(g.category, g));
+    Object.keys(d.masteryGrid || {}).forEach(k => {
+      const sep = k.indexOf("::");
+      if (sep < 0) return;
+      const cat = k.slice(0, sep), cfg = GRID_CATS[cat];
+      if (!cfg) return;
+      const [row, col] = k.slice(sep + 2).split("-").map(Number);
+      if ([row, col].some(n => Number.isNaN(n) || n < cfg.min || n > cfg.max)) delete d.masteryGrid[k];
+    });
     return d;
   } catch(e) {
     lastLoadError = "corrupted";
@@ -585,7 +612,7 @@ function genSubtractionMultidigit(){
   const prompt = `${a} - ${b} = ?`;
   return { key:`${a}-${b}`, prompt, promptText:prompt, answer:a-b };
 }
-function genMultiplicationFacts(){ const a=randInt(0,12), b=randInt(0,12); return { key:`${a}x${b}`, prompt:`${a} &times; ${b} = ?`, promptText:`${a} × ${b} = ?`, answer:a*b }; }
+function genMultiplicationFacts(){ const a=randInt(0,10), b=randInt(0,10); return { key:`${a}x${b}`, prompt:`${a} &times; ${b} = ?`, promptText:`${a} × ${b} = ?`, answer:a*b }; }
 function genDivisionFacts(){
   const divisor=randInt(2,12), quotient=randInt(2,12);
   const remainder = Math.random()<0.4 ? randInt(1,divisor-1) : 0;

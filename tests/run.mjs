@@ -16,6 +16,7 @@ const SUITES = [
   { file: 'api.test.mjs', browser: false },
   { file: 'shared-code.test.mjs', browser: false },
   { file: 'child-apps.test.mjs', browser: true },
+  { file: 'math-fact-range.test.mjs', browser: true },
   { file: 'practice-sets.test.mjs', browser: true },
   { file: 'spot-the-spelling.test.mjs', browser: true },
   { file: 'missing-letters.test.mjs', browser: true },
