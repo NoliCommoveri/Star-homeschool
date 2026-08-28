@@ -34,7 +34,9 @@ const server = {
       { id: '1003', date: iso(3600000), deviceId: 'tablet-1', mode: 'practice', score: 7, total: 10, listName: 'Week 11', results: [{ word: 'friend', correct: false, attempts: 2 }] },
     ],
     'child-ada:math': [
-      { id: '2001', date: iso(3600000), deviceId: 'tablet-1', mode: 'drill', score: 8, total: 10, focusName: 'Addition Warm-up', categories: ['addition-facts'], results: [] },
+      // elapsedMs rides along in the session payload blob from Math Star; the
+      // detail modal is where a parent reads how long the sitting took.
+      { id: '2001', date: iso(3600000), deviceId: 'tablet-1', mode: 'drill', score: 8, total: 10, elapsedMs: 115000, focusName: 'Addition Warm-up', categories: ['addition-facts'], results: [] },
     ],
   },
   snapshots: {
@@ -223,6 +225,25 @@ await page.waitForTimeout(400);
 }
 await page.click('#navDashboard');
 await page.waitForTimeout(700);
+
+console.log('\n[How long a math sitting took]');
+{
+  await page.evaluate(() => openSessionDetail('child-ada', 'math', '2001'));
+  await page.waitForTimeout(150);
+  const line = await page.textContent('.overlay p.muted');
+  check('the detail shows how long it took', line.includes('1 min 55 sec'), line);
+  check('alongside the score, not instead of it', line.includes('8/10'), line);
+  await page.evaluate(() => document.querySelector('.overlay')?.remove());
+
+  // The other two shapes are the formatter's, and testing them here rather
+  // than through fixture sessions keeps this suite's session counts — which
+  // several target checks assert on — out of it.
+  const cases = await page.evaluate(() => [fmtElapsed(42000), fmtElapsed(60000), fmtElapsed(undefined), fmtElapsed(0)]);
+  check('under a minute reads as seconds only', cases[0] === '42 sec', cases[0]);
+  check('exactly a minute keeps the seconds place', cases[1] === '1 min 0 sec', cases[1]);
+  check('a session recorded before timing existed shows nothing', cases[2] === null, cases[2]);
+  check('and neither does a zero', cases[3] === null, cases[3]);
+}
 
 console.log('\n[Delete a session from the dashboard]');
 await page.click('summary:has-text("Recent sessions")');
