@@ -479,6 +479,17 @@ function fmtDateTime(iso) {
   if (isNaN(d)) return '—';
   return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+// How long a sitting took. Math Star records `elapsedMs` on every Drill and
+// Practice session and it rides along in the payload blob, so it arrives here
+// for free — the other two apps do not record it, hence the null. Spelled out
+// ("1 min 55 sec") to match the reading log's "min" rather than Math Star's
+// own tighter "1m 55s": on a phone this line is read, not scanned.
+function fmtElapsed(ms) {
+  if (typeof ms !== 'number' || !isFinite(ms) || ms <= 0) return null;
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60), sec = totalSec % 60;
+  return m > 0 ? `${m} min ${sec} sec` : `${sec} sec`;
+}
 // assignment-spec.md §9.3. Byte-identical to the copy in the three child apps;
 // 'en-CA' formats as YYYY-MM-DD. Returns null for an unusable zone rather than
 // throwing, so a bad family setting degrades to "unbucketed" instead of taking
@@ -989,6 +1000,7 @@ function openSessionDetail(childId, appId, sessionId) {
   if (!session) return;
   const child = state.children.find((c) => c.id === childId);
   const scope = scopeOf(appId, session);
+  const elapsed = fmtElapsed(session.elapsedMs);
 
   // Reading has no per-item results array — its mode-specific detail (minutes/
   // pages/note, a rating, a missed-question count) lives directly on the
@@ -1011,7 +1023,7 @@ function openSessionDetail(childId, appId, sessionId) {
     <div class="card">
       <h2>${esc(child?.name || 'Session')}</h2>
       <p style="margin:6px 0">${modeBadge(appId, session)}</p>
-      <p class="muted">${esc(fmtDateTime(session.date))}${scope ? ' · ' + esc(scope) : ''}${session.total ? ' · ' + session.score + '/' + session.total : ''}</p>
+      <p class="muted">${esc(fmtDateTime(session.date))}${scope ? ' · ' + esc(scope) : ''}${session.total ? ' · ' + session.score + '/' + session.total : ''}${elapsed ? ' · ' + esc(elapsed) : ''}</p>
       ${session.promotedFrom ? '<p class="muted">Recorded automatically from a perfect pretest — the same sitting as that pretest, not a second one.</p>' : ''}
       <div>${rows || '<p class="muted">No item detail recorded.</p>'}</div>
       <div class="error" id="sessionDeleteErr"></div>
