@@ -20,6 +20,7 @@ const SUITES = [
   { file: 'practice-sets.test.mjs', browser: true },
   { file: 'spot-the-spelling.test.mjs', browser: true },
   { file: 'missing-letters.test.mjs', browser: true },
+  { file: 'crossword.test.mjs', browser: true },
   { file: 'apostrophes.test.mjs', browser: true },
   { file: 'parent-dashboard.test.mjs', browser: true },
   { file: 'setup-wizard.test.mjs', browser: true },

@@ -107,7 +107,7 @@ Session records:
 |---|---|---|
 | `id` | `Date.now()` | `Date.now()` |
 | `date` | ISO string | ISO string |
-| `mode` | `practice \| test \| pretest \| repeat \| spotit \| missing` | `practice \| drill` |
+| `mode` | `practice \| test \| pretest \| repeat \| spotit \| missing \| crossword` | `practice \| drill` |
 | scope field | `listName` | `categories`, `focusName` |
 | totals | `score`, `total`, `bonusEarned` | `score`, `total`, `elapsedMs` |
 | `results[]` | `{ word, correct, attempts, type }` | `{ key, category, prompt, answer, type, subgroup?, correct, attempts, fromReview? }` |
