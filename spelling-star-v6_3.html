@@ -133,6 +133,39 @@
     .board { gap: 4px; }
     .slot { min-width: 28px; height: 48px; font-size: 22px; }
   }
+  /* ---------- The crossword grid ----------
+     Sized by its column count rather than by a breakpoint: a 6-word puzzle and
+     a 10-word one differ by a factor of two in width, so a fixed cell size
+     would either waste half the card or run off a phone. The grid asks for
+     26px per column and the scroller lets it exceed the card if the layout
+     came out wide, which is the one case where shrinking the cells further
+     would put them below a fingertip.
+     See docs/spelling-star-games.md §5.6. */
+  .cw-scroll { overflow-x: auto; margin: 0 -6px 14px; padding: 0 6px 4px; }
+  .cw-grid { display: grid; gap: 3px; margin: 0 auto; min-width: calc(var(--cw-cols) * 20px); max-width: min(100%, calc(var(--cw-cols) * 46px)); }
+  .cw-blank { aspect-ratio: 1; }
+  .cw-cell { aspect-ratio: 1; position: relative; padding: 2px 0 0; border-radius: 4px; background: var(--card); color: var(--text);
+             border: 2px solid var(--border); font-size: clamp(10px, 3.2vw, 20px); font-weight: 800; text-transform: uppercase;
+             display: flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1; }
+  /* The whole entry lights up, not just the letter under the finger: in a grid
+     every cell has two possible words through it, so "which word am I typing
+     into" is the one thing the child must never have to guess. */
+  .cw-cell.in-entry { background: var(--accent-soft); border-color: var(--accent); }
+  .cw-cell.sel { background: var(--accent); border-color: var(--accent); color: #FFF; }
+  /* A solved entry's letters are proven right, so they stop being controls —
+     same reasoning as .slot.given. */
+  .cw-cell.solved { background: var(--green-soft); border-color: var(--green); color: var(--green-dark); cursor: default; }
+  .cw-cell.solved.shown { background: var(--soft); border-color: var(--border); color: var(--muted); }
+  .cw-num { position: absolute; top: 1px; left: 2px; font-size: 8px; font-weight: 700; opacity: .75; line-height: 1; }
+  .cw-cell.sel .cw-num { opacity: .9; }
+  .cw-clues { display: flex; flex-wrap: wrap; gap: 18px; }
+  .cw-clues > div { flex: 1; min-width: 210px; }
+  .cw-clue { display: block; width: 100%; text-align: left; background: transparent; color: var(--body-text); border: 2px solid transparent;
+             border-radius: 8px; padding: 7px 8px; font-size: 15px; font-weight: 500; cursor: pointer; }
+  .cw-clue.sel { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+  .cw-clue.solved { color: var(--green-dark); text-decoration: line-through; text-decoration-thickness: 2px; opacity: .8; }
+  .cw-clue.solved.shown { color: var(--muted); }
+  .cw-clue b { font-weight: 800; }
 </style>
 </head>
 <body>
@@ -608,6 +641,7 @@ function go(view) {
   S = null;  // same discipline: a pending Practice/Test/Pretest timer must not fire post-navigation
   RP = null; // same discipline for Repeat
   ML = null; // same discipline for Missing Letters: a pending next-word timer must not fire post-navigation
+  CW = null; // same discipline for Crossword: a pending finish timer must not fire post-navigation
   currentView = view;
   // Navigating just cleared every in-progress session, so anything a parent
   // sent mid-activity can safely land now (§15.5).
@@ -829,7 +863,7 @@ function renderHome() {
       <div style="font-size:18px;font-weight:700;color:var(--green-dark);margin-bottom:12px">You aced "${esc(list.name)}"! Ready for the next list?</div>
       <button class="big green" onclick="tryAdvance()">Yes, let's go! &rarr;</button>
     </div>` : ""}
-    ${last ? `<div class="card" style="cursor:pointer" onclick="renderLastResults()"><div class="muted">Last session</div><div style="font-size:17px;font-weight:600">${last.mode==="test"?`Test — ${fmtTest(last)}`:last.mode==="pretest"?`Pretest — ${fmtTest(last)}`:last.mode==="repeat"?"Repeat session":last.mode==="spotit"?"Spot the Spelling game":last.mode==="missing"?"Missing Letters game":"Practice session"}${last.listName?` · ${esc(last.listName)}`:""} · ${new Date(last.date).toLocaleDateString()}</div><div class="muted" style="margin-top:4px">Tap to see how you did &rarr;</div></div>` : ""}
+    ${last ? `<div class="card" style="cursor:pointer" onclick="renderLastResults()"><div class="muted">Last session</div><div style="font-size:17px;font-weight:600">${last.mode==="test"?`Test — ${fmtTest(last)}`:last.mode==="pretest"?`Pretest — ${fmtTest(last)}`:last.mode==="repeat"?"Repeat session":last.mode==="spotit"?"Spot the Spelling game":last.mode==="missing"?"Missing Letters game":last.mode==="crossword"?"Crossword":"Practice session"}${last.listName?` · ${esc(last.listName)}`:""} · ${new Date(last.date).toLocaleDateString()}</div><div class="muted" style="margin-top:4px">Tap to see how you did &rarr;</div></div>` : ""}
     ${practiceSetOfferable() ? `<div class="center" style="margin-bottom:10px">
       <button class="outline" style="font-size:14px;padding:8px 16px" onclick="go('practiceset')">&#128218; Choose lists to practice</button>
     </div>` : ""}
@@ -856,6 +890,11 @@ function renderGames() {
           <div style="font-size:36px;margin-bottom:6px">&#129513;</div>
           <div style="font-weight:700;margin-bottom:4px">Missing Letters</div>
           <div class="muted" style="font-size:14px">Put the runaway letters back!</div>
+        </div>
+        <div class="card" style="flex:1;min-width:200px;max-width:240px;margin-bottom:0;cursor:pointer;text-align:center" onclick="startCrossword()">
+          <div style="font-size:36px;margin-bottom:6px">&#129535;</div>
+          <div style="font-weight:700;margin-bottom:4px">Crossword</div>
+          <div class="muted" style="font-size:14px">Read the clue, spell it in the squares!</div>
         </div>
       </div>
     </div>
@@ -1011,6 +1050,24 @@ function renderLastResults() {
             <span class="muted">${r.revealed?"had a look":r.correct?"first try":`${r.attempts} tries`}</span>
             <button class="outline" onclick="speak('${esc(r.word)}')">&#128266;</button>
           </div>`).join("") || '<span class="muted">No words in this round.</span>'}
+      </div>
+      <div class="center" style="margin-top:6px"><button class="big" onclick="go('games')">&#127918; Play again</button></div>`;
+    return;
+  }
+  if (last.mode === "crossword") {
+    const got = last.results.filter(r => r.correct).length;
+    app.innerHTML = `
+      <div class="card">
+        <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px">&#129535; Your last Crossword</div>
+        <h2 style="margin:0 0 4px;font-weight:800">${last.listName?esc(last.listName):""}</h2>
+        <div class="muted" style="margin-bottom:10px">${new Date(last.date).toLocaleDateString()} &middot; ${got} of ${last.results.length} worked out from the clue</div>
+        ${last.results.map(r => `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
+            <span style="font-size:22px">${r.correct?"&#9989;":r.revealed?"&#128161;":"&#9711;"}</span>
+            <span style="font-size:22px;font-weight:800;letter-spacing:.1em">${esc(r.word)}</span>
+            <span class="muted">${r.unfinished?"left empty":r.revealed?"had a look":r.attempts>1?`${r.attempts} tries`:"first try"}</span>
+            <button class="outline" onclick="speak('${esc(r.word)}')">&#128266;</button>
+          </div>`).join("") || '<span class="muted">No words in this puzzle.</span>'}
       </div>
       <div class="center" style="margin-top:6px"><button class="big" onclick="go('games')">&#127918; Play again</button></div>`;
     return;
@@ -2182,6 +2239,498 @@ function finishMissing() {
     </div>`;
 }
 
+// ============================================================================
+// Crossword (docs/spelling-star-games.md §5.6)
+//
+// The first game where the child spells a word with no letters given and no
+// bank to draw from — only a definition and whatever crossing letters they
+// have already earned. That is the whole reason it is worth building: Missing
+// Letters gives them most of the word, Unscramble gives them all of it out of
+// order, and this gives them none of it.
+//
+// Three things are worth knowing about how it is put together:
+//
+//   - The grid is generated, not authored. cwLayout() packs the week's actual
+//     words, so the puzzle is different every time and no list needs a
+//     hand-built grid. It refuses run-ons and sideways contact (cwFits), which
+//     is what guarantees every maximal run of letters in the finished grid is
+//     a word somebody clued — the child can never be marked wrong for an
+//     accidental "word" the packer created.
+//
+//   - The clue is `hint`, which every one of the 988 curated rows already
+//     carries and which was written as a definition — exactly a crossword
+//     clue. Only one row in the corpus mentions its own answer. `sentence` is
+//     offered too, with the answer blanked out, because reading it aloud
+//     otherwise says the answer.
+//
+//   - A solved entry locks. Its letters are proven correct, so they stop being
+//     controls (same reasoning as .slot.given) and the crossing words get
+//     easier as the puzzle fills. That is the progressive help this game has
+//     instead of a hint button, and it is why a wrong entry needs no penalty:
+//     the puzzle simply stays open.
+//
+// Not a grade, per §2 and parent-sync-spec §16: score 0, total 0. An unsolved
+// entry is recorded as unsolved and nothing more — the child chose to stop,
+// which is allowed.
+// ============================================================================
+let CW = null;
+
+// A burst is budgeted in LETTERS, not words. "Administration" and "cat" cost
+// the grid wildly different amounts of room, so a fixed word count would give
+// grade 3 a puzzle half the size of grade 5's. Sizing by letters holds the
+// finished grid at roughly 13 squares a side for every list in the corpus.
+const CW_LETTER_BUDGET = 58;
+const CW_MIN_WORDS = 5;
+const CW_MAX_WORDS = 10;
+
+// ---------- Layout ----------
+// Greedy best-placement with restarts. Deterministic on the first pass (longest
+// word first, which is the classic seed) and shuffled thereafter, keeping the
+// best result. A few hundred packings of ten short words is microseconds, and
+// the alternative — backtracking to a guaranteed-optimal grid — buys a child
+// nothing they can see.
+function cwFits(cells, w, r, c, dr, dc) {
+  const key = (rr, cc) => rr + "," + cc;
+  let cross = 0;
+  // Nothing may butt up against either end, or two entries read as one longer
+  // word that has no clue and no number.
+  if (cells.has(key(r - dr, c - dc))) return -1;
+  if (cells.has(key(r + dr * w.length, c + dc * w.length))) return -1;
+  for (let i = 0; i < w.length; i++) {
+    const rr = r + dr * i, cc = c + dc * i;
+    const g = cells.get(key(rr, cc));
+    if (g !== undefined) {
+      if (g !== w[i]) return -1;
+      cross++;                       // an existing letter: this is a crossing
+    } else {
+      // A brand-new square may not touch anything sideways, for the same
+      // reason: it would create a two-letter run nobody clued.
+      if (cells.has(key(rr + dc, cc + dr))) return -1;
+      if (cells.has(key(rr - dc, cc - dr))) return -1;
+    }
+  }
+  return cross;                      // 0 means "floats free" — rejected by the caller
+}
+
+function cwPack(words) {
+  const cells = new Map();
+  const placed = [];
+  const key = (r, c) => r + "," + c;
+  const commit = (w, r, c, dr, dc) => {
+    for (let i = 0; i < w.length; i++) cells.set(key(r + dr * i, c + dc * i), w[i]);
+    placed.push({ word: w, r, c, dr, dc });
+  };
+  commit(words[0], 0, 0, 0, 1);
+  const leftovers = [];
+  // Two sweeps: a word that found no hook early often fits once the grid has
+  // filled out, and re-offering it is one more pass over a few dozen squares.
+  for (const pass of [words.slice(1), leftovers]) {
+    for (const w of pass) {
+      let best = null;
+      for (let i = 0; i < w.length; i++) {
+        for (const [k, g] of cells) {
+          if (g !== w[i]) continue;
+          const parts = k.split(",");
+          const hr = +parts[0], hc = +parts[1];
+          for (const [dr, dc] of [[0, 1], [1, 0]]) {
+            const r = hr - dr * i, c = hc - dc * i;
+            const cross = cwFits(cells, w, r, c, dr, dc);
+            if (cross <= 0) continue;
+            let minR = Math.min(r, hr), maxR = Math.max(r + dr * (w.length - 1), hr);
+            let minC = Math.min(c, hc), maxC = Math.max(c + dc * (w.length - 1), hc);
+            for (const k2 of cells.keys()) {
+              const p2 = k2.split(","), r2 = +p2[0], c2 = +p2[1];
+              if (r2 < minR) minR = r2; if (r2 > maxR) maxR = r2;
+              if (c2 < minC) minC = c2; if (c2 > maxC) maxC = c2;
+            }
+            const h = maxR - minR + 1, wd = maxC - minC + 1;
+            // More crossings first (a knitted grid is the point), then small,
+            // then square — a 4x22 ribbon technically packs but does not fit
+            // on a tablet.
+            const score = cross * 100 - (h * wd) / 10 - Math.abs(h - wd);
+            if (!best || score > best.score) best = { score, r, c, dr, dc };
+          }
+        }
+      }
+      if (best) commit(w, best.r, best.c, best.dr, best.dc);
+      else if (pass !== leftovers) leftovers.push(w);
+    }
+  }
+  let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+  for (const k of cells.keys()) {
+    const p = k.split(","), r = +p[0], c = +p[1];
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  return { placed, rows: maxR - minR + 1, cols: maxC - minC + 1, minR, minC };
+}
+
+function cwLayout(words, tries) {
+  let best = null;
+  for (let t = 0; t < (tries || 140); t++) {
+    const order = t === 0 ? [...words].sort((a, b) => b.length - a.length) : shuffle(words);
+    const g = cwPack(order);
+    const boxed = g.rows <= 14 && g.cols <= 14;
+    const score = g.placed.length * 1000 + (boxed ? 500 : 0) - (g.rows * g.cols) / 10;
+    if (!best || score > best.score) best = { ...g, score, boxed };
+    if (best.placed.length === words.length && best.boxed) break;
+  }
+  return best;
+}
+
+// The answer blanked out of its own example sentence. Spoken as "blank" and
+// shown as a rule, so a child can hear the word used without being told how it
+// is spelled — the sentence is a clue here, not the reading aid it is in
+// Practice, where the word is already on screen.
+function cwSentenceClue(sentence, word) {
+  if (!sentence || !word) return null;
+  const re = new RegExp("\\b" + word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
+  if (!re.test(sentence)) return null;
+  return { shown: sentence.replace(re, "_____"), spoken: sentence.replace(re, "blank") };
+}
+
+// ---------- Building one puzzle ----------
+function cwBuild(picked) {
+  const layout = cwLayout(picked.map(w => w.plain));
+  const meta = new Map(picked.map(w => [w.plain, w]));
+  const { rows, cols, minR, minC } = layout;
+  const cells = new Array(rows * cols).fill(null);
+  layout.placed.forEach(p => {
+    for (let i = 0; i < p.word.length; i++) {
+      const idx = (p.r - minR + p.dr * i) * cols + (p.c - minC + p.dc * i);
+      if (!cells[idx]) cells[idx] = { answer: p.word[i], ch: "", num: 0, across: -1, down: -1 };
+    }
+  });
+  // Crossword numbering: scan in reading order and number every square that
+  // begins a run. Because cwFits() forbids run-ons, the runs are exactly the
+  // words that were placed, so the numbers and the clue list cannot disagree.
+  let num = 0;
+  const numAt = new Map();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      if (!cells[idx]) continue;
+      const startsAcross = (c === 0 || !cells[idx - 1]) && c + 1 < cols && cells[idx + 1];
+      const startsDown = (r === 0 || !cells[idx - cols]) && r + 1 < rows && cells[idx + cols];
+      if (startsAcross || startsDown) { num++; cells[idx].num = num; numAt.set(r + "," + c, num); }
+    }
+  }
+  const entries = layout.placed.map(p => {
+    const r = p.r - minR, c = p.c - minC;
+    const m = meta.get(p.word) || {};
+    const cellIdx = [];
+    for (let k = 0; k < p.word.length; k++) cellIdx.push((r + p.dr * k) * cols + (c + p.dc * k));
+    return {
+      word: p.word, num: numAt.get(r + "," + c) || 0, dir: p.dc ? "across" : "down",
+      clue: m.hint || "", sentence: cwSentenceClue(m.sentence, p.word),
+      cells: cellIdx, solved: false, revealed: false, attempts: 0, checked: null,
+    };
+  }).sort((a, b) => a.num - b.num || (a.dir === "across" ? -1 : 1));
+  // Back-references last, because sorting above moved every index.
+  entries.forEach((e, i) => e.cells.forEach(ci => { cells[ci][e.dir] = i; }));
+  return { rows, cols, cells, entries };
+}
+
+function startCrossword() {
+  const lists = practiceLists();
+  const list = lists[0];
+  const seen = new Set();
+  const candidates = [];
+  const add = w => {
+    if (!w || !w.word) return;
+    const plain = foldApos(w.word).toLowerCase();
+    // A square holds one letter and nothing else. A contraction, a hyphenated
+    // word or a two-word entry has nowhere to put its apostrophe, hyphen or
+    // space, and stripping it would print DONT and ALLRIGHT into the grid —
+    // teaching the child exactly the misspelling those lists exist to prevent.
+    // Three letters is the floor: a two-letter entry is fixed by its crossings
+    // before the child has read the clue.
+    if (!/^[a-z]{3,}$/.test(plain) || seen.has(plain)) return;
+    seen.add(plain);
+    candidates.push({ plain, hint: w.hint || "", sentence: w.sentence || "" });
+  };
+  lists.forEach(l => l.words.forEach(add));
+  data.reviewWords.forEach(add);
+
+  const picked = [];
+  let letters = 0;
+  for (const w of shuffle(candidates)) {
+    if (picked.length >= CW_MAX_WORDS) break;
+    if (picked.length >= CW_MIN_WORDS && letters + w.plain.length > CW_LETTER_BUDGET) continue;
+    picked.push(w); letters += w.plain.length;
+  }
+  // Four words is the floor for something that reads as a crossword rather
+  // than a list. A list of contractions produces one usable word, so this is a
+  // real screen a child can reach, not a defensive branch.
+  if (picked.length < 4) {
+    CW = null;
+    app.innerHTML = `<div class="card">A crossword needs a few more words that fit in a grid &mdash; ones with no apostrophes or spaces. Ask a parent to add some in the parent dashboard!</div>
+      <div class="center" style="margin-top:6px"><button class="big outline" onclick="go('games')">Back</button></div>`;
+    return;
+  }
+  const puzzle = cwBuild(picked);
+  CW = {
+    ...puzzle, sel: 0, pos: 0, done: false, fb: null,
+    ...listStamp(list), coverIds: lists.map(l => l.id),
+  };
+  app.innerHTML = `
+    <div class="card center" style="padding:40px">
+      <div style="font-size:14px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px">&#129535; Crossword</div>
+      <h2 style="margin:0 0 6px;font-weight:800;font-size:26px">${lists.length > 1 ? lists.map(l => esc(l.name)).join(" + ") : esc(CW.listName)}</h2>
+      <div class="muted" style="margin-bottom:20px">${CW.entries.length} words &mdash; read the clue, spell it in the squares!</div>
+      <div style="background:var(--soft);border-radius:14px;padding:16px 20px;font-size:19px;font-weight:600;margin-bottom:26px">Every word you get right helps with the ones crossing it.</div>
+      <button class="big green" onclick="renderCrossword()">Let's play! &rarr;</button>
+    </div>`;
+}
+
+// ---------- Playing ----------
+const cwEntry = () => (CW && CW.entries[CW.sel]) || null;
+// A square is locked once any word through it is solved: that letter has been
+// proven right, so it is no longer the child's to change.
+function cwLocked(idx) {
+  const cell = CW.cells[idx];
+  return (cell.across >= 0 && CW.entries[cell.across].solved) || (cell.down >= 0 && CW.entries[cell.down].solved);
+}
+
+function cwSelect(entryIdx, cellIdx) {
+  CW.sel = entryIdx;
+  const e = CW.entries[entryIdx];
+  const at = cellIdx === undefined ? -1 : e.cells.indexOf(cellIdx);
+  // Land on the first square still to be filled, so a child returning to a
+  // half-typed word carries on rather than overwriting its first letter.
+  CW.pos = at >= 0 ? at : Math.max(0, e.cells.findIndex(ci => !CW.cells[ci].ch));
+}
+
+function cwTapCell(idx) {
+  if (!CW || CW.done) return;
+  const cell = CW.cells[idx];
+  if (!cell) return;
+  const cur = cwEntry();
+  const inCur = cur && cur.cells.includes(idx);
+  const other = cur && cur.dir === "across" ? cell.down : cell.across;
+  // Tapping the square you are already on flips to the word crossing it. That
+  // is the only across/down control there is, and it is where a child's finger
+  // already is.
+  if (inCur && cur.cells[CW.pos] === idx && other >= 0 && !CW.entries[other].solved) cwSelect(other, idx);
+  else if (inCur) cwSelect(CW.sel, idx);
+  else {
+    const through = [cell.across, cell.down].filter(i => i >= 0);
+    const open = through.filter(i => !CW.entries[i].solved);
+    cwSelect((open.length ? open : through)[0], idx);
+  }
+  CW.fb = null;
+  renderCrossword();
+}
+
+function cwTapClue(i) {
+  if (!CW || CW.done) return;
+  cwSelect(i);
+  CW.fb = null;
+  renderCrossword();
+}
+
+function cwType(ch) {
+  if (!CW || CW.done) return;
+  const e = cwEntry();
+  if (!e || e.solved) return;
+  const idx = e.cells[CW.pos];
+  if (!cwLocked(idx)) CW.cells[idx].ch = ch;
+  // Step past anything already proven, so typing straight through a word that
+  // crosses a solved one does the obvious thing.
+  let p = CW.pos + 1;
+  while (p < e.cells.length && cwLocked(e.cells[p])) p++;
+  CW.pos = Math.min(p, e.cells.length - 1);
+  cwSettle();
+}
+
+function cwErase() {
+  if (!CW || CW.done) return;
+  const e = cwEntry();
+  if (!e || e.solved) return;
+  const here = e.cells[CW.pos];
+  if (!cwLocked(here) && CW.cells[here].ch) CW.cells[here].ch = "";
+  else {
+    for (let k = CW.pos - 1; k >= 0; k--) {
+      const ci = e.cells[k];
+      if (cwLocked(ci)) continue;
+      CW.pos = k;
+      CW.cells[ci].ch = "";
+      break;
+    }
+  }
+  cwSettle();
+}
+
+// Everything that happens after a square changes. Called on every keystroke
+// because one letter can complete the word it was typed into AND the word
+// crossing it at the same time.
+function cwSettle() {
+  let fb = null;
+  CW.entries.forEach((e, i) => {
+    if (e.solved) return;
+    if (!e.cells.every(ci => CW.cells[ci].ch)) { e.checked = null; return; }
+    const got = e.cells.map(ci => CW.cells[ci].ch).join("");
+    // `checked` is the last filling that was looked at, not a "has been looked
+    // at" flag. A child who fills a word wrong and then types over one letter
+    // never empties the word, so a boolean latch would leave the entry full,
+    // corrected, and never checked again — they would have to erase a square
+    // to get the puzzle to notice.
+    if (got === e.checked) return;
+    const wasFull = e.checked !== null;
+    e.checked = got;
+    // An attempt is a filling, not a keystroke. Typing over a word that is
+    // already full walks it through every intermediate string on the way, and
+    // counting those would charge a child six tries for one correction — so a
+    // wrong word that is still wrong is the same attempt, re-checked.
+    if (got === e.word) { e.solved = true; e.attempts++; fb = { kind: "solved", i }; }
+    else {
+      if (!wasFull) e.attempts++;
+      if (!fb) fb = { kind: "wrong", i };
+    }
+  });
+  CW.fb = fb;
+  // Solving a word can lock squares under the cursor; move off them so the
+  // next letter typed does not silently go nowhere.
+  const e = cwEntry();
+  if (e && !e.solved) {
+    let p = CW.pos;
+    while (p < e.cells.length && cwLocked(e.cells[p])) p++;
+    if (p < e.cells.length) CW.pos = p;
+  }
+  // Solved the word they were in: move on to one they have not finished, the
+  // way a child would after filling the last square.
+  if (e && e.solved) {
+    const next = CW.entries.findIndex(x => !x.solved);
+    if (next >= 0) cwSelect(next);
+  }
+  if (CW.entries.every(x => x.solved)) {
+    CW.done = true;
+    renderCrossword();
+    setTimeout(finishCrossword, 1500);
+    return;
+  }
+  renderCrossword();
+}
+
+// One help, gated like Missing Letters' "Show me the word": the child must have
+// filled THIS entry in and be looking at something that is not working — two
+// goes at it, or one that is still sitting there wrong. Either way the help
+// costs as much typing as the answer would, so it cannot be used to skip the
+// puzzle, and a child who is genuinely stuck is never left there.
+function cwHelpReady(e) {
+  return !!e && !e.solved && (e.attempts >= 2 || (e.checked !== null && e.checked !== e.word));
+}
+function cwReveal() {
+  if (!CW || CW.done) return;
+  const e = cwEntry();
+  if (!cwHelpReady(e)) return;
+  e.cells.forEach((ci, k) => { CW.cells[ci].ch = e.word[k]; });
+  e.solved = true; e.revealed = true; e.checked = e.word;
+  cwSettle();
+}
+
+function cwCellHtml(idx) {
+  const cell = CW.cells[idx];
+  if (!cell) return `<div class="cw-blank"></div>`;
+  const e = cwEntry();
+  const cls = ["cw-cell"];
+  const owner = cell.across >= 0 && CW.entries[cell.across].solved ? CW.entries[cell.across]
+    : cell.down >= 0 && CW.entries[cell.down].solved ? CW.entries[cell.down] : null;
+  if (owner) { cls.push("solved"); if (owner.revealed) cls.push("shown"); }
+  else if (e && e.cells.includes(idx)) cls.push(e.cells[CW.pos] === idx ? "sel" : "in-entry");
+  return `<button class="${cls.join(" ")}" onclick="cwTapCell(${idx})">${cell.num ? `<span class="cw-num">${cell.num}</span>` : ""}${cell.ch ? esc(cell.ch) : ""}</button>`;
+}
+
+function cwClueList(dir, label) {
+  const rows = CW.entries.map((e, i) => ({ e, i })).filter(x => x.e.dir === dir);
+  if (!rows.length) return "";
+  return `<div>
+    <div style="font-weight:700;margin-bottom:6px">${label}</div>
+    ${rows.map(({ e, i }) => `<button class="cw-clue ${i === CW.sel ? "sel" : ""} ${e.solved ? "solved" : ""} ${e.revealed ? "shown" : ""}" onclick="cwTapClue(${i})"><b>${e.num}.</b> ${esc(e.clue || "Spell this word")}${e.solved ? ` &middot; <b>${esc(e.word.toUpperCase())}</b>` : ""}</button>`).join("")}
+  </div>`;
+}
+
+function renderCrossword() {
+  if (!CW) return;
+  const e = cwEntry();
+  const solved = CW.entries.filter(x => x.solved).length;
+  const fb = CW.fb;
+  app.innerHTML = `
+    <div class="card" style="padding:24px 20px">
+      <div style="font-size:14px;color:var(--muted);margin-bottom:14px">&#129535; Crossword &middot; ${solved} of ${CW.entries.length} filled in</div>
+      <div class="cw-scroll">
+        <div class="cw-grid" style="--cw-cols:${CW.cols};grid-template-columns:repeat(${CW.cols},1fr)">
+          ${CW.cells.map((_, i) => cwCellHtml(i)).join("")}
+        </div>
+      </div>
+      ${CW.done ? "" : `
+      <div style="background:var(--soft);border-radius:14px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-weight:800;margin-bottom:4px">${e.num} ${e.dir === "across" ? "Across" : "Down"} &middot; <span class="muted" style="font-weight:600">${e.word.length} letters</span></div>
+        <div style="font-size:17px;margin-bottom:${e.sentence ? "6px" : "10px"}">${esc(e.clue || "Spell this word")}</div>
+        ${e.sentence ? `<div class="muted" style="font-size:15px;font-style:italic;margin-bottom:10px">${esc(e.sentence.shown)}</div>` : ""}
+        <div class="row">
+          <button onclick="speak(cwEntry().word)">&#128266; Hear this word</button>
+          ${e.sentence ? `<button class="outline" onclick="speak(cwEntry().sentence.spoken)">&#128214; Hear the sentence</button>` : ""}
+          ${cwHelpReady(e) ? `<button class="outline" onclick="cwReveal()">Show me this word</button>` : ""}
+        </div>
+      </div>
+      <div class="kb" id="kb">
+        ${kbRows().map((row, ri) => `<div class="kb-row">
+          ${row.replace("'", "").split("").map(ch => `<button onclick="cwType(&quot;${ch.toLowerCase()}&quot;)">${ch}</button>`).join("")}
+          ${ri === 2 ? `<button class="kb-back" onclick="cwErase()">&#9003; erase</button>` : ""}
+        </div>`).join("")}
+      </div>`}
+      <div class="feedback center" id="fb">${
+        CW.done ? `<span style="color:var(--green)">&#127881; Every square filled in!</span>` :
+        fb && fb.kind === "solved" ? `<span style="color:var(--green)">&#9989; Yes! <strong>${esc(CW.entries[fb.i].word)}</strong></span>` :
+        fb && fb.kind === "wrong" ? `<span style="color:var(--accent)">Not quite for ${CW.entries[fb.i].num} ${CW.entries[fb.i].dir === "across" ? "Across" : "Down"} &mdash; have another look.</span>` : ""
+      }</div>
+      <div class="cw-clues" style="margin-top:16px">
+        ${cwClueList("across", "Across")}
+        ${cwClueList("down", "Down")}
+      </div>
+    </div>
+    ${CW.done ? "" : `<div class="center"><button class="big outline" onclick="finishCrossword()">I'm finished</button></div>`}`;
+}
+
+function finishCrossword() {
+  if (!CW) return;
+  const results = CW.entries.map(e => ({
+    word: e.word,
+    // `correct` is "solved it themselves" — a revealed word and an abandoned
+    // one are both not that, and the two are told apart by `revealed`.
+    correct: e.solved && !e.revealed,
+    attempts: e.attempts,
+    ...(e.revealed ? { revealed: true } : {}),
+    ...(!e.solved ? { unfinished: true } : {}),
+  }));
+  const session = {
+    id: Date.now(), date: new Date().toISOString(), mode: "crossword", ...carryListStamp(CW), ...coverStamp(CW),
+    results, score: 0, total: 0,
+  };
+  data.sessions.push(session);
+  const saved = persist();
+  syncPush();
+  const got = results.filter(r => r.correct).length;
+  const total = results.length;
+  // Same discipline as go()'s null-out: the auto-finish timer may still be in
+  // flight, and a second pass through here would write the session twice.
+  CW = null;
+  app.innerHTML = `
+    ${saved ? "" : saveFailedBannerHtml("history-only")}
+    <div class="card center" style="padding:40px">
+      <div style="font-size:46px;margin-bottom:8px">&#129535;</div>
+      <h2 style="margin:0 0 8px;font-weight:800">${got === total ? `You finished the whole grid, ${esc(data.childName)}!` : got ? `Nice work, ${esc(data.childName)}!` : `Good try, ${esc(data.childName)}!`}</h2>
+      <div class="muted">${got
+        ? `${got} of ${total} word${total === 1 ? "" : "s"} worked out from the clues. Spelling a word with nothing to copy from is the hard kind &mdash; and you did it!`
+        : `A crossword gives you the meaning and nothing else, which is the hard kind of spelling. Come back and have another go whenever you like!`}</div>
+      <div style="margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="big outline" onclick="go('games')">Play again</button>
+        <button class="big" onclick="go('home')">Done</button>
+      </div>
+    </div>`;
+}
+
 let selectedListId = null;
 let selectedResultsList = null;
 
@@ -2355,7 +2904,7 @@ function renderParent(view) {
       html += `<div class="card"><div style="font-weight:700;margin-bottom:10px">Session history — ${esc(group.name)}</div>`;
       sessions.forEach(s => {
         const mainCorrect = s.results.filter(r => r.type==="main" && r.correct).length;
-        const modeLabel = s.mode==="test"?"Test":s.mode==="pretest"?"Pretest":s.mode==="repeat"?"Repeat":s.mode==="spotit"?"Spot the Spelling":s.mode==="missing"?"Missing Letters":"Practice";
+        const modeLabel = s.mode==="test"?"Test":s.mode==="pretest"?"Pretest":s.mode==="repeat"?"Repeat":s.mode==="spotit"?"Spot the Spelling":s.mode==="missing"?"Missing Letters":s.mode==="crossword"?"Crossword":"Practice";
         let improve = "";
         if (s.mode === "test" && s.promotedFrom) {
           improve = ` <span style="color:var(--green);font-weight:700">(perfect pretest &rarr; counted as test)</span>`;
@@ -2371,6 +2920,7 @@ function renderParent(view) {
           : s.mode==="repeat" ? ` · ${s.results.length} word${s.results.length===1?"":"s"} written out`
           : s.mode==="spotit" ? ` · ${s.results.filter(r=>r.correct).length}/${s.results.length} correct`
           : s.mode==="missing" ? ` · ${s.results.length} word${s.results.length===1?"":"s"}, ${s.results.filter(r=>r.correct).length} first try`
+          : s.mode==="crossword" ? ` · ${s.results.filter(r=>r.correct).length}/${s.results.length} worked out from the clue`
           : "";
         const resultRows = s.mode==="repeat"
           ? s.results.map(r => `<div>&#9997; ${esc(r.word)} &middot; written ${r.reps}&times;${r.extra?" (extra practice word)":""}</div>`).join("")
@@ -2378,6 +2928,8 @@ function renderParent(view) {
           ? s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)}</div>`).join("")
           : s.mode==="missing"
           ? s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)}${r.revealed?" (shown)":r.attempts>1?` · ${r.attempts} tries`:""}</div>`).join("")
+          : s.mode==="crossword"
+          ? s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)}${r.unfinished?" (left empty)":r.revealed?" (shown)":r.attempts>1?` · ${r.attempts} tries`:""}</div>`).join("")
           : s.results.map(r => `<div>${r.correct?"&#9989;":"&#10060;"} ${esc(r.word)} ${r.type!=="main"?`(${r.type})`:""} ${r.attempts>1?`· ${r.attempts} tries`:""}</div>`).join("");
         html += `<details><summary><strong>${modeLabel}</strong> · ${new Date(s.date).toLocaleString()}${scoreSummary}</summary>
           <div style="font-size:14px;padding-top:6px;color:var(--body-text)">
@@ -2708,7 +3260,7 @@ function exportCSV() {
   const rows = [["child","date","time","mode","grade","list","word","type","correct","attempts"]];
   data.sessions.forEach(s => {
     const d = new Date(s.date);
-    s.results.forEach(r => rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), s.mode, s.listGrade || "", s.listName || "", r.word, r.type || (s.mode==="repeat" ? (r.extra?"repeat-extra":"repeat") : s.mode==="spotit" ? "spotit" : s.mode==="missing" ? (r.revealed ? "missing-shown" : "missing") : ""), r.correct===undefined ? "n/a" : (r.correct?"yes":"no"), r.attempts!==undefined ? r.attempts : (r.reps!==undefined ? r.reps : "")]));
+    s.results.forEach(r => rows.push([data.childName, d.toLocaleDateString(), d.toLocaleTimeString(), s.mode, s.listGrade || "", s.listName || "", r.word, r.type || (s.mode==="repeat" ? (r.extra?"repeat-extra":"repeat") : s.mode==="spotit" ? "spotit" : s.mode==="missing" ? (r.revealed ? "missing-shown" : "missing") : s.mode==="crossword" ? (r.unfinished ? "crossword-unfinished" : r.revealed ? "crossword-shown" : "crossword") : ""), r.correct===undefined ? "n/a" : (r.correct?"yes":"no"), r.attempts!==undefined ? r.attempts : (r.reps!==undefined ? r.reps : "")]));
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -2945,6 +3497,7 @@ const MODES = {
     repeat:   { label: 'Repeat',   tone: 'practice' },
     spotit:   { label: 'Spot it',  tone: 'play' },
     missing:  { label: 'Missing Letters', tone: 'play' },
+    crossword:{ label: 'Crossword', tone: 'play' },
   },
   math: {
     drill:    { label: 'Drill',    tone: 'graded' },

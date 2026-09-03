@@ -2,10 +2,12 @@
 
 Status: **mostly backlog.** 5.2 Missing Letters is built and shipped, and with
 it the slot board of §5.0 — so 5.1 Unscramble is now a configuration of
-existing machinery rather than a new engine. Everything else here is still
-unbuilt, and nothing else has been designed past the point where the real
-problems show up. The purpose is to have the ideas written down with their
-costs attached, so picking one is a decision rather than a fresh start.
+existing machinery rather than a new engine. 5.6 Crossword is built and
+shipped too; it was not in this file's first draft and it does not use the
+board. Everything else here is still unbuilt, and nothing else has been
+designed past the point where the real problems show up. The purpose is to
+have the ideas written down with their costs attached, so picking one is a
+decision rather than a fresh start.
 
 Target file: `spelling-star-v6_3.html` (self-contained, like every Star app).
 
@@ -15,7 +17,7 @@ Target file: `spelling-star-v6_3.html` (self-contained, like every Star app).
 
 Spelling Star shipped one game — Spot the Spelling — and the Games hub was
 built to hold more: `renderGames()` lays its cards out in a `flex-wrap` row
-that had only ever had one card in it (it now has two). The distractor engine carries a comment saying as
+that had only ever had one card in it (it now has three). The distractor engine carries a comment saying as
 much (`// Shared generator: reusable by future recognition games.`), and that
 comment was, before this file, the entire documented plan for a second game.
 
@@ -396,6 +398,93 @@ the word, but it should not be picked without accepting the tagging work.
 
 ---
 
+### 5.6 Crossword — **built**
+
+A generated grid of the week's own words. The child reads a clue, taps a
+square and spells the answer in; every word they get right hands letters to
+the words crossing it.
+
+This was not in the file's first draft, and it is worth saying why it earned a
+place. Every other idea here gives the child some of the word: 5.2 gives them
+most of the letters, 5.1 gives them all of them out of order, 5.4 gives them
+four whole spellings to choose between, 5.3 gives them the sentence. A
+crossword gives them a definition and nothing else. It is the only thing in
+the app, games or otherwise, that asks the child to produce a spelling from
+meaning alone — which is what a spelling test asks, minus the pressure.
+
+**Reuses:** `practiceLists()`, `data.reviewWords`, `listStamp()`/`coverStamp()`,
+`speak()`, `kbRows()`, `foldApos()`, `shuffle()`, the theme tokens, and — the
+one that makes the whole idea cheap — the curated `hint` column. A crossword
+lives or dies on its clues, and all 988 rows already carry a hint written as a
+definition, which is exactly what a crossword clue is. Exactly one row in the
+corpus mentions its own answer (`use` — "to make **use** of something for a
+purpose").
+
+**Does not use the slot board.** §5.0's board is one row of slots with one
+selection. A grid square belongs to two entries at once, so selection is
+`(entry, position)` rather than an index, and the letter under the cursor may
+be owned by a word that is already finished. Configuring the board into that
+would have cost more than the ~120 lines the grid model actually took, and
+would have left the board carrying a case its other two configurations never
+use. This is the one game in the file that is genuinely its own engine, and it
+was worth checking that before writing it rather than after.
+
+**New — the packer** (`cwFits`/`cwPack`/`cwLayout`), which is where the risk
+is. It is greedy best-placement with restarts: seed with the longest word,
+score candidate placements by crossings first and compactness second, keep the
+best of ~140 shuffles. Two rules do the real work, and both exist for the same
+reason:
+
+- nothing may butt against either end of a placed word, and
+- a brand-new square may not touch an existing one sideways.
+
+Together they guarantee that **every maximal run of letters in the finished
+grid is a word somebody clued and numbered.** Drop either and the packer still
+produces a grid that looks right, but somewhere in it two entries have fused
+into a longer run with one clue and one number — so a child who reads the clue
+and spells the answer correctly is left with squares they cannot fill and a
+puzzle that will not complete. Nothing throws. `tests/crossword.test.mjs`
+checks the invariant directly over many generated grids rather than trusting
+it, and removing either rule fails that check immediately.
+
+**New — sizing by letters, not words.** A burst is budgeted at ~58 letters
+(`CW_LETTER_BUDGET`), 5–10 words. Word-count sizing would give grade 3's
+four-letter lists a puzzle a quarter the area of grade 5's `administration`
+week; letter-budgeting holds every list in the corpus to roughly 13 squares a
+side, which is what fits a phone.
+
+**Words a grid cannot hold.** Three letters minimum, and letters only —
+contractions, hyphenated words and two-word entries are excluded rather than
+stripped. Writing `DONT` or `ALLRIGHT` into a square is teaching precisely the
+misspelling those lists exist to prevent. This costs real content: grade 3's
+3.16 and grade 5's 5.5 are entirely contractions and yield one usable word
+each, so "not enough words that fit in a grid" is a screen a child can reach
+on a real week, and it says so kindly rather than rendering an empty card.
+5.9 and 3.30 lose their compound entries and play on with the rest.
+
+**The help, and what a game is allowed to cost.** A solved entry locks: its
+letters are proven, so they stop being controls and the crossing words get
+easier. That is the progressive help, and it is why a wrong entry needs no
+penalty — the puzzle simply stays open. Beyond it there is one explicit help,
+"Show me this word", offered once the child has filled that entry in and it is
+still wrong. `sentence` is offered too, with the answer blanked out and spoken
+as "blank" — §5.3's idea, used here as a second clue rather than as the whole
+game, and it is why speaking the sentence does not just say the answer.
+
+**An attempt is a filling, not a keystroke.** Typing over a word that is
+already full walks it through every intermediate string on the way; counting
+those would charge a child six tries for one correction. A full word that is
+still wrong is the same attempt, re-checked. Getting this wrong in the other
+direction is worse and was caught in review: an early version latched
+"already checked" as a boolean, so a child who corrected letters in place
+without erasing first was never re-checked at all, and the puzzle silently
+stopped noticing.
+
+**Cost:** medium — the packer is the work, and it is about 120 lines. Everything
+above it is the §4 checklist.
+
+---
+
 ## 6. Ranked by build cost
 
 Costed honestly, per §5.0: the slot board is one shared item, and 5.1 and 5.2
@@ -409,6 +498,7 @@ are configurations of it rather than two engines.
 | 5.4 Four-Up | none — existing | none | Trivial in code; see §5.4 on risk |
 | 5.3 Sentence Slot | existing keypad; board optional | none | Low |
 | 5.5 Rule Sort | tap a bucket | **a rule tag on 855 words** | Highest |
+| 5.6 Crossword | tap a square, type | none — the `hint` column is the clue set | **Medium — a grid packer. ✅ Built** |
 
 Read that as one medium decision and a set of cheap ones, not as five
 comparable options. An earlier version of this table ranked 5.1 and 5.2 as
@@ -428,6 +518,7 @@ The useful split is no longer cost but what each one asks of the child:
 | 5.1 Unscramble | orders letters they are given | sequence; not doubling |
 | 5.2 Missing Letters | recalls the missing letters | the specific trap, from their own error history |
 | 5.3 Sentence Slot | spells the whole word in context | production, with meaning attached |
+| 5.6 Crossword | spells it from the definition alone | production, from meaning, with nothing given |
 | 5.5 Rule Sort | classifies by pattern | the rule behind the word |
 
 Spot the Spelling was recognition only, and that was the gap. Every idea here
@@ -436,6 +527,11 @@ also a reasonable build order, since each step reuses the one before it.
 Missing Letters was built first for that reason rather than for its cost: it
 is the shortest distance from recognition to production, and it is the only
 one of the five that aims at the trap a particular child actually falls into.
+
+Crossword was built second because it is the far end of that same axis. It is
+the only one that gives the child nothing but the meaning, which makes it the
+closest thing in the app to what a Test asks — and, being ungraded and
+untimed, the cheapest place to practise it.
 
 ---
 
@@ -455,8 +551,12 @@ These apply to any of the five and are the parent's call, not the code's:
 - **Does a game count as the day's activity?** The per-day schedule has separate
   toggles for study, practice, test, repeat and games, so the app currently says
   no. Worth confirming that stays true.
-- **One card per game, or one card with a mode picker?** Five cards in the hub
-  is a lot of choosing for a five-minute break.
+- **One card per game, or one card with a mode picker?** The hub is at three
+  cards now, and five would be a lot of choosing for a five-minute break.
+  Crossword also sits oddly beside the other two on time: it is one puzzle of
+  5–10 words rather than a burst of rounds, and a child can leave it unfinished
+  and be recorded as having done so. If the hub ever gets a picker, that
+  difference is the one worth surfacing in it.
 
 ## Non-goals
 
