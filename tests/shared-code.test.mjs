@@ -51,6 +51,15 @@ const SHARED = [
     from: '// ---------- The plan panel (docs/assignment-spec.md §8, §17 step 4) ----------',
     through: 'function planReadableDate(date) {',
   },
+  // The word list library loader. The phone sends library lists and the
+  // tablet adds them itself; if the two read a CSV differently, the same
+  // "List 3.1" would hold different words depending on where it came from.
+  {
+    what: 'the word list library loader',
+    files: ['parent.html', 'spelling-star-v6_3.html'],
+    from: '// ---------- The word list library (wordlists/spelling) ----------',
+    through: 'function libraryCSVFields(line) {',
+  },
 ];
 
 for (const region of SHARED) {

@@ -1,6 +1,6 @@
 // POST /api/pairing-code — docs/parent-sync-spec.md §6.4, §7 "Adding a device".
 // Parent-role only, so a child device's append-only token cannot mint codes.
-import { authenticate, json, randomId, randomPairingCode, sha256Hex } from './_lib/auth.js';
+import { authenticate, json, mintPairingCode, randomId } from './_lib/auth.js';
 
 export async function onRequestPost({ request, env }) {
   let device;
@@ -44,13 +44,7 @@ export async function onRequestPost({ request, env }) {
     ).bind(boundChildId, device.family_id, String(childName).trim(), now).run();
   }
 
-  const code = randomPairingCode();
-  const codeHash = await sha256Hex(code);
-  const expiresAt = now + 10 * 60 * 1000; // ~10 minutes, per §7
-
-  await env.DB.prepare(
-    'INSERT INTO pairing_codes (code_hash, family_id, role, child_id, expires_at) VALUES (?, ?, ?, ?, ?)'
-  ).bind(codeHash, device.family_id, role, boundChildId, expiresAt).run();
+  const { code, expiresAt } = await mintPairingCode(env, device.family_id, role, boundChildId);
 
   // Plaintext code returned once; only its hash is ever stored (§7).
   return json({ code, expiresAt });

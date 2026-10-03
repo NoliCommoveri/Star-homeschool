@@ -2971,6 +2971,7 @@ function renderParent(view) {
         <button onclick="createList()">Create list</button>
       </div>
     </div>`;
+    html += renderLibraryCard();
     html += `<div class="card">
       <div style="font-weight:700;margin-bottom:6px">Edit &ldquo;${esc(sel.name)}&rdquo; description</div>
       <input type="text" id="editDesc" value="${esc(sel.desc || "")}" placeholder="Shown to ${esc(data.childName)} on the start screen">
@@ -3092,12 +3093,150 @@ function createList() {
   data.lists.push({ id, name, desc, words: [], bonus: [], pretest: "global", grade });
   selectedListId = id; persist(); renderParent("words");
 }
+// The word list library, from the tablet itself: works with or without a
+// parent phone. Nothing is fetched until it is asked for, so opening the Word
+// lists tab offline costs nothing.
+let library = { grades: null, grade: null, busy: false, msg: "" };
+
+function renderLibraryCard() {
+  let inner;
+  if (!library.grades) {
+    inner = `<button class="outline" ${library.busy?"disabled":""} onclick="openLibrary()">${library.busy?"Loading&hellip;":"Browse the library"}</button>`;
+  } else {
+    const g = library.grades.find(x => x.grade === library.grade) || library.grades[0];
+    const fresh = g ? g.ids.filter(id => !libraryListPresent(data.lists, g.grade, id)) : [];
+    inner = !g ? `<div class="muted">The library has no lists yet.</div>` : `
+      <label class="muted" for="libGrade" style="display:block;margin-bottom:4px">Grade level</label>
+      <select id="libGrade" style="max-width:160px" onchange="library.grade=this.value;library.msg='';renderParent('words')">
+        ${library.grades.map(x => `<option value="${x.grade}" ${x.grade===g.grade?"selected":""}>Grade ${x.grade} (${x.ids.length})</option>`).join("")}
+      </select>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin:10px 0">
+        ${g.ids.map(id => libraryListPresent(data.lists, g.grade, id)
+          ? `<label class="muted" style="padding:0"><input type="checkbox" class="libPick" value="${esc(id)}"> ${esc(libraryListName(id))} <em>(have it)</em></label>`
+          : `<label style="padding:0"><input type="checkbox" class="libPick" value="${esc(id)}" checked> ${esc(libraryListName(id))}</label>`).join("")}
+      </div>
+      <button ${library.busy?"disabled":""} onclick="addLibraryLists('${g.grade}')">${library.busy?"Adding&hellip;":"Add the ticked lists"}</button>
+      <div class="muted" style="margin-top:6px">${fresh.length ? `${fresh.length} not on this tablet yet, ticked for you.` : "Every list in this grade is already here."} A list you already have is refreshed, not doubled. New lists go to the end of the order and none is assigned.</div>`;
+  }
+  return `<div class="card">
+    <div style="font-weight:700;margin-bottom:6px">Add lists from the library</div>
+    <div class="muted" style="margin-bottom:10px">The same word lists as the Resources page, by grade &mdash; no downloading or importing. Needs an internet connection.</div>
+    ${inner}
+    ${library.msg ? `<div id="libMsg" style="margin-top:8px">${esc(library.msg)}</div>` : ""}
+  </div>`;
+}
+
+async function openLibrary() {
+  library.busy = true; library.msg = ""; renderParent("words");
+  try {
+    library.grades = await libraryGrades();
+    const mine = library.grades.find(x => x.grade === data.gradeLevel);
+    library.grade = (mine || library.grades[0] || {}).grade || null;
+  } catch (e) {
+    library.msg = navigator.onLine === false ? "You're offline. Try again once this tablet is connected." : e.message;
+  }
+  library.busy = false; renderParent("words");
+}
+
+async function addLibraryLists(grade) {
+  const ids = [...document.querySelectorAll(".libPick:checked")].map(el => el.value);
+  if (!ids.length) { library.msg = "Tick at least one list."; renderParent("words"); return; }
+  library.busy = true; library.msg = ""; renderParent("words");
+  let added = 0, refreshed = 0;
+  const failed = [];
+  // One at a time and in order, so the lists keep the library's order on the
+  // tablet — that order is what "the next list" follows.
+  for (const id of ids) {
+    try {
+      const incoming = await libraryList(grade, id);
+      const had = libraryListPresent(data.lists, grade, id);
+      if (upsertList(incoming)) had ? refreshed++ : added++;
+    } catch (e) { failed.push(libraryListName(id)); }
+  }
+  if (added || refreshed) persist();
+  library.busy = false;
+  library.msg = [
+    added ? `Added ${added} list${added===1?"":"s"}.` : "",
+    refreshed ? `Refreshed ${refreshed}.` : "",
+    failed.length ? `Couldn't load ${failed.join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
+  renderParent("words");
+}
 function saveDesc() {
   const sel = data.lists.find(l => l.id === selectedListId);
   if (!sel) return;
   sel.desc = document.getElementById("editDesc").value.trim();
   persist(); renderParent("words");
 }
+// ---------- The word list library (wordlists/spelling) ----------
+// The CSVs resources.html offers for download, fetched straight into the app
+// instead: the manifest says which lists each grade has, and each list is its
+// own file. Byte-identical in parent.html and Spelling Star
+// (tests/shared-code), so a list reads the same whether the phone sends it or
+// the tablet adds it itself. A library list is named "List 3.1" and carries
+// its grade, and the tablet matches lists on name and grade (§16), so adding
+// one a second time refreshes its words rather than making a copy.
+const LIBRARY_ROOT = "wordlists/spelling/";
+
+async function libraryGrades() {
+  const res = await fetch(LIBRARY_ROOT + "spelling-lists.json", { cache: "no-cache" });
+  if (!res.ok) throw new Error("The word list library isn't available right now.");
+  const manifest = await res.json();
+  return Object.keys(manifest)
+    .map(key => ({ grade: key.replace(/^grade/, ""), ids: (manifest[key] || []).map(String) }))
+    .filter(g => g.ids.length)
+    .sort((a, b) => libraryGradeOrder(a.grade) - libraryGradeOrder(b.grade));
+}
+
+function libraryGradeOrder(grade) { return grade === "K" ? 0 : Number(grade) || 99; }
+
+function libraryListName(id) { return "List " + id; }
+
+// True when a list by this name and grade is already on the tablet: the same
+// test the tablet uses to decide between replacing and adding (§16).
+function libraryListPresent(lists, grade, id) {
+  const name = libraryListName(id).toLowerCase();
+  return (lists || []).some(l => (l.name || "").toLowerCase() === name && (l.grade || null) === grade);
+}
+
+async function libraryList(grade, id) {
+  const res = await fetch(`${LIBRARY_ROOT}grade${grade}/Spelling_${id}.csv`, { cache: "no-cache" });
+  if (!res.ok) throw new Error(`${libraryListName(id)} couldn't be loaded.`);
+  return { name: libraryListName(id), grade, ...parseLibraryCSV(await res.text()) };
+}
+
+// Columns: word, hint, sentence, bonus, misspellings — the tablet's CSV import
+// format. Words come back as the raw fields; the tablet's own normalizer does
+// the lowercasing, defaults, and misspelling split on the way in.
+function parseLibraryCSV(text) {
+  const words = [], bonus = [];
+  String(text || "").split(/\r?\n/).forEach((line, i) => {
+    if (!line.trim()) return;
+    const [word, hint, sentence, isBonus, misspellings] = libraryCSVFields(line);
+    if (!word || (i === 0 && word.toLowerCase() === "word")) return;
+    const entry = { word, hint: hint || "", sentence: sentence || "" };
+    if (misspellings) entry.misspellings = misspellings;
+    (/^(y|true)/i.test(isBonus || "") ? bonus : words).push(entry);
+  });
+  return { words, bonus };
+}
+
+function libraryCSVFields(line) {
+  const out = []; let cur = ""; let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { out.push(cur.trim()); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
 function parseCSVLine(line) {
   const out = []; let cur = ""; let inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -3904,39 +4043,8 @@ function applyCommand(cmd) {
     return true;
   }
   if (cmd.kind === "assign-list") {
-    const incoming = p.list || {};
-    const name = String(incoming.name || "").trim();
-    if (!name) return false;
-    const words = normalizeAssignedWords(incoming.words);
-    const bonus = normalizeAssignedWords(incoming.bonus);
-    if (!words.length && !bonus.length) return false;
-    const grade = incoming.grade || data.gradeLevel;
-    // Replace by name rather than always appending: re-sending a corrected
-    // list is the common case, and it should fix the list the child already
-    // has instead of leaving two with the same name.
-    //
-    // Matched on name *and grade* (§16). Without the grade in the match, a
-    // parent assigning "Unit 1" for Grade 5 would silently overwrite the
-    // Grade 3 list of the same name — replacing its words in place and
-    // taking a previous year's list with it. That is data loss, not a
-    // mislabel, and it is the one place the name-collision problem could
-    // destroy something rather than just confuse a total.
-    let list = (data.lists || []).find(l =>
-      (l.name || "").toLowerCase() === name.toLowerCase() && (l.grade || null) === (grade || null));
-    if (list) {
-      if (incoming.desc) list.desc = String(incoming.desc);
-      list.words = words;
-      list.bonus = bonus;
-      if (incoming.pretest) list.pretest = incoming.pretest;
-    } else {
-      list = {
-        id: "l" + Date.now() + Math.floor(Math.random() * 1000),
-        name, desc: String(incoming.desc || ""), words, bonus,
-        pretest: incoming.pretest || "global",
-        grade,
-      };
-      data.lists.push(list);
-    }
+    const list = upsertList(p.list || {});
+    if (!list) return false;
     if (p.makeActive !== false) { data.activeListId = list.id; prunePracticeSet(); }
     return true;
   }
@@ -3969,6 +4077,52 @@ function applyCommand(cmd) {
 // Accepts bare strings or {word, hint, sentence}, and fills the same defaults
 // addWord() does, so a list assigned from a phone is indistinguishable from
 // one typed in the parent area.
+// Adds a list, or replaces the words of the one with the same name and grade.
+// One function for every way a whole list arrives — the phone's assign-list
+// command and the word list library — so they cannot disagree about what
+// counts as "the same list". Returns the list, or null if there was nothing
+// to add.
+function upsertList(incoming) {
+  const name = String(incoming.name || "").trim();
+  if (!name) return null;
+  const words = normalizeAssignedWords(incoming.words);
+  const bonus = normalizeAssignedWords(incoming.bonus);
+  if (!words.length && !bonus.length) return null;
+  const grade = incoming.grade || data.gradeLevel;
+  // Replace by name rather than always appending: re-sending a corrected
+  // list is the common case, and it should fix the list the child already
+  // has instead of leaving two with the same name.
+  //
+  // Matched on name *and grade* (§16). Without the grade in the match, a
+  // parent assigning "Unit 1" for Grade 5 would silently overwrite the
+  // Grade 3 list of the same name — replacing its words in place and
+  // taking a previous year's list with it. That is data loss, not a
+  // mislabel, and it is the one place the name-collision problem could
+  // destroy something rather than just confuse a total.
+  let list = (data.lists || []).find(l =>
+    (l.name || "").toLowerCase() === name.toLowerCase() && (l.grade || null) === (grade || null));
+  if (list) {
+    if (incoming.desc) list.desc = String(incoming.desc);
+    list.words = words;
+    list.bonus = bonus;
+    if (incoming.pretest) list.pretest = incoming.pretest;
+  } else {
+    // A whole grade from the library lands in one tick, so a timestamp alone
+    // would collide; draw again until the id is free.
+    let id;
+    do { id = "l" + Date.now() + Math.floor(Math.random() * 1000); }
+    while ((data.lists || []).some(l => l.id === id));
+    list = {
+      id,
+      name, desc: String(incoming.desc || ""), words, bonus,
+      pretest: incoming.pretest || "global",
+      grade,
+    };
+    data.lists.push(list);
+  }
+  return list;
+}
+
 function normalizeAssignedWords(items) {
   const out = [];
   const seen = new Set();

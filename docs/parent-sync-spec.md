@@ -264,6 +264,38 @@ Security note: a field where a user pastes a URL is a mild phishing surface.
 Low risk for this audience, mitigated by keeping it PIN-gated and stating in
 plain words what it does.
 
+### 5.1 A second trusted family, and getting a family back
+
+**Decision: one more family, by hand — not hosting.** A relative's family runs on
+this instance alongside ours. That is not the "hosting for other families" this
+section rules out: there is no open signup, each family is added deliberately
+by whoever holds the secret, and the people involved know their children's
+results sit unencrypted in a database the operator can read (§10 stays
+deferred on that basis). The data model already separated families (§6.5) and
+the API suite tests that boundary across two of them; nothing in the schema
+changed for this.
+
+**`/admin/families`** — server-rendered, no JavaScript, gated on `SIGNUP_SECRET`
+like `/admin/migrations`. It lists families (children's names, parent phones,
+counts — never session content) and does two things, both ending in a
+single-use 10-minute **parent pairing code** that the parent app's existing
+"Add this phone → Join family" form redeems:
+
+- **Recover a family.** A family whose only parent phone is lost has no device
+  left that can mint a code. Pairing a new phone into the *same* family brings
+  back the dashboard, plans, and all synced history; the tablets never notice.
+  Creating a new family instead would start empty with the tablets still on the
+  old one — the setup screen says so. Afterwards, revoke the lost phone from
+  Devices.
+- **Add a family.** Creates an empty family and returns its parent code, so the
+  secret is never typed on anyone else's phone. Its timezone is left unset; the
+  new family's parent phone is asked for it on the Plan tab.
+
+**A lost secret is not a lost family.** The secret cannot be read back but can
+be overwritten (Step 6). No device stores or sends it after creation, so
+replacing it signs nobody out. Keep a second parent phone paired per family
+anyway; it makes recovery a Devices-tab job rather than an admin one.
+
 ---
 
 ## 6. Data model (server)
@@ -459,9 +491,9 @@ two request shapes. They authenticate against different things — a long-lived
 server secret versus a short-lived one-time code — and conflating them means a
 single handler where forgetting one branch of an `if` silently downgrades the
 §5 gate. `/api/family` creates the family, mints the first parent device, and
-is the only *API* endpoint that ever reads `env.SIGNUP_SECRET`. The one other
-reader is `/admin/migrations` (§12 Step 4b), which gates applying a migration on
-it because a human has to type that field; both uses are the same kind of thing,
+is the only *API* endpoint that ever reads `env.SIGNUP_SECRET`. The other
+readers are `/admin/families` (§5.1) and `/admin/migrations` (§12 Step 4b), which gate applying a migration on
+it because a human has to type that field; all three uses are the same kind of thing,
 a deployment-level password for a deployment-level action.
 
 `deviceId` is accepted by those two endpoints only (§6.1) and is ignored
@@ -963,9 +995,10 @@ aren't subject to the same config-drift lock. There's no separate
 Production/Preview split to worry about here; a git-connected Worker like
 this one has just the one environment.
 
-This is the §5 gate that keeps your instance serving exactly one family. Once
-saved, the value is **not viewable again** — copy it somewhere safe (a
-password manager) the moment you create it.
+This is the §5 gate on who can create a family (§5.1: this instance now serves
+two, each added by hand). Once saved, the value is **not viewable again** —
+copy it somewhere safe (a password manager) the moment you create it. If it is
+ever lost, overwrite it here with a new one: nothing already paired uses it.
 
 ### Step 7 — Write the functions, and bundle them into the Worker
 

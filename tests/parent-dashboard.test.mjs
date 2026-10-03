@@ -817,6 +817,44 @@ console.log('\n[§8.2] the plan displays; it never blocks');
   check('the Plan tab queued no commands', !posted.some((p) => p.path === '/commands' && p.body.kind === 'set-plan'));
 }
 
+console.log('\n[Assign — the word list library]');
+// Read from the real files under wordlists/spelling, served by the static
+// server, so this also notices a manifest that points at a missing CSV.
+{
+  await page.click('#navAssign');
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { selectAssignChild('child-ada'); });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { selectAssignApp('spelling'); });
+  await page.waitForTimeout(500);
+  await page.click('button:has-text("Browse the library")');
+  await page.waitForTimeout(800);
+  const grades = await page.$$eval('#libGrade option', (os) => os.map((o) => o.value));
+  check('only grades that have lists are offered', grades.includes('3') && grades.includes('5') && !grades.includes('4'), grades);
+  check("it opens on the tablet's own grade", (await page.$eval('#libGrade', (s) => s.value)) === '3');
+  let picks = await page.$$eval('.libPick', (els) => els.map((e) => [e.value, e.checked]));
+  check('every list in the grade is offered, ticked', picks.length === 30 && picks.every((p) => p[1]), picks.length);
+
+  await page.evaluate(() => document.querySelectorAll('.libPick').forEach((el, i) => { el.checked = i < 2; }));
+  await page.check('#libMakeActive');
+  const from = posted.filter((p) => p.path === '/commands').length;
+  await page.click('button:has-text("Send the ticked lists")');
+  await page.waitForTimeout(1500);
+  const sent = posted.filter((p) => p.path === '/commands').slice(from).map((p) => p.body);
+  check('one assign-list per ticked list', sent.length === 2 && sent.every((c) => c.kind === 'assign-list'), sent.map((c) => c.kind));
+  check('in library order, named and graded',
+    sent[0]?.payload.list.name === 'List 3.1' && sent[1]?.payload.list.name === 'List 3.2' && sent[0]?.payload.list.grade === '3',
+    sent.map((c) => [c.payload.list.name, c.payload.list.grade]));
+  const first = sent[0]?.payload.list.words[0];
+  check('words come from the CSV, quoted fields and misspellings intact',
+    first?.word === 'said' && first?.hint === 'past tense of "say"' && first?.misspellings === 'sed|sead', first);
+  check('only the first is made the assigned list',
+    sent[0]?.payload.makeActive === true && sent[1]?.payload.makeActive === false, sent.map((c) => c.payload.makeActive));
+  check('the note says what went', (await page.textContent('#app')).includes('Sent 2 Grade 3 lists'));
+  picks = await page.$$eval('.libPick', (els) => els.map((e) => [e.value, e.checked]));
+  check('a list already sent is not ticked again', picks[0][1] === false && picks[2][1] === true, picks.slice(0, 3));
+}
+
 console.log('\n[General]');
 check('no page errors anywhere', errors.length === 0, errors);
 
