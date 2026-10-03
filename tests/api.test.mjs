@@ -968,4 +968,55 @@ console.log('\n[migrations] only a parent may look or apply');
   check('and an unauthenticated caller gets 401', mAnon === 401, mAnon);
 }
 
+console.log('\n[admin/families] recovery and a second family, without the secret on their phone');
+{
+  const admin = await import(REPO + 'functions/admin/families.js');
+  const form = (fields) => ({
+    request: new Request('http://x/admin/families', { method: 'POST', body: new URLSearchParams(fields) }),
+    env,
+  });
+  const codeIn = (html) => (html.match(/class="big">([A-Z0-9]{6})</) || [])[1];
+  const childIdsOf = async (token) =>
+    (await (await children.onRequestGet(get('http://x/api/children', token))).json()).children.map((c) => c.id).sort();
+
+  const bad = await admin.onRequestPost(form({ secret: 'wrong', action: 'list' }));
+  check('a wrong secret is refused (401)', bad.status === 401, bad.status);
+  check('and lists nothing', !(await bad.text()).includes(fam.familyId.slice(0, 8)));
+
+  const listed = await (await admin.onRequestPost(form({ secret: 'test-secret' }))).text();
+  check('the right secret lists the family', listed.includes(fam.familyId.slice(0, 8)));
+
+  // Recovery: the only parent phone is gone. A code minted here joins a new
+  // phone to the same family, so it sees the same children and their history.
+  const rec = await admin.onRequestPost(form({ secret: 'test-secret', action: 'parent-code', familyId: fam.familyId }));
+  const recCode = codeIn(await rec.text());
+  check('a parent code is issued for an existing family', rec.status === 200 && !!recCode, recCode);
+  const [rpst, rp] = await body(await pair.onRequestPost(post('http://x/api/pair', {
+    code: recCode, deviceId: 'replacement-phone', role: 'parent', label: 'New phone',
+  })));
+  check('the replacement phone joins as a parent', rpst === 200 && !!rp.token, rp);
+  const before = await childIdsOf(parentToken);
+  check('and sees exactly the children the old phone did',
+    before.length > 0 && JSON.stringify(await childIdsOf(rp.token)) === JSON.stringify(before), before);
+  const reuse = await pair.onRequestPost(post('http://x/api/pair', { code: recCode, deviceId: 'another', role: 'parent' }));
+  check('the code is single-use', reuse.status === 401, reuse.status);
+
+  const unknown = await admin.onRequestPost(form({ secret: 'test-secret', action: 'parent-code', familyId: 'nope' }));
+  check('an unknown family id issues nothing (404)', unknown.status === 404 && !codeIn(await unknown.text()));
+
+  const unconfirmed = await admin.onRequestPost(form({ secret: 'test-secret', action: 'create' }));
+  check('creating needs the confirm box', !codeIn(await unconfirmed.text()));
+
+  // A second family: created here, joined by code, and walled off from ours.
+  const made = await admin.onRequestPost(form({ secret: 'test-secret', action: 'create', confirm: 'yes' }));
+  const newCode = codeIn(await made.text());
+  check('creating a family issues a parent code for it', !!newCode, newCode);
+  const [, sis] = await body(await pair.onRequestPost(post('http://x/api/pair', {
+    code: newCode, deviceId: 'sister-phone', role: 'parent',
+  })));
+  check('the new family starts empty', (await childIdsOf(sis.token)).length === 0);
+  const peek = await childState.onRequestGet(get(`http://x/api/child-state?app=spelling&childId=${before[0]}`, sis.token));
+  check("and cannot reach the first family's children (404)", peek.status === 404, peek.status);
+}
+
 process.exit(report('api') ? 1 : 0);

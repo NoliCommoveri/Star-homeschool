@@ -35,9 +35,34 @@ export function randomPairingCode() {
   return [...bytes].map((b) => PAIRING_CODE_ALPHABET[b % PAIRING_CODE_ALPHABET.length]).join('');
 }
 
+// Length-independent comparison for the deployment secret the /admin pages
+// take. The secret is low-value and an attacker needs a great many requests to
+// learn anything from timing, but this costs three lines and removes the
+// question.
+export function timingSafeEqual(a, b) {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
+
 export async function sha256Hex(input) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// §7: a single-use code, valid ~10 minutes, whose plaintext is returned once
+// and only its hash stored. Shared by /api/pairing-code (a parent device adding
+// one) and /admin/families (the operator adding a parent to a family that has
+// none it can reach — a lost phone, or a new family).
+export async function mintPairingCode(env, familyId, role, childId = null) {
+  const code = randomPairingCode();
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  await env.DB.prepare(
+    'INSERT INTO pairing_codes (code_hash, family_id, role, child_id, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).bind(await sha256Hex(code), familyId, role, childId, expiresAt).run();
+  return { code, expiresAt };
 }
 
 // Resolves the bearer token to its device row, enforcing §6.5's boundary:

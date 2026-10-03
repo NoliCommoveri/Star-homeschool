@@ -587,6 +587,7 @@ function renderSetup() {
       <div class="col card">
         <h2>Create a family</h2>
         <p class="muted">First time setting this up? Enter the signup secret your Cloudflare deployment was configured with (spec §5, §6).</p>
+        <p class="muted"><strong>Replacing a lost phone?</strong> Don't create a new family — it starts empty. Get a parent code from <code>/admin/families</code> and use "Add this phone" instead; everything comes back.</p>
         <form id="createForm">
           <label for="secretIn">Signup secret</label>
           <input type="password" id="secretIn" placeholder="Signup secret" required>
@@ -598,7 +599,7 @@ function renderSetup() {
       </div>
       <div class="col card">
         <h2>Add this phone</h2>
-        <p class="muted">Already have a family set up on another phone? Open Devices there, tap "Add a device," pick "Another parent phone," and enter the code it shows here.</p>
+        <p class="muted">Already have a family set up on another phone? Open Devices there, tap "Add a device," pick "Another parent phone," and enter the code it shows here. A parent code from <code>/admin/families</code> goes in the same box.</p>
         <form id="joinForm">
           <label for="codeIn">Pairing code</label>
           <input type="text" id="codeIn" placeholder="6-character code" maxlength="6" style="text-transform:uppercase;text-align:center;font-size:22px;letter-spacing:.25em" required>

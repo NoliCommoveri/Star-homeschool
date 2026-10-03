@@ -11,6 +11,7 @@
 // reads the secret — worth knowing, since parent-sync-spec.md §5 says it is.
 // The two uses are the same kind of thing: a deployment-level password for a
 // deployment-level action, held by whoever set the Worker up.
+import { timingSafeEqual } from '../api/_lib/auth.js';
 import { applyPendingMigrations, migrationStatus } from '../api/_lib/migrations.js';
 
 export async function onRequestGet({ env }) {
@@ -38,17 +39,6 @@ export async function onRequestPost({ request, env }) {
   const result = await applyPendingMigrations(env);
   const { migrations } = await migrationStatus(env);
   return page({ migrations, result }, result.failed ? 207 : 200);
-}
-
-// Length-independent comparison. The secret is low-value and an attacker needs
-// a great many requests to learn anything from timing, but this costs three
-// lines and removes the question.
-function timingSafeEqual(a, b) {
-  const x = new TextEncoder().encode(a);
-  const y = new TextEncoder().encode(b);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
-  return diff === 0;
 }
 
 function page({ migrations = [], result, error } = {}, status = 200) {

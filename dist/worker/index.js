@@ -32,11 +32,28 @@ function randomPairingCode() {
   return [...bytes].map((b) => PAIRING_CODE_ALPHABET[b % PAIRING_CODE_ALPHABET.length]).join("");
 }
 __name(randomPairingCode, "randomPairingCode");
+function timingSafeEqual(a, b) {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
+__name(timingSafeEqual, "timingSafeEqual");
 async function sha256Hex(input) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 __name(sha256Hex, "sha256Hex");
+async function mintPairingCode(env, familyId, role, childId = null) {
+  const code = randomPairingCode();
+  const expiresAt = Date.now() + 10 * 60 * 1e3;
+  await env.DB.prepare(
+    "INSERT INTO pairing_codes (code_hash, family_id, role, child_id, expires_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(await sha256Hex(code), familyId, role, childId, expiresAt).run();
+  return { code, expiresAt };
+}
+__name(mintPairingCode, "mintPairingCode");
 var COMMAND_KINDS = [
   "assign-list",
   // spelling: add/replace a word list, optionally make it active
@@ -280,6 +297,164 @@ async function onRequestPost3({ request, env }) {
   return json({ deleted: ids, rows: tombstoned.meta.changes, commands });
 }
 __name(onRequestPost3, "onRequestPost");
+
+// admin/families.js
+async function onRequestGet2({ env }) {
+  if (!env.DB) return page({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
+  return page({});
+}
+__name(onRequestGet2, "onRequestGet");
+async function onRequestPost4({ request, env }) {
+  if (!env.DB) return page({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
+  const form = await request.formData();
+  const secret = String(form.get("secret") || "");
+  const action = String(form.get("action") || "list");
+  if (!env.SIGNUP_SECRET || !timingSafeEqual(secret, env.SIGNUP_SECRET)) {
+    return page({ error: "Incorrect signup secret." }, 401);
+  }
+  let issued = null;
+  if (action === "create") {
+    if (form.get("confirm") !== "yes") {
+      return page({ families: await listFamilies(env), error: "Tick the box to create a family." });
+    }
+    const familyId = randomId();
+    await env.DB.prepare("INSERT INTO families (id, created_at, timezone, week_start) VALUES (?, ?, NULL, 0)").bind(familyId, Date.now()).run();
+    issued = { familyId, created: true, ...await mintPairingCode(env, familyId, "parent") };
+  } else if (action === "parent-code") {
+    const familyId = String(form.get("familyId") || "");
+    const family = await env.DB.prepare("SELECT id FROM families WHERE id = ?").bind(familyId).first();
+    if (!family) return page({ families: await listFamilies(env), error: "No such family." }, 404);
+    issued = { familyId, created: false, ...await mintPairingCode(env, familyId, "parent") };
+  }
+  return page({ families: await listFamilies(env), issued });
+}
+__name(onRequestPost4, "onRequestPost");
+async function listFamilies(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT f.id, f.created_at, f.timezone,
+       (SELECT GROUP_CONCAT(DISTINCT c.name) FROM children c
+          WHERE c.family_id = f.id AND c.name <> '') AS children,
+       (SELECT GROUP_CONCAT(COALESCE(d.label, 'unnamed'), '; ') FROM devices d
+          WHERE d.family_id = f.id AND d.role = 'parent' AND d.revoked = 0) AS parents,
+       (SELECT COUNT(*) FROM devices d
+          WHERE d.family_id = f.id AND d.role = 'child' AND d.revoked = 0) AS tablets,
+       (SELECT MAX(d.last_seen) FROM devices d
+          WHERE d.family_id = f.id AND d.role = 'parent' AND d.revoked = 0) AS parent_seen,
+       (SELECT COUNT(*) FROM sessions s JOIN children c ON c.id = s.child_id
+          WHERE c.family_id = f.id AND s.deleted = 0) AS sessions
+     FROM families f
+     ORDER BY f.created_at`
+  ).all();
+  return results;
+}
+__name(listFamilies, "listFamilies");
+function when(ms) {
+  return ms ? new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "never";
+}
+__name(when, "when");
+function secretField() {
+  return `<input type="password" name="secret" required autocomplete="current-password" placeholder="Signup secret">`;
+}
+__name(secretField, "secretField");
+function page({ families, issued, error } = {}, status = 200) {
+  let banner = "";
+  if (issued) {
+    banner = `<div class="code">
+  <p>${issued.created ? "New family created. " : ""}Parent code for family <strong>${esc(issued.familyId.slice(0, 8))}</strong>:</p>
+  <p class="big">${esc(issued.code)}</p>
+  <p>On the phone that should become this family's parent: open <code>/parent.html</code> \u2192
+  <strong>Join family</strong> \u2192 enter the code. It works once, until ${esc(when(issued.expiresAt))}.</p>
+</div>`;
+  }
+  let list = "";
+  if (families) {
+    const rows = families.map((f) => `<tr>
+  <td><strong>${esc(f.id.slice(0, 8))}</strong><br><small>since ${esc(when(f.created_at).slice(0, 10))}</small></td>
+  <td>${esc(f.children ? f.children.split(",").join(", ") : "\u2014")}</td>
+  <td>${esc(f.parents || "none")}<br><small>last seen ${esc(when(f.parent_seen))}</small></td>
+  <td>${f.tablets} tablet(s)<br><small>${f.sessions} session(s)</small></td>
+  <td><form method="post" action="/admin/families">
+    <input type="hidden" name="action" value="parent-code">
+    <input type="hidden" name="familyId" value="${esc(f.id)}">
+    ${secretField()}
+    <button type="submit">Parent code</button>
+  </form></td>
+</tr>`).join("\n");
+    list = `<h2>Families (${families.length})</h2>
+<table>
+<thead><tr><th>Family</th><th>Children</th><th>Parent phones</th><th>Tablets</th><th></th></tr></thead>
+<tbody>${rows}</tbody>
+</table>
+<h2>Add a family</h2>
+<p>Creates an empty family and gives you a parent code for it. Their tablets
+are paired afterwards from their own parent phone, as usual.</p>
+<form method="post" action="/admin/families">
+  <input type="hidden" name="action" value="create">
+  <label>${secretField()}</label>
+  <label><input type="checkbox" name="confirm" value="yes" required> Create a new, empty family.</label>
+  <button type="submit">Create family</button>
+</form>`;
+  } else {
+    list = `<form method="post" action="/admin/families">
+  <input type="hidden" name="action" value="list">
+  <label>Signup secret ${secretField()}</label>
+  <button type="submit">Show families</button>
+</form>`;
+  }
+  const body = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Families \u2014 Star Homeschool</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { padding: .4rem .5rem; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
+  small { color: #666; }
+  .err { color: #a11; font-weight: 600; }
+  .code { padding: 1rem; border: 2px solid #2a5d9f; border-radius: 6px; background: #eef4fb; }
+  .big { font-size: 2rem; font-weight: 700; letter-spacing: .25em; margin: .25rem 0; }
+  form { margin: 0; }
+  label { display: block; margin: .5rem 0; }
+  input[type=password] { width: 100%; max-width: 260px; padding: .4rem; box-sizing: border-box; }
+  button { margin-top: .4rem; padding: .45rem .9rem; }
+  @media (max-width: 640px) {
+    thead { display: none; }
+    tr, td { display: block; border: 0; padding: .15rem 0; }
+    tr { border-bottom: 1px solid #ddd; padding: .6rem 0; }
+  }
+</style>
+</head>
+<body>
+<h1>Families</h1>
+<p>Get a parent phone back into a family \u2014 after a lost or wiped phone \u2014 or
+set up a new family, without losing anything already synced.</p>
+${error ? `<p class="err">${esc(error)}</p>` : ""}
+${banner}
+${list}
+<p><small>Lost the signup secret? It cannot be read back, but you can replace
+it: Cloudflare \u2192 the Worker \u2192 Settings \u2192 Variables and secrets \u2192
+<code>SIGNUP_SECRET</code>. No paired device uses it, so nothing is signed out.</small></p>
+</body>
+</html>`;
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+__name(page, "page");
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
+__name(esc, "esc");
 
 // api/_lib/migrations.js
 var MIGRATIONS = [
@@ -530,51 +705,43 @@ async function applyPendingMigrations(env) {
 __name(applyPendingMigrations, "applyPendingMigrations");
 
 // admin/migrations.js
-async function onRequestGet2({ env }) {
-  if (!env.DB) return page({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
+async function onRequestGet3({ env }) {
+  if (!env.DB) return page2({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
   const { migrations } = await migrationStatus(env);
-  return page({ migrations });
+  return page2({ migrations });
 }
-__name(onRequestGet2, "onRequestGet");
-async function onRequestPost4({ request, env }) {
-  if (!env.DB) return page({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
+__name(onRequestGet3, "onRequestGet");
+async function onRequestPost5({ request, env }) {
+  if (!env.DB) return page2({ error: 'The D1 binding "DB" is not configured on this Worker.' }, 500);
   const form = await request.formData();
   const secret = String(form.get("secret") || "");
   const confirmed = form.get("confirm") === "yes";
   if (!env.SIGNUP_SECRET || !timingSafeEqual(secret, env.SIGNUP_SECRET)) {
     const { migrations: migrations2 } = await migrationStatus(env);
-    return page({ migrations: migrations2, error: "Incorrect signup secret." }, 401);
+    return page2({ migrations: migrations2, error: "Incorrect signup secret." }, 401);
   }
   if (!confirmed) {
     const { migrations: migrations2 } = await migrationStatus(env);
-    return page({ migrations: migrations2, error: "Tick the confirm box to apply." });
+    return page2({ migrations: migrations2, error: "Tick the confirm box to apply." });
   }
   const result = await applyPendingMigrations(env);
   const { migrations } = await migrationStatus(env);
-  return page({ migrations, result }, result.failed ? 207 : 200);
+  return page2({ migrations, result }, result.failed ? 207 : 200);
 }
-__name(onRequestPost4, "onRequestPost");
-function timingSafeEqual(a, b) {
-  const x = new TextEncoder().encode(a);
-  const y = new TextEncoder().encode(b);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
-  return diff === 0;
-}
-__name(timingSafeEqual, "timingSafeEqual");
-function page({ migrations = [], result, error } = {}, status = 200) {
+__name(onRequestPost5, "onRequestPost");
+function page2({ migrations = [], result, error } = {}, status = 200) {
   const pending = migrations.filter((m) => !m.applied).length;
-  const rows = migrations.map((m) => `<tr><td>${esc(m.name)}</td><td>${m.applied ? "applied" : "pending"}</td></tr>`).join("\n");
+  const rows = migrations.map((m) => `<tr><td>${esc2(m.name)}</td><td>${m.applied ? "applied" : "pending"}</td></tr>`).join("\n");
   let outcome = "";
   if (result) {
     if (result.failed) {
-      outcome = `<p class="err">Stopped on <strong>${esc(result.failed.name)}</strong>: ${esc(result.failed.error)}</p>
-        <pre>${esc(result.failed.statement)}</pre>`;
+      outcome = `<p class="err">Stopped on <strong>${esc2(result.failed.name)}</strong>: ${esc2(result.failed.error)}</p>
+        <pre>${esc2(result.failed.statement)}</pre>`;
     } else if (!result.ran.length) {
       outcome = "<p>Nothing was pending.</p>";
     } else {
       outcome = "<p>Applied:</p><ul>" + result.ran.map(
-        (r) => `<li>${esc(r.name)} \u2014 ${r.changed} statement(s) run${r.skipped ? `, ${r.skipped} already present` : ""}</li>`
+        (r) => `<li>${esc2(r.name)} \u2014 ${r.changed} statement(s) run${r.skipped ? `, ${r.skipped} already present` : ""}</li>`
       ).join("") + "</ul>";
     }
   }
@@ -599,7 +766,7 @@ function page({ migrations = [], result, error } = {}, status = 200) {
 <body>
 <h1>Database migrations</h1>
 <p>${pending} pending of ${migrations.length}.</p>
-${error ? `<p class="err">${esc(error)}</p>` : ""}
+${error ? `<p class="err">${esc2(error)}</p>` : ""}
 ${outcome}
 <table><tbody>${rows}</tbody></table>
 <form method="post" action="/admin/migrations">
@@ -622,8 +789,8 @@ does not.</p>
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
   });
 }
-__name(page, "page");
-function esc(s) {
+__name(page2, "page");
+function esc2(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",
     "<": "&lt;",
@@ -632,10 +799,10 @@ function esc(s) {
     "'": "&#39;"
   })[c]);
 }
-__name(esc, "esc");
+__name(esc2, "esc");
 
 // api/child-state.js
-async function onRequestGet3({ request, env }) {
+async function onRequestGet4({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -664,7 +831,7 @@ async function onRequestGet3({ request, env }) {
   })).filter((s) => s.state);
   return json({ snapshots });
 }
-__name(onRequestGet3, "onRequestGet");
+__name(onRequestGet4, "onRequestGet");
 function safeParse(text) {
   try {
     return JSON.parse(text);
@@ -675,7 +842,7 @@ function safeParse(text) {
 __name(safeParse, "safeParse");
 
 // api/children.js
-async function onRequestGet4({ request, env }) {
+async function onRequestGet5({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -687,11 +854,11 @@ async function onRequestGet4({ request, env }) {
   ).bind(device.family_id).all();
   return json({ children: results });
 }
-__name(onRequestGet4, "onRequestGet");
+__name(onRequestGet5, "onRequestGet");
 
 // api/commands.js
 var COMMAND_RETENTION_MS = 30 * 864e5;
-async function onRequestPost5({ request, env }) {
+async function onRequestPost6({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -734,8 +901,8 @@ async function onRequestPost5({ request, env }) {
   }
   return json({ commands: created, createdAt: now });
 }
-__name(onRequestPost5, "onRequestPost");
-async function onRequestGet5({ request, env }) {
+__name(onRequestPost6, "onRequestPost");
+async function onRequestGet6({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -769,7 +936,7 @@ async function onRequestGet5({ request, env }) {
   }));
   return json({ commands });
 }
-__name(onRequestGet5, "onRequestGet");
+__name(onRequestGet6, "onRequestGet");
 function safeParse2(text) {
   try {
     return JSON.parse(text);
@@ -780,7 +947,7 @@ function safeParse2(text) {
 __name(safeParse2, "safeParse");
 
 // api/delete.js
-async function onRequestPost6({ request, env }) {
+async function onRequestPost7({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["child"]);
@@ -810,10 +977,10 @@ async function onRequestPost6({ request, env }) {
   }
   return json({ deleted });
 }
-__name(onRequestPost6, "onRequestPost");
+__name(onRequestPost7, "onRequestPost");
 
 // api/devices.js
-async function onRequestGet6({ request, env }) {
+async function onRequestGet7({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -825,10 +992,10 @@ async function onRequestGet6({ request, env }) {
   ).bind(device.family_id).all();
   return json({ devices: results });
 }
-__name(onRequestGet6, "onRequestGet");
+__name(onRequestGet7, "onRequestGet");
 
 // api/family.js
-async function onRequestPost7({ request, env }) {
+async function onRequestPost8({ request, env }) {
   let body;
   try {
     body = await request.json();
@@ -858,10 +1025,10 @@ async function onRequestPost7({ request, env }) {
   ]);
   return json({ token, familyId, role: "parent", timezone: tz, weekStart: ws === null ? 0 : ws });
 }
-__name(onRequestPost7, "onRequestPost");
+__name(onRequestPost8, "onRequestPost");
 
 // api/migrations.js
-async function onRequestGet7({ request, env }) {
+async function onRequestGet8({ request, env }) {
   try {
     await authenticate(request, env, ["parent"]);
   } catch (response) {
@@ -870,8 +1037,8 @@ async function onRequestGet7({ request, env }) {
   if (!env.DB) return json({ error: 'the D1 binding "DB" is not configured on this Worker' }, { status: 500 });
   return json(await migrationStatus(env));
 }
-__name(onRequestGet7, "onRequestGet");
-async function onRequestPost8({ request, env }) {
+__name(onRequestGet8, "onRequestGet");
+async function onRequestPost9({ request, env }) {
   try {
     await authenticate(request, env, ["parent"]);
   } catch (response) {
@@ -882,10 +1049,10 @@ async function onRequestPost8({ request, env }) {
   const status = await migrationStatus(env);
   return json({ ...result, ...status }, { status: result.failed ? 207 : 200 });
 }
-__name(onRequestPost8, "onRequestPost");
+__name(onRequestPost9, "onRequestPost");
 
 // api/pair.js
-async function onRequestPost9({ request, env }) {
+async function onRequestPost10({ request, env }) {
   let body;
   try {
     body = await request.json();
@@ -924,10 +1091,10 @@ async function onRequestPost9({ request, env }) {
   ).bind(deviceId, pairing.family_id, tokenHash, role, label || null, now, now, Math.floor(now / 1e3)).run();
   return json({ token, role, childId: pairing.child_id || void 0 });
 }
-__name(onRequestPost9, "onRequestPost");
+__name(onRequestPost10, "onRequestPost");
 
 // api/pairing-code.js
-async function onRequestPost10({ request, env }) {
+async function onRequestPost11({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -958,15 +1125,10 @@ async function onRequestPost10({ request, env }) {
       "INSERT INTO children (id, family_id, name, created_at) VALUES (?, ?, ?, ?)"
     ).bind(boundChildId, device.family_id, String(childName).trim(), now).run();
   }
-  const code = randomPairingCode();
-  const codeHash = await sha256Hex(code);
-  const expiresAt = now + 10 * 60 * 1e3;
-  await env.DB.prepare(
-    "INSERT INTO pairing_codes (code_hash, family_id, role, child_id, expires_at) VALUES (?, ?, ?, ?, ?)"
-  ).bind(codeHash, device.family_id, role, boundChildId, expiresAt).run();
+  const { code, expiresAt } = await mintPairingCode(env, device.family_id, role, boundChildId);
   return json({ code, expiresAt });
 }
-__name(onRequestPost10, "onRequestPost");
+__name(onRequestPost11, "onRequestPost");
 
 // api/plan.js
 var MATCH_KEYS = ["app", "modes", "scopeId"];
@@ -977,7 +1139,7 @@ var MAX_LABEL_LENGTH = 80;
 var MAX_ID_LENGTH = 64;
 var MAX_MODES = 12;
 var MAX_COUNT = 50;
-async function onRequestGet8({ request, env }) {
+async function onRequestGet9({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -1001,7 +1163,7 @@ async function onRequestGet8({ request, env }) {
     delivery
   });
 }
-__name(onRequestGet8, "onRequestGet");
+__name(onRequestGet9, "onRequestGet");
 async function onRequestPut2({ request, env }) {
   let device;
   try {
@@ -1251,7 +1413,7 @@ function safeParse3(text) {
 __name(safeParse3, "safeParse");
 
 // api/sessions.js
-async function onRequestGet9({ request, env }) {
+async function onRequestGet10({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -1296,10 +1458,10 @@ async function onRequestGet9({ request, env }) {
   }));
   return json({ sessions });
 }
-__name(onRequestGet9, "onRequestGet");
+__name(onRequestGet10, "onRequestGet");
 
 // api/summary.js
-async function onRequestGet10({ request, env }) {
+async function onRequestGet11({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["parent"]);
@@ -1344,10 +1506,10 @@ async function onRequestGet10({ request, env }) {
   }));
   return json({ lists });
 }
-__name(onRequestGet10, "onRequestGet");
+__name(onRequestGet11, "onRequestGet");
 
 // api/sync.js
-async function onRequestPost11({ request, env }) {
+async function onRequestPost12({ request, env }) {
   let device;
   try {
     device = await authenticate(request, env, ["child"]);
@@ -1463,7 +1625,7 @@ async function onRequestPost11({ request, env }) {
   const plan = await currentPlan(env, device.family_id, childId);
   return json({ accepted, commands, ...plan ? { plan } : {} });
 }
-__name(onRequestPost11, "onRequestPost");
+__name(onRequestPost12, "onRequestPost");
 async function currentPlan(env, familyId, childId) {
   const family = await env.DB.prepare(
     "SELECT timezone, week_start FROM families WHERE id = ?"
@@ -1519,7 +1681,7 @@ function safeParse4(text) {
 }
 __name(safeParse4, "safeParse");
 
-// ../.wrangler/tmp/pages-EPCOwm/functionsRoutes-0.8810921796852991.mjs
+// ../.wrangler/tmp/pages-WG1VKs/functionsRoutes-0.9899915368792944.mjs
 var routes = [
   {
     routePath: "/api/commands/cancel",
@@ -1557,35 +1719,42 @@ var routes = [
     modules: [onRequestPost3]
   },
   {
-    routePath: "/admin/migrations",
+    routePath: "/admin/families",
     mountPath: "/admin",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet2]
   },
   {
-    routePath: "/admin/migrations",
+    routePath: "/admin/families",
     mountPath: "/admin",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost4]
   },
   {
-    routePath: "/api/child-state",
-    mountPath: "/api",
+    routePath: "/admin/migrations",
+    mountPath: "/admin",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet3]
   },
   {
-    routePath: "/api/children",
+    routePath: "/admin/migrations",
+    mountPath: "/admin",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost5]
+  },
+  {
+    routePath: "/api/child-state",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet4]
   },
   {
-    routePath: "/api/commands",
+    routePath: "/api/children",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
@@ -1594,65 +1763,72 @@ var routes = [
   {
     routePath: "/api/commands",
     mountPath: "/api",
-    method: "POST",
+    method: "GET",
     middlewares: [],
-    modules: [onRequestPost5]
+    modules: [onRequestGet6]
   },
   {
-    routePath: "/api/delete",
+    routePath: "/api/commands",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost6]
   },
   {
-    routePath: "/api/devices",
-    mountPath: "/api",
-    method: "GET",
-    middlewares: [],
-    modules: [onRequestGet6]
-  },
-  {
-    routePath: "/api/family",
+    routePath: "/api/delete",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost7]
   },
   {
-    routePath: "/api/migrations",
+    routePath: "/api/devices",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet7]
   },
   {
-    routePath: "/api/migrations",
+    routePath: "/api/family",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost8]
   },
   {
-    routePath: "/api/pair",
+    routePath: "/api/migrations",
+    mountPath: "/api",
+    method: "GET",
+    middlewares: [],
+    modules: [onRequestGet8]
+  },
+  {
+    routePath: "/api/migrations",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost9]
   },
   {
-    routePath: "/api/pairing-code",
+    routePath: "/api/pair",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
     modules: [onRequestPost10]
   },
   {
+    routePath: "/api/pairing-code",
+    mountPath: "/api",
+    method: "POST",
+    middlewares: [],
+    modules: [onRequestPost11]
+  },
+  {
     routePath: "/api/plan",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
-    modules: [onRequestGet8]
+    modules: [onRequestGet9]
   },
   {
     routePath: "/api/plan",
@@ -1666,21 +1842,21 @@ var routes = [
     mountPath: "/api",
     method: "GET",
     middlewares: [],
-    modules: [onRequestGet9]
+    modules: [onRequestGet10]
   },
   {
     routePath: "/api/summary",
     mountPath: "/api",
     method: "GET",
     middlewares: [],
-    modules: [onRequestGet10]
+    modules: [onRequestGet11]
   },
   {
     routePath: "/api/sync",
     mountPath: "/api",
     method: "POST",
     middlewares: [],
-    modules: [onRequestPost11]
+    modules: [onRequestPost12]
   }
 ];
 
