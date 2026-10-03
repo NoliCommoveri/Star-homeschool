@@ -24,8 +24,17 @@ const browser = await launchBrowser();
 // Everything is counted in one fixed zone so the assertions do not depend on
 // where the test is run. UTC also makes "today" here the same day the seeded
 // ISO timestamps fall on.
+//
+// The clock is pinned too. With no plan the hub counts in the device's own
+// zone (§9.5) — Sydney, below — while the fixtures are UTC hours, so on the
+// real clock the week tally depended on when the suite ran: on a Saturday
+// afternoon UTC it is already Sunday in Sydney, a new week, and every sitting
+// before 13:00 UTC fell into last week. 18:00 UTC on a Wednesday puts every
+// fixture hour in the same Sunday-to-Saturday week in both zones, and after
+// the latest of them, so nothing seeded lies in the future.
 const TZ = 'UTC';
-const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+const NOW = Date.parse(process.env.TODAY_HUB_NOW || '2026-03-11T18:00:00Z');
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(NOW));
 const at = (hour) => new Date(today + 'T' + String(hour).padStart(2, '0') + ':00:00Z').toISOString();
 const atMs = (hour) => Date.parse(at(hour));
 const shift = (date, days) => new Date(Date.parse(date + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
@@ -88,6 +97,7 @@ const PROFILES = {
 
 async function open(seed) {
   const ctx = await browser.newContext({ timezoneId: 'Australia/Sydney' });
+  await ctx.clock.setFixedTime(NOW);
   const page = await ctx.newPage();
   const errors = [];
   const apiCalls = [];
