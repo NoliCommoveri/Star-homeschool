@@ -64,9 +64,12 @@ self.addEventListener('fetch', (event) => {
   // another family's data.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Pages: try the network first so updates show up right away, but fall
-  // back to the cached copy (and cache the fresh response) when offline.
-  if (request.mode === 'navigate') {
+  // Pages, and the word list library the apps fetch by grade: try the network
+  // first so updates show up right away, but fall back to the cached copy (and
+  // cache the fresh response) when offline. The library cannot be cache-first:
+  // its manifest is how a newly published list is found at all, and a stale
+  // one would hide that list until some later visit.
+  if (request.mode === 'navigate' || url.pathname.startsWith('/wordlists/')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -74,12 +77,16 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           return response;
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('./index.html')))
+        // Only a page falls back to the launcher. A word list that was never
+        // cached has to fail as a fetch, not arrive as index.html and be read
+        // as CSV rows.
+        .catch(() => caches.match(request).then((cached) => cached
+          || (request.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
     );
     return;
   }
 
-  // Everything else (icons, manifest, word lists): serve from cache first,
+  // Everything else (icons, manifest, the reading catalog): serve from cache first,
   // and refresh the cache in the background so future offline loads stay current.
   event.respondWith(
     caches.match(request).then((cached) => {
