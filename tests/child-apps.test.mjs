@@ -652,6 +652,44 @@ function readingSyncProfile() {
   await t.close();
 }
 
+{
+  // The word list library, added from the tablet's own Word lists tab. The
+  // files are the real ones under wordlists/spelling.
+  const p = spellingProfile();
+  p.lists.push({ id: 'old31', name: 'List 3.1', desc: '', pretest: 'global', grade: '3',
+    words: [{ word: 'stale', hint: 'h', sentence: 's' }], bonus: [] });
+  const t = await run({
+    file: 'spelling-star-v6_3.html', key: 'spellingstar-ada', profile: p, label: 'Spelling Star: the word list library',
+    responses: [{ accepted: [], commands: [] }],
+  });
+  await t.page.evaluate(() => { parentUnlocked = true; renderParent('words'); });
+  check('nothing is fetched until asked', !(await t.page.isVisible('#libGrade')));
+  await t.page.click('button:has-text("Browse the library")');
+  await t.page.waitForTimeout(800);
+  check("it opens on the child's grade", (await t.page.$eval('#libGrade', (s) => s.value)) === '3');
+  const picks = await t.page.$$eval('.libPick', (els) => els.map((e) => [e.value, e.checked]));
+  check('a list already here is offered but not ticked', picks[0][0] === '3.1' && picks[0][1] === false, picks[0]);
+  check('the rest are ticked', picks.length === 30 && picks.slice(1).every((x) => x[1]), picks.length);
+
+  // The whole grade, including the one it already has.
+  await t.page.evaluate(() => document.querySelectorAll('.libPick').forEach((el) => { el.checked = true; }));
+  await t.page.click('button:has-text("Add the ticked lists")');
+  await t.page.waitForFunction(() => /Added/.test(document.getElementById('libMsg')?.textContent || ''), null, { timeout: 15000 });
+  const d = await t.read();
+  const lib = d.lists.filter((l) => /^List 3\./.test(l.name));
+  check('every list in the grade arrived once', lib.length === 30, lib.length);
+  check('in the library order', lib.map((l) => l.name).join() === Array.from({ length: 30 }, (_, i) => 'List 3.' + (i + 1)).join(), lib.map((l) => l.name));
+  check('each with a unique id', new Set(d.lists.map((l) => l.id)).size === d.lists.length);
+  const l31 = d.lists.find((l) => l.name === 'List 3.1');
+  check('the one already here was refreshed in place, not doubled', l31.id === 'old31' && l31.words[0].word === 'said', l31.words[0]);
+  check('misspellings come through for Spot the Spelling', JSON.stringify(l31.words[0].misspellings) === '["sed","sead"]', l31.words[0]);
+  check('graded as Grade 3', lib.every((l) => l.grade === '3'));
+  check('the assigned list is left alone', d.activeListId === 'starter', d.activeListId);
+  check('and the tablet says what happened', (await t.page.textContent('#libMsg')).includes('Added 29 lists. Refreshed 1.'));
+  check('no page errors', t.errors.length === 0, t.errors);
+  await t.close();
+}
+
 await browser.close();
 await server.close();
 process.exit(report('child-apps') ? 1 : 0);

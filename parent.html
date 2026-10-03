@@ -409,6 +409,7 @@ const state = {
   // Assign view (§15): the tablet's own report of what it has, and the queue
   // of things sent to it. Both are per child+app and reloaded on every switch.
   snapshots: [], commands: [], assignErr: '', assignNote: '',
+  library: { grades: null, grade: null, busy: false },
   years: [], // Previous years (§16): one aggregate row per (grade, list)
   // Reading's catalog editor (§4.3): the bundled catalog fetched directly
   // (same-origin static asset — cheaper than duplicating full question text
@@ -1319,6 +1320,7 @@ function renderSpellingAssign(child, snapshot) {
         <tbody>${rows || '<tr><td colspan="4" class="muted">No lists reported.</td></tr>'}</tbody>
       </table>
     </div>
+    ${renderLibraryAssign(lists, defaultGrade)}
     <div class="card">
       <h2>Send a new list</h2>
       <p class="muted">One word per line. To add a hint and an example sentence, write <code>word, hint, sentence</code> — the same format the tablet's CSV import takes. Sending a list whose name already exists replaces its words.</p>
@@ -1338,6 +1340,98 @@ function renderSpellingAssign(child, snapshot) {
       </label>
       <button class="big" style="margin-top:12px" onclick="sendNewList()">Send to the tablet</button>
     </div>`;
+}
+
+// The word list library (wordlists/spelling), sent from the phone: one
+// assign-list command per list, so each lands, shows in "Sent recently", and
+// can be canceled exactly like a list typed in by hand.
+function renderLibraryAssign(lists, defaultGrade) {
+  const lib = state.library;
+  if (!lib.grades) {
+    return `<div class="card">
+      <h2>From the word list library</h2>
+      <p class="muted">The lists on the Resources page, by grade — sent straight to the tablet, no downloading or importing.</p>
+      <button ${lib.busy ? 'disabled' : ''} onclick="openParentLibrary('${esc(defaultGrade || '')}')">${lib.busy ? 'Loading…' : 'Browse the library'}</button>
+    </div>`;
+  }
+  const g = lib.grades.find((x) => x.grade === lib.grade) || lib.grades[0];
+  if (!g) return '<div class="card"><h2>From the word list library</h2><p class="muted">The library has no lists yet.</p></div>';
+
+  // Waiting in the queue counts as on its way: re-sending it would only queue
+  // the same words twice.
+  const pending = state.commands
+    .filter((c) => c.kind === 'assign-list' && !c.canceled && !c.ackCount && c.payload && c.payload.list)
+    .map((c) => ({ name: c.payload.list.name, grade: c.payload.list.grade || null }));
+  const status = (id) => libraryListPresent(lists, g.grade, id) ? 'have'
+    : libraryListPresent(pending, g.grade, id) ? 'sent' : 'new';
+  const fresh = g.ids.filter((id) => status(id) === 'new');
+
+  const picks = g.ids.map((id) => {
+    const st = status(id);
+    return `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 14px 4px 0;font-size:14px;color:var(--text)">
+      <input type="checkbox" class="libPick" value="${esc(id)}" ${st === 'new' ? 'checked' : ''} style="width:auto;margin:0">
+      ${esc(libraryListName(id))}${st === 'have' ? ' <span class="muted">(on the tablet)</span>' : st === 'sent' ? ' <span class="muted">(sent)</span>' : ''}
+    </label>`;
+  }).join('');
+
+  return `<div class="card">
+    <h2>From the word list library</h2>
+    <label for="libGrade">Grade level</label>
+    <select id="libGrade" onchange="state.library.grade = this.value; paintAssign()">
+      ${lib.grades.map((x) => `<option value="${esc(x.grade)}"${x.grade === g.grade ? ' selected' : ''}>Grade ${esc(x.grade)} (${x.ids.length} lists)</option>`).join('')}
+    </select>
+    <div style="margin:10px 0">${picks}</div>
+    <p class="muted">${fresh.length ? `${fresh.length} not on the tablet yet, ticked for you.` : 'Every list in this grade is on the tablet or on its way.'} A list it already has is refreshed, not doubled. New lists go to the end of its order.</p>
+    <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)">
+      <input type="checkbox" id="libMakeActive" style="width:auto;margin:0"> Make the first ticked list the assigned one
+    </label>
+    <button class="big" style="margin-top:12px" ${lib.busy ? 'disabled' : ''} onclick="sendLibraryLists('${esc(g.grade)}')">${lib.busy ? 'Sending…' : 'Send the ticked lists'}</button>
+  </div>`;
+}
+
+async function openParentLibrary(preferGrade) {
+  state.library.busy = true;
+  paintAssign();
+  try {
+    const grades = await libraryGrades();
+    state.library.grades = grades;
+    state.library.grade = (grades.find((x) => x.grade === preferGrade) || grades[0] || {}).grade || null;
+  } catch (err) {
+    state.assignErr = err.message;
+  }
+  state.library.busy = false;
+  paintAssign();
+}
+
+async function sendLibraryLists(grade) {
+  const child = state.children.find((c) => c.id === state.detailChildId);
+  const ids = [...document.querySelectorAll('.libPick:checked')].map((el) => el.value);
+  const makeActive = document.getElementById('libMakeActive').checked;
+  if (!child) return;
+  if (!ids.length) return setAssignError('Tick at least one list.');
+  state.library.busy = true;
+  state.assignErr = '';
+  paintAssign();
+  // In order, one at a time: the tablet applies commands oldest first, so the
+  // lists arrive in the library's order — the order "the next list" follows.
+  const sent = [];
+  const failed = [];
+  for (const [i, id] of ids.entries()) {
+    try {
+      const list = await libraryList(grade, id);
+      await api('/commands', { method: 'POST', body: {
+        app: 'spelling', childIds: child.ids, kind: 'assign-list',
+        payload: { list, makeActive: makeActive && i === 0 },
+      } });
+      sent.push(libraryListName(id));
+    } catch (err) {
+      failed.push(libraryListName(id));
+    }
+  }
+  state.library.busy = false;
+  state.assignNote = sent.length ? `Sent ${sent.length} Grade ${grade} list${sent.length === 1 ? '' : 's'}.` : '';
+  state.assignErr = failed.length ? `Couldn't send ${failed.join(', ')}. Try those again.` : '';
+  await renderAssign();
 }
 
 function renderMathAssign(child, snapshot) {
@@ -1679,6 +1773,75 @@ function renderQueueCard() {
         <tbody>${rows || '<tr><td class="muted">Nothing sent yet.</td></tr>'}</tbody>
       </table>
     </div>`;
+}
+
+// ---------- The word list library (wordlists/spelling) ----------
+// The CSVs resources.html offers for download, fetched straight into the app
+// instead: the manifest says which lists each grade has, and each list is its
+// own file. Byte-identical in parent.html and Spelling Star
+// (tests/shared-code), so a list reads the same whether the phone sends it or
+// the tablet adds it itself. A library list is named "List 3.1" and carries
+// its grade, and the tablet matches lists on name and grade (§16), so adding
+// one a second time refreshes its words rather than making a copy.
+const LIBRARY_ROOT = "wordlists/spelling/";
+
+async function libraryGrades() {
+  const res = await fetch(LIBRARY_ROOT + "spelling-lists.json", { cache: "no-cache" });
+  if (!res.ok) throw new Error("The word list library isn't available right now.");
+  const manifest = await res.json();
+  return Object.keys(manifest)
+    .map(key => ({ grade: key.replace(/^grade/, ""), ids: (manifest[key] || []).map(String) }))
+    .filter(g => g.ids.length)
+    .sort((a, b) => libraryGradeOrder(a.grade) - libraryGradeOrder(b.grade));
+}
+
+function libraryGradeOrder(grade) { return grade === "K" ? 0 : Number(grade) || 99; }
+
+function libraryListName(id) { return "List " + id; }
+
+// True when a list by this name and grade is already on the tablet: the same
+// test the tablet uses to decide between replacing and adding (§16).
+function libraryListPresent(lists, grade, id) {
+  const name = libraryListName(id).toLowerCase();
+  return (lists || []).some(l => (l.name || "").toLowerCase() === name && (l.grade || null) === grade);
+}
+
+async function libraryList(grade, id) {
+  const res = await fetch(`${LIBRARY_ROOT}grade${grade}/Spelling_${id}.csv`, { cache: "no-cache" });
+  if (!res.ok) throw new Error(`${libraryListName(id)} couldn't be loaded.`);
+  return { name: libraryListName(id), grade, ...parseLibraryCSV(await res.text()) };
+}
+
+// Columns: word, hint, sentence, bonus, misspellings — the tablet's CSV import
+// format. Words come back as the raw fields; the tablet's own normalizer does
+// the lowercasing, defaults, and misspelling split on the way in.
+function parseLibraryCSV(text) {
+  const words = [], bonus = [];
+  String(text || "").split(/\r?\n/).forEach((line, i) => {
+    if (!line.trim()) return;
+    const [word, hint, sentence, isBonus, misspellings] = libraryCSVFields(line);
+    if (!word || (i === 0 && word.toLowerCase() === "word")) return;
+    const entry = { word, hint: hint || "", sentence: sentence || "" };
+    if (misspellings) entry.misspellings = misspellings;
+    (/^(y|true)/i.test(isBonus || "") ? bonus : words).push(entry);
+  });
+  return { words, bonus };
+}
+
+function libraryCSVFields(line) {
+  const out = []; let cur = ""; let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { out.push(cur.trim()); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
 }
 
 // Each line is `word` or `word, hint, sentence` — deliberately the same shape
